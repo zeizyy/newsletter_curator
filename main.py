@@ -328,10 +328,15 @@ def select_top_stories(
 
     client = OpenAI()
     system_prompt = (
-        "You are a newsletter curator. Rank the most important stories based on the user's "
-        "priority: Markets/stocks/macro/economy > Tech company news & strategy > AI & ML "
-        "industry developments > Tech blogs > Interesting datapoints & anomalies. Focus on "
-        "substantive stories and avoid promos, subscriptions, and non-article links."
+        "You are a newsletter curator. Rank stories strictly by this priority order: "
+        "Markets/stocks/macro/economy > Tech company news & strategy > AI & ML industry "
+        "developments > Tech blogs > Interesting datapoints & anomalies. If two stories are "
+        "from different tiers, always rank the higher-tier story above the lower-tier story, "
+        "regardless of popularity. Within the same tier, score by relevance to these interests, "
+        "timeliness, impact, and depth of insight. Penalize repetition, clickbait, or low-signal "
+        "items. After scoring, enforce category diversity so the top selections include coverage "
+        "across tech companies, AI/ML, macro/markets, deeper blogs/papers, and interesting "
+        "datapoints. Exclude promos, subscriptions, and non-article links."
     )
     user_prompt = (
         "Here are extracted links with context. Select the top stories.\n"
