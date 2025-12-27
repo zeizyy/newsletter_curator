@@ -49,6 +49,16 @@ Decisions:
 - Validate extraction quality and LLM output vs. your interest priorities.
 - Add a feedback loop: mark stories as useful to tune prompts or ranking.
 
+## Deployment (DigitalOcean)
+- Create a Basic Droplet (Ubuntu 22.04) and add your SSH key.
+- SSH in and install dependencies: `git`, `uv`, Python 3.13.
+- Clone repo to the Droplet and copy `secrets/credentials.json`.
+- Set `OPENAI_API_KEY` (and optional model env vars) via shell profile or `.env`.
+- Run `uv run python main.py` once to generate `secrets/token.json` (OAuth).
+- Create a daily cron entry to run the script at your preferred time.
+- Redirect output to a log file and set up simple log rotation.
+- Optional: add a failure email/notification or heartbeat ping.
+
 ## Progress log
 - Implemented Gmail Desktop OAuth, message fetching, and HTML link extraction in `main.py`.
 - Added OpenAI-based LLM summarization for ranked digest output (plain text).
