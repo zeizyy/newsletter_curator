@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from typing import Iterable
@@ -13,40 +14,75 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from openai import OpenAI
 import requests
+import yaml
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
-CREDENTIALS_PATH = "secrets/credentials.json"
-TOKEN_PATH = "secrets/token.json"
-NEWSLETTER_LABEL = "Newsletters"
-QUERY_TIME_WINDOW = "newer_than:1d"
-MAX_LINKS_PER_EMAIL = 15
-OPENAI_REASONING_MODEL = os.getenv("OPENAI_REASONING_MODEL", "gpt-4o-mini")
-OPENAI_SUMMARY_MODEL = os.getenv("OPENAI_SUMMARY_MODEL", "gpt-5-mini")
-TOP_STORIES = 10
-MAX_ARTICLE_CHARS = 6000
-MAX_SUMMARY_WORKERS = 5
+CONFIG_PATH = os.getenv("NEWSLETTER_CONFIG", "config.yaml")
+DEFAULT_CONFIG = {
+    "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
+    "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
+    "openai": {"reasoning_model": "gpt-4o-mini", "summary_model": "gpt-5-mini"},
+    "limits": {
+        "max_links_per_email": 15,
+        "top_stories": 10,
+        "max_article_chars": 6000,
+        "max_summary_workers": 5,
+    },
+    "email": {
+        "digest_recipient": "zeizyy@gmail.com",
+        "digest_subject": "Daily Newsletter Digest",
+        "alert_recipient": "zeizyy@gmail.com",
+        "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
+    },
+}
 
 
-def load_credentials() -> Credentials:
+def merge_dicts(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_config() -> dict:
+    if not os.path.exists(CONFIG_PATH):
+        return dict(DEFAULT_CONFIG)
+    with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    return merge_dicts(DEFAULT_CONFIG, data)
+
+
+def load_credentials(paths: dict) -> Credentials:
+    token_path = paths["token"]
     creds = None
-    if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(TOKEN_PATH, "w", encoding="utf-8") as token_file:
+            flow = InstalledAppFlow.from_client_secrets_file(paths["credentials"], SCOPES)
+            auth_url, _ = flow.authorization_url(
+                prompt="consent",
+                redirect_uri="http://localhost",
+            )
+            print(f"Authorize this app by visiting:\n{auth_url}\n")
+            code = input("Enter the authorization code: ").strip()
+            flow.fetch_token(code=code, redirect_uri="http://localhost")
+            creds = flow.credentials
+        with open(token_path, "w", encoding="utf-8") as token_file:
             token_file.write(creds.to_json())
     return creds
 
 
-def get_gmail_service():
-    creds = load_credentials()
+def get_gmail_service(paths: dict):
+    creds = load_credentials(paths)
     return build("gmail", "v1", credentials=creds)
 
 
@@ -281,7 +317,12 @@ def parse_index_list(text: str) -> list[int]:
     return []
 
 
-def select_top_stories(items: list[dict], usage_by_model: dict) -> list[dict]:
+def select_top_stories(
+    items: list[dict],
+    usage_by_model: dict,
+    top_stories: int,
+    reasoning_model: str,
+) -> list[dict]:
     if not items:
         return []
 
@@ -294,7 +335,7 @@ def select_top_stories(items: list[dict], usage_by_model: dict) -> list[dict]:
     )
     user_prompt = (
         "Here are extracted links with context. Select the top stories.\n"
-        f"Return a JSON array of up to {TOP_STORIES} item indices in ranked order.\n\n"
+        f"Return a JSON array of up to {top_stories} item indices in ranked order.\n\n"
         f"{format_links_for_llm(items)}"
     )
     print("\n=== LLM Prompt (System) ===")
@@ -302,7 +343,7 @@ def select_top_stories(items: list[dict], usage_by_model: dict) -> list[dict]:
     print("\n=== LLM Prompt (User) ===")
     print(user_prompt)
     response = client.chat.completions.create(
-        model=OPENAI_REASONING_MODEL,
+        model=reasoning_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -311,7 +352,7 @@ def select_top_stories(items: list[dict], usage_by_model: dict) -> list[dict]:
     usage = response.usage
     if usage:
         stats = usage_by_model.setdefault(
-            OPENAI_REASONING_MODEL, {"input": 0, "output": 0, "total": 0}
+            reasoning_model, {"input": 0, "output": 0, "total": 0}
         )
         stats["input"] += usage.prompt_tokens or 0
         stats["output"] += usage.completion_tokens or 0
@@ -328,12 +369,12 @@ def select_top_stories(items: list[dict], usage_by_model: dict) -> list[dict]:
         if 1 <= idx <= max_index and idx not in seen:
             deduped.append(idx)
             seen.add(idx)
-        if len(deduped) >= TOP_STORIES:
+        if len(deduped) >= top_stories:
             break
     return [items[i - 1] for i in deduped]
 
 
-def fetch_article_text(url: str) -> str:
+def fetch_article_text(url: str, max_article_chars: int) -> str:
     try:
         response = requests.get(
             url,
@@ -348,13 +389,18 @@ def fetch_article_text(url: str) -> str:
         article = soup.find("article")
         text = article.get_text(" ", strip=True) if article else soup.get_text(" ", strip=True)
         text = normalize_whitespace(text)
-        return text[:MAX_ARTICLE_CHARS]
+        return text[:max_article_chars]
     except requests.RequestException as exc:
         print(f"Failed to fetch article: {url} ({exc})")
         return ""
 
 
-def summarize_article_with_llm(article_text: str, usage_by_model: dict, lock: Lock) -> str:
+def summarize_article_with_llm(
+    article_text: str,
+    usage_by_model: dict,
+    lock: Lock,
+    summary_model: str,
+) -> str:
     if not article_text:
         return "No article text available."
 
@@ -376,7 +422,7 @@ def summarize_article_with_llm(article_text: str, usage_by_model: dict, lock: Lo
     print("\n=== LLM Prompt (User) ===")
     print(user_prompt)
     response = client.chat.completions.create(
-        model=OPENAI_SUMMARY_MODEL,
+        model=summary_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -386,7 +432,7 @@ def summarize_article_with_llm(article_text: str, usage_by_model: dict, lock: Lo
     if usage:
         with lock:
             stats = usage_by_model.setdefault(
-                OPENAI_SUMMARY_MODEL, {"input": 0, "output": 0, "total": 0}
+                summary_model, {"input": 0, "output": 0, "total": 0}
             )
             stats["input"] += usage.prompt_tokens or 0
             stats["output"] += usage.completion_tokens or 0
@@ -395,10 +441,15 @@ def summarize_article_with_llm(article_text: str, usage_by_model: dict, lock: Lo
 
 
 def process_story(
-    idx: int, item: dict, usage_by_model: dict, lock: Lock
+    idx: int,
+    item: dict,
+    usage_by_model: dict,
+    lock: Lock,
+    max_article_chars: int,
+    summary_model: str,
 ) -> tuple[int, str]:
-    article_text = fetch_article_text(item.get("url", ""))
-    summary = summarize_article_with_llm(article_text, usage_by_model, lock)
+    article_text = fetch_article_text(item.get("url", ""), max_article_chars)
+    summary = summarize_article_with_llm(article_text, usage_by_model, lock, summary_model)
     summary_block = "\n".join(
         [
             f"Story {idx}: {item.get('anchor_text', '')}",
@@ -408,10 +459,14 @@ def process_story(
     )
     return idx, summary_block
 
-def main():
-    service = get_gmail_service()
-    query = QUERY_TIME_WINDOW
-    label_id = get_label_id(service, NEWSLETTER_LABEL)
+def run_job(config: dict, service) -> None:
+    gmail_cfg = config["gmail"]
+    openai_cfg = config["openai"]
+    limits_cfg = config["limits"]
+    email_cfg = config["email"]
+
+    query = gmail_cfg["query_time_window"]
+    label_id = get_label_id(service, gmail_cfg["label"])
     message_ids = list_message_ids_for_label(service, label_id, query)
     print(f"Found {len(message_ids)} messages for query: {query}")
 
@@ -428,7 +483,7 @@ def main():
         links = []
         for html in html_bodies:
             links.extend(extract_links_from_html(html))
-        links = links[:MAX_LINKS_PER_EMAIL]
+        links = links[: limits_cfg["max_links_per_email"]]
         for link in links:
             all_links.append(
                 {
@@ -452,16 +507,29 @@ def main():
 
     print("\n=== Curated Digest ===")
     usage_by_model = {}
-    selected = select_top_stories(all_links, usage_by_model)
+    selected = select_top_stories(
+        all_links,
+        usage_by_model,
+        limits_cfg["top_stories"],
+        openai_cfg["reasoning_model"],
+    )
     if not selected:
         print("No top stories selected.")
         return
 
     summaries = []
     lock = Lock()
-    with ThreadPoolExecutor(max_workers=MAX_SUMMARY_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=limits_cfg["max_summary_workers"]) as executor:
         futures = [
-            executor.submit(process_story, idx, item, usage_by_model, lock)
+            executor.submit(
+                process_story,
+                idx,
+                item,
+                usage_by_model,
+                lock,
+                limits_cfg["max_article_chars"],
+                openai_cfg["summary_model"],
+            )
             for idx, item in enumerate(selected, start=1)
         ]
         for future in as_completed(futures):
@@ -480,10 +548,32 @@ def main():
 
     send_email(
         service,
-        to_address="zeizyy@gmail.com",
-        subject="Daily Newsletter Digest",
+        to_address=email_cfg["digest_recipient"],
+        subject=email_cfg["digest_subject"],
         body=final_text,
     )
+
+
+def main():
+    config = load_config()
+    service = None
+    try:
+        service = get_gmail_service(config["paths"])
+        run_job(config, service)
+    except Exception:
+        error_details = traceback.format_exc()
+        print(error_details)
+        if service:
+            try:
+                send_email(
+                    service,
+                    to_address=config["email"]["alert_recipient"],
+                    subject=f"{config['email']['alert_subject_prefix']}",
+                    body=error_details,
+                )
+            except Exception as exc:
+                print(f"Failed to send alert email: {exc}")
+        raise
 
 
 if __name__ == "__main__":

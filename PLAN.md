@@ -64,3 +64,10 @@ Decisions:
 - Added OpenAI-based LLM summarization for ranked digest output (plain text).
 - Added two-stage LLM flow: select top stories then summarize fetched articles with key takeaways and why it matters.
 - Added Gmail API send to email the final digest to `zeizyy@gmail.com`.
+- Added `config.yaml` and refactored runtime settings to load from config.
+- Added failure alert emails on exceptions.
+
+## Next: Failure alerts + Config
+Decisions:
+- Use `config.yaml` for configuration.
+- Failure alerts go to `zeizyy@gmail.com`.

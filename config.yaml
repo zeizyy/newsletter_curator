@@ -1,0 +1,23 @@
+gmail:
+  label: Newsletters
+  query_time_window: newer_than:1d
+
+paths:
+  credentials: secrets/credentials.json
+  token: secrets/token.json
+
+openai:
+  reasoning_model: gpt-4o-mini
+  summary_model: gpt-5-mini
+
+limits:
+  max_links_per_email: 15
+  top_stories: 10
+  max_article_chars: 6000
+  max_summary_workers: 5
+
+email:
+  digest_recipient: zeizyy@gmail.com
+  digest_subject: Daily Newsletter Digest
+  alert_recipient: zeizyy@gmail.com
+  alert_subject_prefix: "[ALERT] Newsletter Curator Failure"
