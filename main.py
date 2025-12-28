@@ -529,6 +529,12 @@ def run_job(config: dict, service) -> None:
         print("No top stories selected.")
         return
 
+    print("\n=== Selected Stories ===")
+    for idx, item in enumerate(selected, start=1):
+        print(f"{idx}. {item.get('anchor_text', '')}")
+        print(f"   URL: {item.get('url', '')}")
+        print(f"   Context: {item.get('context', '')}")
+
     summaries = []
     lock = Lock()
     with ThreadPoolExecutor(max_workers=limits_cfg["max_summary_workers"]) as executor:
