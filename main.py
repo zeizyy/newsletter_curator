@@ -70,13 +70,11 @@ def load_credentials(paths: dict) -> Credentials:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(paths["credentials"], SCOPES)
-            auth_url, _ = flow.authorization_url(
-                prompt="consent",
-                redirect_uri="http://localhost",
-            )
+            flow.redirect_uri = "http://localhost"
+            auth_url, _ = flow.authorization_url(prompt="consent")
             print(f"Authorize this app by visiting:\n{auth_url}\n")
             code = input("Enter the authorization code: ").strip()
-            flow.fetch_token(code=code, redirect_uri="http://localhost")
+            flow.fetch_token(code=code)
             creds = flow.credentials
         with open(token_path, "w", encoding="utf-8") as token_file:
             token_file.write(creds.to_json())
