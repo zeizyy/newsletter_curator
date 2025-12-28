@@ -27,7 +27,9 @@ DEFAULT_CONFIG = {
     "openai": {"reasoning_model": "gpt-4o-mini", "summary_model": "gpt-5-mini"},
     "limits": {
         "max_links_per_email": 15,
-        "top_stories": 10,
+        "select_top_stories": 20,
+        "max_per_category": 3,
+        "final_top_stories": 10,
         "max_article_chars": 6000,
         "max_summary_workers": 5,
     },
@@ -293,11 +295,11 @@ def format_links_for_llm(items: list[dict]) -> str:
     for idx, item in enumerate(items, start=1):
         anchor_text = item.get("anchor_text", "")
         context = item.get("context", "")
+        label = context or anchor_text
         lines.append(
             "\n".join(
                 [
-                    f"[{idx}] {anchor_text}".strip(),
-                    f"Context: {context}",
+                    f"[{idx}] {label}".strip(),
                 ]
             )
         )
@@ -319,6 +321,26 @@ def parse_index_list(text: str) -> list[int]:
             data = json.loads(text[start : end + 1])
             if isinstance(data, list):
                 return [int(x) for x in data if isinstance(x, (int, float, str)) and str(x).isdigit()]
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def parse_selection_items(text: str) -> list[dict]:
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            data = json.loads(text[start : end + 1])
+            if isinstance(data, list):
+                return [item for item in data if isinstance(item, dict)]
         except json.JSONDecodeError:
             return []
     return []
@@ -347,7 +369,17 @@ def select_top_stories(
     )
     user_prompt = (
         "Here are extracted links with context. Select the top stories.\n"
-        f"Return a JSON array of up to {top_stories} item indices in ranked order.\n\n"
+        f"Return ONLY a JSON array of up to {top_stories} objects in ranked order.\n"
+        "Score each story equally across timeliness, impact, and depth of insight; "
+        "provide a final average score from 1-10.\n"
+        "Each object must be: {\"index\": <int>, \"category\": <string>, "
+        "\"score\": <number>, \"rationale\": <string>} "
+        "where category is "
+        "one of: Markets / stocks / macro / economy; Tech company news & strategy; "
+        "AI & ML industry developments; Tech blogs; Interesting datapoints & anomalies.\n"
+        "The \"index\" must refer to the numbered items in the input list below. Do NOT "
+        "preserve input order; reorder by your ranking.\n"
+        "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
     )
     print("\n=== LLM Prompt (System) ===")
@@ -370,20 +402,29 @@ def select_top_stories(
         stats["output"] += usage.completion_tokens or 0
         stats["total"] += usage.total_tokens or 0
     content = response.choices[0].message.content.strip()
-    indices = parse_index_list(content)
-    if not indices:
+    print("\n=== LLM Raw Output (Selection) ===")
+    print(content)
+    selections = parse_selection_items(content)
+    if not selections:
         return []
 
     max_index = len(items)
     deduped = []
     seen = set()
-    for idx in indices:
-        if 1 <= idx <= max_index and idx not in seen:
-            deduped.append(idx)
+    for selection in selections:
+        idx = selection.get("index")
+        if isinstance(idx, (int, float)) and int(idx) == idx:
+            idx = int(idx)
+        if isinstance(idx, int) and 1 <= idx <= max_index and idx not in seen:
+            item = dict(items[idx - 1])
+            item["category"] = selection.get("category", "")
+            item["score"] = selection.get("score", "")
+            item["rationale"] = selection.get("rationale", "")
+            deduped.append(item)
             seen.add(idx)
         if len(deduped) >= top_stories:
             break
-    return [items[i - 1] for i in deduped]
+    return deduped
 
 
 def fetch_article_text(url: str, max_article_chars: int) -> str:
@@ -464,12 +505,45 @@ def process_story(
     summary = summarize_article_with_llm(article_text, usage_by_model, lock, summary_model)
     summary_block = "\n".join(
         [
-            f"Story {idx}: {item.get('anchor_text', '')}",
+            f"Story {idx}: {item.get('context', '')}",
             f"URL: {item.get('url', '')}",
             summary,
         ]
     )
     return idx, summary_block
+
+
+def post_process_selected(
+    items: list[dict], max_per_category: int, total_limit: int
+) -> list[dict]:
+    if not items:
+        return []
+
+    counts = {}
+    result = []
+    for item in items:
+        category = item.get("category", "") or "Uncategorized"
+        if counts.get(category, 0) >= max_per_category:
+            continue
+        result.append(item)
+        counts[category] = counts.get(category, 0) + 1
+        if len(result) >= total_limit:
+            break
+    return result
+
+
+def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
+    grouped = {}
+    for _, item, summary in summaries:
+        category = item.get("category", "") or "Uncategorized"
+        grouped.setdefault(category, []).append(
+            {
+                "label": item.get("context", ""),
+                "url": item.get("url", ""),
+                "summary": summary,
+            }
+        )
+    return grouped
 
 def run_job(config: dict, service) -> None:
     gmail_cfg = config["gmail"]
@@ -514,27 +588,46 @@ def run_job(config: dict, service) -> None:
         print(f"Date: {date_header}")
         print(f"Links: {len(links)}")
         for link in links:
-            print(f"- {link['anchor_text']}: {link['url']}")
+            print(f"- {link['context']}: {link['url']}")
             print(f"  Context: {link['context']}")
-
     print("\n=== Curated Digest ===")
     usage_by_model = {}
     selected = select_top_stories(
         all_links,
         usage_by_model,
-        limits_cfg["top_stories"],
+        limits_cfg["select_top_stories"],
         openai_cfg["reasoning_model"],
     )
     if not selected:
         print("No top stories selected.")
         return
 
-    print("\n=== Selected Stories ===")
+    print("\n=== Selected Stories (Pre-Cap) ===")
     for idx, item in enumerate(selected, start=1):
-        print(f"{idx}. {item.get('anchor_text', '')}")
+        print(f"{idx}. {item.get('context', '')}")
         print(f"   URL: {item.get('url', '')}")
         print(f"   Context: {item.get('context', '')}")
+        print(f"   Category: {item.get('category', '')}")
+        print(f"   Score: {item.get('score', '')}")
+        print(f"   Rationale: {item.get('rationale', '')}")
 
+    selected = post_process_selected(
+        selected,
+        limits_cfg["max_per_category"],
+        limits_cfg["final_top_stories"],
+    )
+    if not selected:
+        print("No stories selected after category caps.")
+        return
+
+    print("\n=== Selected Stories (Final) ===")
+    for idx, item in enumerate(selected, start=1):
+        print(f"{idx}. {item.get('context', '')}")
+        print(f"   URL: {item.get('url', '')}")
+        print(f"   Context: {item.get('context', '')}")
+        print(f"   Category: {item.get('category', '')}")
+        print(f"   Score: {item.get('score', '')}")
+        print(f"   Rationale: {item.get('rationale', '')}")
     summaries = []
     lock = Lock()
     with ThreadPoolExecutor(max_workers=limits_cfg["max_summary_workers"]) as executor:
@@ -551,10 +644,26 @@ def run_job(config: dict, service) -> None:
             for idx, item in enumerate(selected, start=1)
         ]
         for future in as_completed(futures):
-            summaries.append(future.result())
+            story_idx, summary_block = future.result()
+            summaries.append((story_idx, selected[story_idx - 1], summary_block))
 
     summaries.sort(key=lambda item: item[0])
-    final_text = "\n\n---\n\n".join(summary for _, summary in summaries)
+    grouped = group_summaries_by_category(summaries)
+    sections = []
+    for category, entries in grouped.items():
+        section_text = [category]
+        for entry in entries:
+            section_text.append(
+                "\n".join(
+                    [
+                        f"- {entry['label']}",
+                        f"  URL: {entry['url']}",
+                        entry["summary"],
+                    ]
+                )
+            )
+        sections.append("\n".join(section_text))
+    final_text = "\n\n===\n\n".join(sections)
     print(final_text)
 
     if usage_by_model:

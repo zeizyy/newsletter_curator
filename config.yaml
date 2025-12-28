@@ -12,7 +12,9 @@ openai:
 
 limits:
   max_links_per_email: 15
-  top_stories: 10
+  select_top_stories: 20
+  max_per_category: 3
+  final_top_stories: 10
   max_article_chars: 6000
   max_summary_workers: 5
 

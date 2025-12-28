@@ -41,7 +41,9 @@ Edit `config.yaml`:
 - `gmail.label` (default `Newsletters`)
 - `gmail.query_time_window` (default `newer_than:1d`)
 - `limits.max_links_per_email`
-- `limits.top_stories`
+- `limits.select_top_stories`
+- `limits.max_per_category`
+- `limits.final_top_stories`
 - `limits.max_article_chars`
 - `limits.max_summary_workers`
 - `openai.reasoning_model` (default `gpt-4o-mini`)
