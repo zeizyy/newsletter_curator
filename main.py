@@ -32,7 +32,7 @@ DEFAULT_CONFIG = {
         "max_summary_workers": 5,
     },
     "email": {
-        "digest_recipient": "zeizyy@gmail.com",
+        "digest_recipients": ["zeizyy@gmail.com", "maisongting@gmail.com"],
         "digest_subject": "Daily Newsletter Digest",
         "alert_recipient": "zeizyy@gmail.com",
         "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
@@ -279,6 +279,13 @@ def send_email(service, to_address: str, subject: str, body: str) -> None:
     )
     encoded_message = base64.urlsafe_b64encode(message_text.encode("utf-8")).decode("utf-8")
     service.users().messages().send(userId="me", body={"raw": encoded_message}).execute()
+
+
+def send_email_to_recipients(
+    service, recipients: list[str], subject: str, body: str
+) -> None:
+    for recipient in recipients:
+        send_email(service, recipient, subject, body)
 
 
 def format_links_for_llm(items: list[dict]) -> str:
@@ -551,9 +558,9 @@ def run_job(config: dict, service) -> None:
                 f"{model_name}: input={stats['input']} output={stats['output']} total={stats['total']}"
             )
 
-    send_email(
+    send_email_to_recipients(
         service,
-        to_address=email_cfg["digest_recipient"],
+        recipients=email_cfg["digest_recipients"],
         subject=email_cfg["digest_subject"],
         body=final_text,
     )

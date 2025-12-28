@@ -46,7 +46,7 @@ Edit `config.yaml`:
 - `limits.max_summary_workers`
 - `openai.reasoning_model` (default `gpt-4o-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
-- `email.digest_recipient` and `email.alert_recipient`
+- `email.digest_recipients` and `email.alert_recipient`
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
 
