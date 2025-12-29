@@ -491,8 +491,7 @@ def summarize_article_with_llm(
             stats["input"] += usage.prompt_tokens or 0
             stats["output"] += usage.completion_tokens or 0
             stats["total"] += usage.total_tokens or 0
-    content = response.choices[0].message.content.strip()
-    return content
+    return response.choices[0].message.content.strip()
 
 
 def process_story(
@@ -551,13 +550,7 @@ def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
     grouped = {}
     for _, item, summary in summaries:
         category = item.get("category", "") or "Uncategorized"
-        grouped.setdefault(category, []).append(
-            {
-                "label": item.get("context", ""),
-                "url": item.get("url", ""),
-                "summary": summary,
-            }
-        )
+        grouped.setdefault(category, []).append(summary)
     return grouped
 
 def run_job(config: dict, service) -> None:
@@ -666,18 +659,9 @@ def run_job(config: dict, service) -> None:
     grouped = group_summaries_by_category(summaries)
     sections = []
     for category, entries in grouped.items():
-        section_text = [category]
-        for entry in entries:
-            section_text.append(
-                "\n".join(
-                    [
-                        f"- {entry['label']}",
-                        f"  URL: {entry['url']}",
-                        entry["summary"],
-                    ]
-                )
-            )
-        sections.append("\n".join(section_text))
+        section_text = [category, ""]
+        section_text.extend(entries)
+        sections.append("\n\n".join(section_text))
     final_text = "\n\n===\n\n".join(sections)
     print(final_text)
 
