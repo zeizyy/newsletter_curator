@@ -462,10 +462,13 @@ def summarize_article_with_llm(
         "AI & ML industry developments > Tech blogs > Interesting datapoints & anomalies."
     )
     user_prompt = (
-        "Write ~300 words on the article below. Include:\n"
-        "1) A short headline.\n"
-        "2) Key takeaways (3-5 bullets).\n"
-        "3) Why this matters to me (1 paragraph).\n\n"
+        "Write ~300 words on the article below.\n"
+        "Return ONLY valid JSON with this schema:\n"
+        "{\"headline\": <string>, \"body\": <string>}.\n"
+        "The body should include:\n"
+        "1) Key takeaways (3-5 bullets).\n"
+        "2) Why this matters to me (1 paragraph).\n"
+        "No extra text.\n\n"
         f"Article text:\n{article_text}"
     )
     print("\n=== LLM Prompt (System) ===")
@@ -488,7 +491,8 @@ def summarize_article_with_llm(
             stats["input"] += usage.prompt_tokens or 0
             stats["output"] += usage.completion_tokens or 0
             stats["total"] += usage.total_tokens or 0
-    return response.choices[0].message.content.strip()
+    content = response.choices[0].message.content.strip()
+    return content
 
 
 def process_story(
@@ -501,11 +505,12 @@ def process_story(
 ) -> tuple[int, str]:
     article_text = fetch_article_text(item.get("url", ""), max_article_chars)
     summary = summarize_article_with_llm(article_text, usage_by_model, lock, summary_model)
-    summary_block = "\n".join(
+    headline, body = extract_summary_json(summary)
+    summary_block = "\n\n".join(
         [
-            f"Story {idx}: {item.get('context', '')}",
+            f"Story {idx}: {headline}",
             f"URL: {item.get('url', '')}",
-            summary,
+            body,
         ]
     )
     return idx, summary_block
@@ -528,6 +533,18 @@ def post_process_selected(
         if len(result) >= total_limit:
             break
     return result
+
+
+def extract_summary_json(summary: str) -> tuple[str, str]:
+    try:
+        data = json.loads(summary)
+        if isinstance(data, dict):
+            headline = data.get("headline", "").strip() or "Untitled"
+            body = data.get("body", "").strip()
+            return headline, body or summary
+    except json.JSONDecodeError:
+        pass
+    return "Untitled", summary
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
