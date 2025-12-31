@@ -425,14 +425,34 @@ def select_top_stories(
     return deduped
 
 
-def fetch_article_text(url: str, max_article_chars: int) -> str:
+def fetch_article_text(
+    url: str,
+    max_article_chars: int,
+    timeout: int = 25,
+    retries: int = 3,
+) -> str:
     try:
-        response = requests.get(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 (newsletter-curator)"},
-            timeout=15,
-        )
-        response.raise_for_status()
+        last_exc = None
+        session = requests.Session()
+        headers = {
+            "User-Agent": "Mozilla/5.0 (newsletter-curator)",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+            "Connection": "keep-alive",
+        }
+        for attempt in range(1, retries + 1):
+            try:
+                response = session.get(url, headers=headers, timeout=timeout)
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < retries:
+                    continue
+                raise last_exc
+        if response is None:
+            return ""
         soup = BeautifulSoup(response.text, "html.parser")
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
