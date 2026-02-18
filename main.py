@@ -2,6 +2,7 @@ import base64
 import html
 import json
 import os
+import re
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.message import EmailMessage
@@ -588,13 +589,80 @@ def parse_summary_block(summary_block: str) -> tuple[str, str, str]:
     return title, url, body
 
 
+def render_summary_body_html(body: str) -> str:
+    lines = body.splitlines()
+    blocks = []
+    list_items = []
+
+    def flush_list() -> None:
+        nonlocal list_items
+        if not list_items:
+            return
+        items_html = "".join(
+            (
+                '<li style="margin:0 0 6px 0;">'
+                f"{html.escape(item)}"
+                "</li>"
+            )
+            for item in list_items
+        )
+        blocks.append(
+            (
+                '<ul style="margin:8px 0 12px 20px;padding:0;color:#25364d;line-height:1.55;">'
+                f"{items_html}"
+                "</ul>"
+            )
+        )
+        list_items = []
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            flush_list()
+            continue
+
+        list_match = re.match(r"^[-*]\s+(.+)$", line)
+        if list_match:
+            list_items.append(list_match.group(1))
+            continue
+
+        flush_list()
+
+        markdown_heading = re.match(r"^(#{1,3})\s+(.+)$", line)
+        section_heading = re.match(r"^\d+[.)]\s+(.+)$", line)
+        if markdown_heading or section_heading:
+            heading_text = (
+                markdown_heading.group(2) if markdown_heading else section_heading.group(1)
+            )
+            blocks.append(
+                (
+                    '<div style="font-size:15px;font-weight:700;line-height:1.35;'
+                    'color:#152238;margin:12px 0 6px 0;">'
+                    f"{html.escape(heading_text)}"
+                    "</div>"
+                )
+            )
+            continue
+
+        blocks.append(
+            (
+                '<p style="margin:0 0 10px 0;color:#25364d;line-height:1.6;">'
+                f"{html.escape(line)}"
+                "</p>"
+            )
+        )
+
+    flush_list()
+    return "".join(blocks) or "No summary."
+
+
 def render_digest_html(grouped: dict[str, list[str]]) -> str:
     category_sections = []
     for category, entries in grouped.items():
         cards = []
         for summary_block in entries:
             title, url, body = parse_summary_block(summary_block)
-            body_html = "<br>".join(html.escape(line) for line in body.splitlines()) or "No summary."
+            body_html = render_summary_body_html(body)
             link_html = (
                 f'<a href="{html.escape(url)}" style="color:#0b57d0;text-decoration:none;">Read article</a>'
                 if url
@@ -604,7 +672,7 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
                 (
                     '<div style="background:#ffffff;border:1px solid #e6ecf5;border-radius:12px;'
                     'padding:16px;margin:0 0 12px 0;">'
-                    f'<div style="font-size:18px;font-weight:700;color:#152238;margin:0 0 8px 0;">{html.escape(title)}</div>'
+                    f'<div style="font-size:20px;font-weight:700;line-height:1.35;color:#152238;margin:0 0 8px 0;">{html.escape(title)}</div>'
                     f'<div style="font-size:14px;line-height:1.6;color:#25364d;margin:0 0 10px 0;">{body_html}</div>'
                     f'<div style="font-size:14px;font-weight:600;">{link_html}</div>'
                     "</div>"
@@ -613,8 +681,8 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
         category_sections.append(
             (
                 '<div style="margin:0 0 20px 0;">'
-                f'<div style="font-size:13px;font-weight:700;letter-spacing:0.08em;color:#4d5f78;'
-                f'text-transform:uppercase;margin:0 0 10px 0;">{html.escape(category)}</div>'
+                f'<div style="font-size:22px;font-weight:700;line-height:1.3;color:#243b5a;'
+                f'margin:0 0 10px 0;">{html.escape(category)}</div>'
                 f"{''.join(cards)}"
                 "</div>"
             )
@@ -625,8 +693,8 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
         '<div style="max-width:760px;margin:0 auto;padding:28px 16px;">'
         '<div style="background:linear-gradient(135deg,#0f2748,#1c4d8c);border-radius:14px;padding:20px 22px;'
         'color:#ffffff;margin:0 0 18px 0;">'
-        '<div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.9;">Daily Briefing</div>'
-        '<div style="font-size:28px;font-weight:750;line-height:1.2;margin:6px 0 0 0;">Newsletter Digest</div>'
+        '<div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.9;">Daily Briefing</div>'
+        '<div style="font-size:32px;font-weight:750;line-height:1.2;margin:6px 0 0 0;">Newsletter Digest</div>'
         "</div>"
         f"{''.join(category_sections)}"
         '<div style="font-size:12px;color:#73859f;margin-top:8px;">Generated by Newsletter Curator</div>'
