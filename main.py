@@ -491,12 +491,13 @@ def summarize_article_with_llm(
         "AI & ML industry developments > Tech blogs > Interesting datapoints & anomalies."
     )
     user_prompt = (
-        "Write ~300 words on the article below.\n"
+        "Write a concise summary of the article below.\n"
         "Return ONLY valid JSON with this schema:\n"
         "{\"headline\": <string>, \"body\": <string>}.\n"
         "The body should include:\n"
-        "1) Key takeaways (3-5 bullets).\n"
-        "2) Why this matters to me (1 paragraph).\n"
+        "1) Key takeaways (3-5 bullets; be specific and informative).\n"
+        "2) Why this matters to me (exactly 2 short sentences, max 45 words total).\n"
+        "Keep the full body concise, but prioritize clarity in key takeaways.\n"
         "No extra text.\n\n"
         f"Article text:\n{article_text}"
     )
