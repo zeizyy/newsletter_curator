@@ -1,0 +1,4 @@
+interface:
+  display_name: "Daily News Curator"
+  short_description: "Build daily AI/markets/top-news digests"
+  default_prompt: "Use $daily-news-curator to pull latest AI, market, and top-news headlines from RSS feeds and draft a concise daily digest."

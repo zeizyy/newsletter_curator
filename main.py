@@ -1,10 +1,11 @@
 import base64
+from collections import Counter
 import html
 import json
 import os
 import re
+import subprocess
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.message import EmailMessage
 from threading import Lock
 from typing import Iterable
@@ -30,12 +31,21 @@ DIGEST_TEMPLATE_PATH = os.path.join(
 DEFAULT_CONFIG = {
     "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
     "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
+    "additional_sources": {
+        "enabled": False,
+        "script_path": "skills/daily-news-curator/scripts/build_daily_digest.py",
+        "feeds_file": "",
+        "hours": 24,
+        "top_per_category": 5,
+        "max_total": 20,
+    },
     "openai": {"reasoning_model": "gpt-4o-mini", "summary_model": "gpt-5-mini"},
     "limits": {
         "max_links_per_email": 15,
         "select_top_stories": 20,
         "max_per_category": 3,
-        "final_top_stories": 10,
+        "final_top_stories": 15,
+        "source_quotas": {"gmail": 10, "additional_source": 5},
         "max_article_chars": 6000,
         "max_summary_workers": 5,
     },
@@ -385,10 +395,6 @@ def select_top_stories(
         "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
     )
-    print("\n=== LLM Prompt (System) ===")
-    print(system_prompt)
-    print("\n=== LLM Prompt (User) ===")
-    print(user_prompt)
     response = client.chat.completions.create(
         model=reasoning_model,
         messages=[
@@ -405,8 +411,6 @@ def select_top_stories(
         stats["output"] += usage.completion_tokens or 0
         stats["total"] += usage.total_tokens or 0
     content = response.choices[0].message.content.strip()
-    print("\n=== LLM Raw Output (Selection) ===")
-    print(content)
     selections = parse_selection_items(content)
     if not selections:
         return []
@@ -496,10 +500,6 @@ def summarize_article_with_llm(
         "No extra text.\n\n"
         f"Article text:\n{article_text}"
     )
-    print("\n=== LLM Prompt (System) ===")
-    print(system_prompt)
-    print("\n=== LLM Prompt (User) ===")
-    print(user_prompt)
     response = client.chat.completions.create(
         model=summary_model,
         messages=[
@@ -520,43 +520,105 @@ def summarize_article_with_llm(
 
 
 def process_story(
-    idx: int,
     item: dict,
     usage_by_model: dict,
     lock: Lock,
     max_article_chars: int,
     summary_model: str,
-) -> tuple[int, str]:
+) -> str | None:
     article_text = fetch_article_text(item.get("url", ""), max_article_chars)
+    if not article_text:
+        return None
     summary = summarize_article_with_llm(article_text, usage_by_model, lock, summary_model)
     headline, body = extract_summary_json(summary)
+    if not body.strip() or body.strip() == "No article text available.":
+        return None
     summary_block = "\n\n".join(
         [
-            f"Story {idx}: {headline}",
+            f"Story: {headline}",
             f"URL: {item.get('url', '')}",
             body,
         ]
     )
-    return idx, summary_block
+    return summary_block
 
 
 def post_process_selected(
-    items: list[dict], max_per_category: int, total_limit: int
+    items: list[dict],
+    max_per_category: int,
+    total_limit: int,
+    source_quotas: dict[str, int] | None = None,
 ) -> list[dict]:
     if not items:
         return []
 
-    counts = {}
+    category_counts = {}
+    source_counts = {}
     result = []
     for item in items:
         category = item.get("category", "") or "Uncategorized"
-        if counts.get(category, 0) >= max_per_category:
+        source_type = item.get("source_type", "") or "unknown"
+        if category_counts.get(category, 0) >= max_per_category:
             continue
+        if source_quotas:
+            quota = source_quotas.get(source_type)
+            if quota is not None and source_counts.get(source_type, 0) >= quota:
+                continue
         result.append(item)
-        counts[category] = counts.get(category, 0) + 1
+        category_counts[category] = category_counts.get(category, 0) + 1
+        source_counts[source_type] = source_counts.get(source_type, 0) + 1
         if len(result) >= total_limit:
             break
+
+    # Optional fallback for non-quota sources (or if quotas are not configured).
+    if len(result) < total_limit and source_quotas:
+        selected_urls = {item.get("url", "") for item in result}
+        for item in items:
+            url = item.get("url", "")
+            if url in selected_urls:
+                continue
+            category = item.get("category", "") or "Uncategorized"
+            source_type = item.get("source_type", "") or "unknown"
+            if source_type in source_quotas:
+                continue
+            if category_counts.get(category, 0) >= max_per_category:
+                continue
+            result.append(item)
+            selected_urls.add(url)
+            category_counts[category] = category_counts.get(category, 0) + 1
+            source_counts[source_type] = source_counts.get(source_type, 0) + 1
+            if len(result) >= total_limit:
+                break
+    elif len(result) < total_limit:
+        # Preserve previous behavior when no source quota config is provided.
+        selected_urls = {item.get("url", "") for item in result}
+        for item in items:
+            url = item.get("url", "")
+            if url in selected_urls:
+                continue
+            category = item.get("category", "") or "Uncategorized"
+            if category_counts.get(category, 0) >= max_per_category:
+                continue
+            result.append(item)
+            selected_urls.add(url)
+            category_counts[category] = category_counts.get(category, 0) + 1
+            source_type = item.get("source_type", "") or "unknown"
+            source_counts[source_type] = source_counts.get(source_type, 0) + 1
+            if len(result) >= total_limit:
+                break
     return result
+
+
+def normalize_source_quotas(raw: dict | None) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    normalized = {}
+    for source_name, quota in raw.items():
+        if not isinstance(source_name, str):
+            continue
+        if isinstance(quota, (int, float)) and int(quota) == quota and int(quota) >= 0:
+            normalized[source_name.strip()] = int(quota)
+    return normalized
 
 
 def extract_summary_json(summary: str) -> tuple[str, str]:
@@ -695,6 +757,111 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
         template_html = handle.read()
     return template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
 
+
+def collect_additional_source_links(config: dict) -> list[dict]:
+    source_cfg = config.get("additional_sources", {})
+    if not source_cfg.get("enabled", False):
+        return []
+
+    script_path = source_cfg.get(
+        "script_path", "skills/daily-news-curator/scripts/build_daily_digest.py"
+    )
+    if not os.path.isabs(script_path):
+        script_path = os.path.join(os.path.dirname(__file__), script_path)
+    if not os.path.exists(script_path):
+        print(f"Additional sources script not found: {script_path}")
+        return []
+
+    command = [
+        "python3",
+        script_path,
+        "--output",
+        "json",
+        "--hours",
+        str(source_cfg.get("hours", 24)),
+        "--top-per-category",
+        str(source_cfg.get("top_per_category", 5)),
+        "--max-total",
+        str(source_cfg.get("max_total", 20)),
+    ]
+
+    feeds_file = source_cfg.get("feeds_file", "")
+    if feeds_file:
+        if not os.path.isabs(feeds_file):
+            feeds_file = os.path.join(os.path.dirname(__file__), feeds_file)
+        command.extend(["--feeds-file", feeds_file])
+
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        print("Additional source ingestion failed.")
+        if result.stderr.strip():
+            print(result.stderr.strip())
+        return []
+
+    output = result.stdout.strip()
+    if not output:
+        return []
+
+    try:
+        stories = json.loads(output)
+    except json.JSONDecodeError:
+        print("Additional source ingestion returned non-JSON output.")
+        return []
+
+    if not isinstance(stories, list):
+        print("Additional source ingestion output was not a list.")
+        return []
+
+    links = []
+    for story in stories:
+        if not isinstance(story, dict):
+            continue
+        url = str(story.get("url", "")).strip()
+        if not url:
+            continue
+        title = str(story.get("title", "")).strip()
+        source = str(story.get("source", "")).strip() or "Additional Source"
+        category = str(story.get("category", "")).strip()
+        published_at = str(story.get("published_at", "")).strip()
+        summary = str(story.get("summary", "")).strip()
+        context = trim_context(summary or title or url)
+        links.append(
+            {
+                "subject": f"[{category or 'general'}] {title or source}",
+                "from": source,
+                "source_name": source,
+                "source_type": "additional_source",
+                "date": published_at,
+                "url": url,
+                "anchor_text": title or source,
+                "context": context,
+            }
+        )
+    return links
+
+
+def dedupe_links_by_url(items: list[dict]) -> list[dict]:
+    deduped = []
+    seen = set()
+    for item in items:
+        url = str(item.get("url", "")).strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        deduped.append(item)
+    return deduped
+
+
+def format_counts(
+    items: list[dict], field: str, top_n: int | None = None, missing_label: str = "unknown"
+) -> str:
+    counts = Counter((str(item.get(field, "")).strip() or missing_label) for item in items)
+    ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+    if top_n is not None:
+        ordered = ordered[:top_n]
+    return ", ".join(f"{name}={count}" for name, count in ordered) if ordered else "none"
+
+
 def run_job(config: dict, service) -> None:
     gmail_cfg = config["gmail"]
     openai_cfg = config["openai"]
@@ -725,6 +892,8 @@ def run_job(config: dict, service) -> None:
                 {
                     "subject": subject,
                     "from": from_header,
+                    "source_name": from_header or "gmail",
+                    "source_type": "gmail",
                     "date": date_header,
                     "url": link["url"],
                     "anchor_text": link["anchor_text"],
@@ -732,72 +901,110 @@ def run_job(config: dict, service) -> None:
                 }
             )
 
-        print("\n---")
-        print(f"Subject: {subject}")
-        print(f"From: {from_header}")
-        print(f"Date: {date_header}")
-        print(f"Links: {len(links)}")
-        for link in links:
-            print(f"- {link['context']}: {link['url']}")
-            print(f"  Context: {link['context']}")
-    print("\n=== Curated Digest ===")
+    gmail_links_count = len(all_links)
+    source_links = collect_additional_source_links(config)
+    all_links.extend(source_links)
+    all_links = dedupe_links_by_url(all_links)
+    print("\n=== Pipeline Stats ===")
+    print(f"messages_retrieved: {len(message_ids)}")
+    print(
+        f"links_retrieved: gmail={gmail_links_count}, additional_sources={len(source_links)}"
+    )
+    print(f"links_merged_deduped: total={len(all_links)}")
+    print(
+        f"links_by_source_type: {format_counts(all_links, 'source_type')}"
+    )
+    print(
+        f"links_by_source_name_top10: {format_counts(all_links, 'source_name', top_n=10)}"
+    )
     usage_by_model = {}
-    selected = select_top_stories(
+    ranked_candidates = select_top_stories(
         all_links,
         usage_by_model,
         limits_cfg["select_top_stories"],
         openai_cfg["reasoning_model"],
     )
-    if not selected:
+    if not ranked_candidates:
         print("No top stories selected.")
         return
 
-    print("\n=== Selected Stories (Pre-Cap) ===")
-    for idx, item in enumerate(selected, start=1):
-        print(f"{idx}. {item.get('context', '')}")
-        print(f"   URL: {item.get('url', '')}")
-        print(f"   Context: {item.get('context', '')}")
-        print(f"   Category: {item.get('category', '')}")
-        print(f"   Score: {item.get('score', '')}")
-        print(f"   Rationale: {item.get('rationale', '')}")
+    print(f"ranked_selected: total={len(ranked_candidates)}")
+    print(
+        f"ranked_by_source_type: {format_counts(ranked_candidates, 'source_type')}"
+    )
+    print(
+        f"ranked_by_source_name_top10: {format_counts(ranked_candidates, 'source_name', top_n=10)}"
+    )
 
     selected = post_process_selected(
-        selected,
+        ranked_candidates,
         limits_cfg["max_per_category"],
         limits_cfg["final_top_stories"],
+        normalize_source_quotas(limits_cfg.get("source_quotas")),
     )
     if not selected:
         print("No stories selected after category caps.")
         return
 
-    print("\n=== Selected Stories (Final) ===")
-    for idx, item in enumerate(selected, start=1):
-        print(f"{idx}. {item.get('context', '')}")
-        print(f"   URL: {item.get('url', '')}")
-        print(f"   Context: {item.get('context', '')}")
-        print(f"   Category: {item.get('category', '')}")
-        print(f"   Score: {item.get('score', '')}")
-        print(f"   Rationale: {item.get('rationale', '')}")
+    target_story_count = len(selected)
+    selected_urls = {item.get("url", "") for item in selected}
+    fallback_candidates = [
+        item for item in ranked_candidates if item.get("url", "") not in selected_urls
+    ]
+    backfilled_count = 0
+    skipped_count = 0
+    accepted_items = []
     summaries = []
     lock = Lock()
-    with ThreadPoolExecutor(max_workers=limits_cfg["max_summary_workers"]) as executor:
-        futures = [
-            executor.submit(
-                process_story,
-                idx,
-                item,
+    for item in selected:
+        summary_block = process_story(
+            item,
+            usage_by_model,
+            lock,
+            limits_cfg["max_article_chars"],
+            openai_cfg["summary_model"],
+        )
+        if summary_block:
+            accepted_items.append(item)
+            summaries.append((len(accepted_items), item, summary_block))
+            continue
+
+        skipped_count += 1
+        replacement_summary = None
+        replacement_item = None
+        while fallback_candidates and replacement_summary is None:
+            candidate = fallback_candidates.pop(0)
+            candidate_summary = process_story(
+                candidate,
                 usage_by_model,
                 lock,
                 limits_cfg["max_article_chars"],
                 openai_cfg["summary_model"],
             )
-            for idx, item in enumerate(selected, start=1)
-        ]
-        for future in as_completed(futures):
-            story_idx, summary_block = future.result()
-            summaries.append((story_idx, selected[story_idx - 1], summary_block))
+            if candidate_summary:
+                replacement_summary = candidate_summary
+                replacement_item = candidate
+            else:
+                skipped_count += 1
 
-    summaries.sort(key=lambda item: item[0])
+        if replacement_summary and replacement_item:
+            backfilled_count += 1
+            accepted_items.append(replacement_item)
+            summaries.append((len(accepted_items), replacement_item, replacement_summary))
+
+    print(f"summaries_completed: total={len(accepted_items)} target={target_story_count}")
+    print(f"summaries_backfilled: {backfilled_count}")
+    print(f"summaries_skipped_fetch_or_empty: {skipped_count}")
+    if not summaries:
+        print("No stories could be summarized after fetch/filter checks.")
+        return
+
+    print(f"returned_final: total={len(accepted_items)}")
+    print(f"final_by_source_type: {format_counts(accepted_items, 'source_type')}")
+    print(
+        f"final_by_source_name_top10: {format_counts(accepted_items, 'source_name', top_n=10)}"
+    )
+
     grouped = group_summaries_by_category(summaries)
     sections = []
     for category, entries in grouped.items():
@@ -805,7 +1012,6 @@ def run_job(config: dict, service) -> None:
         section_text.extend(entries)
         sections.append("\n\n".join(section_text))
     final_text = "\n\n===\n\n".join(sections)
-    print(final_text)
 
     if usage_by_model:
         print("\n=== Token Usage ===")
