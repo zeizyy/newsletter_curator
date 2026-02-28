@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Newsletter Curator Config</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+    h1 { margin: 0 0 10px 0; }
+    h2 { margin: 0 0 10px 0; font-size: 18px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; font-size: 13px; margin-bottom: 4px; color: #42526e; }
+    input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c5d0e0; border-radius: 6px; font-size: 14px; }
+    textarea { min-height: 92px; resize: vertical; }
+    .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 22px; }
+    .checkbox input { width: auto; }
+    .banner-ok { background: #e8f7ee; border: 1px solid #b7e4c7; color: #1b6b3a; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+    button { background: #0b57d0; color: #fff; border: 0; border-radius: 7px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .muted { font-size: 12px; color: #6b778c; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Newsletter Curator Config</h1>
+    <p class="muted">Editing <code>{{ config_path }}</code></p>
+
+    {% if message %}
+      <div class="banner-ok">{{ message }}</div>
+    {% endif %}
+
+    {% if errors %}
+      <div class="banner-err">
+        {% for err in errors %}
+          <div>{{ err }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post">
+      {% if token %}
+      <input type="hidden" name="token" value="{{ token }}" />
+      {% endif %}
+
+      <div class="card">
+        <h2>Gmail</h2>
+        <div class="grid">
+          <div>
+            <label for="gmail_label">gmail.label</label>
+            <input id="gmail_label" name="gmail_label" value="{{ config.gmail.label }}" />
+          </div>
+          <div>
+            <label for="gmail_query_time_window">gmail.query_time_window</label>
+            <input id="gmail_query_time_window" name="gmail_query_time_window" value="{{ config.gmail.query_time_window }}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Additional Sources</h2>
+        <div class="grid">
+          <div class="checkbox">
+            <input id="additional_enabled" type="checkbox" name="additional_enabled" {% if config.additional_sources.enabled %}checked{% endif %} />
+            <label for="additional_enabled">Enable additional_sources</label>
+          </div>
+          <div></div>
+          <div>
+            <label for="additional_script_path">additional_sources.script_path</label>
+            <input id="additional_script_path" name="additional_script_path" value="{{ config.additional_sources.script_path }}" />
+          </div>
+          <div>
+            <label for="additional_feeds_file">additional_sources.feeds_file</label>
+            <input id="additional_feeds_file" name="additional_feeds_file" value="{{ config.additional_sources.feeds_file }}" />
+          </div>
+          <div>
+            <label for="additional_hours">additional_sources.hours</label>
+            <input id="additional_hours" name="additional_hours" value="{{ config.additional_sources.hours }}" />
+          </div>
+          <div>
+            <label for="additional_top_per_category">additional_sources.top_per_category</label>
+            <input id="additional_top_per_category" name="additional_top_per_category" value="{{ config.additional_sources.top_per_category }}" />
+          </div>
+          <div>
+            <label for="additional_max_total">additional_sources.max_total</label>
+            <input id="additional_max_total" name="additional_max_total" value="{{ config.additional_sources.max_total }}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Limits & Quotas</h2>
+        <div class="grid">
+          <div>
+            <label for="limit_max_links_per_email">limits.max_links_per_email</label>
+            <input id="limit_max_links_per_email" name="limit_max_links_per_email" value="{{ config.limits.max_links_per_email }}" />
+          </div>
+          <div>
+            <label for="limit_select_top_stories">limits.select_top_stories</label>
+            <input id="limit_select_top_stories" name="limit_select_top_stories" value="{{ config.limits.select_top_stories }}" />
+          </div>
+          <div>
+            <label for="limit_max_per_category">limits.max_per_category</label>
+            <input id="limit_max_per_category" name="limit_max_per_category" value="{{ config.limits.max_per_category }}" />
+          </div>
+          <div>
+            <label for="limit_final_top_stories">limits.final_top_stories</label>
+            <input id="limit_final_top_stories" name="limit_final_top_stories" value="{{ config.limits.final_top_stories }}" />
+          </div>
+          <div>
+            <label for="quota_gmail">limits.source_quotas.gmail</label>
+            <input id="quota_gmail" name="quota_gmail" value="{{ config.limits.source_quotas.gmail }}" />
+          </div>
+          <div>
+            <label for="quota_additional_source">limits.source_quotas.additional_source</label>
+            <input id="quota_additional_source" name="quota_additional_source" value="{{ config.limits.source_quotas.additional_source }}" />
+          </div>
+          <div>
+            <label for="limit_max_article_chars">limits.max_article_chars</label>
+            <input id="limit_max_article_chars" name="limit_max_article_chars" value="{{ config.limits.max_article_chars }}" />
+          </div>
+          <div>
+            <label for="limit_max_summary_workers">limits.max_summary_workers</label>
+            <input id="limit_max_summary_workers" name="limit_max_summary_workers" value="{{ config.limits.max_summary_workers }}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>OpenAI Models</h2>
+        <div class="grid">
+          <div>
+            <label for="openai_reasoning_model">openai.reasoning_model</label>
+            <input id="openai_reasoning_model" name="openai_reasoning_model" value="{{ config.openai.reasoning_model }}" />
+          </div>
+          <div>
+            <label for="openai_summary_model">openai.summary_model</label>
+            <input id="openai_summary_model" name="openai_summary_model" value="{{ config.openai.summary_model }}" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Email</h2>
+        <div class="grid">
+          <div>
+            <label for="email_digest_subject">email.digest_subject</label>
+            <input id="email_digest_subject" name="email_digest_subject" value="{{ config.email.digest_subject }}" />
+          </div>
+          <div>
+            <label for="email_alert_recipient">email.alert_recipient</label>
+            <input id="email_alert_recipient" name="email_alert_recipient" value="{{ config.email.alert_recipient }}" />
+          </div>
+          <div>
+            <label for="email_alert_subject_prefix">email.alert_subject_prefix</label>
+            <input id="email_alert_subject_prefix" name="email_alert_subject_prefix" value="{{ config.email.alert_subject_prefix }}" />
+          </div>
+          <div>
+            <label for="email_digest_recipients">email.digest_recipients (one per line)</label>
+            <textarea id="email_digest_recipients" name="email_digest_recipients">{% for r in config.email.digest_recipients %}{{ r }}
+{% endfor %}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="muted">On save, a timestamped backup of config is created.</div>
+        <button type="submit">Save Config</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

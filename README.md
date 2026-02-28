@@ -57,6 +57,23 @@ First run will open a browser for Google OAuth and create `secrets/token.json`.
 
 If you change Gmail scopes later, delete `secrets/token.json` and re-run to re-auth.
 
+## Web Config UI
+Run a local admin UI to edit `config.yaml`:
+
+```bash
+uv run python admin_app.py
+```
+
+Default URL is `http://127.0.0.1:8080`.
+
+Optional security token:
+- Set `CURATOR_ADMIN_TOKEN` on the server.
+- Access with `?token=...` or header `X-Admin-Token: ...`.
+
+Optional host/port overrides:
+- `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
+- `CURATOR_ADMIN_PORT` (default `8080`)
+
 ## Configuration
 Edit `config.yaml`:
 - `gmail.label` (default `Newsletters`)

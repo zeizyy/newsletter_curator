@@ -918,35 +918,79 @@ def run_job(config: dict, service) -> None:
         f"links_by_source_name_top10: {format_counts(all_links, 'source_name', top_n=10)}"
     )
     usage_by_model = {}
-    ranked_candidates = select_top_stories(
-        all_links,
-        usage_by_model,
-        limits_cfg["select_top_stories"],
-        openai_cfg["reasoning_model"],
-    )
+    source_quotas = normalize_source_quotas(limits_cfg.get("source_quotas"))
+    ranked_candidates = []
+    selected = []
+    fallback_by_source: dict[str, list[dict]] = {}
+    if source_quotas:
+        for source_type, quota in source_quotas.items():
+            source_pool = [
+                item for item in all_links if (item.get("source_type", "") or "unknown") == source_type
+            ]
+            if not source_pool or quota <= 0:
+                fallback_by_source[source_type] = []
+                continue
+            source_top_n = min(
+                len(source_pool),
+                max(quota, min(limits_cfg["select_top_stories"], quota * 3)),
+            )
+            source_ranked = select_top_stories(
+                source_pool,
+                usage_by_model,
+                source_top_n,
+                openai_cfg["reasoning_model"],
+            )
+            ranked_candidates.extend(source_ranked)
+            selected.extend(source_ranked[:quota])
+            fallback_by_source[source_type] = source_ranked[quota:]
+
+        target_story_count = sum(source_quotas.values())
+        if len(selected) < target_story_count:
+            selected_urls = {item.get("url", "") for item in selected}
+            remaining_pool = [
+                item for item in all_links if item.get("url", "") not in selected_urls
+            ]
+            needed = target_story_count - len(selected)
+            if remaining_pool and needed > 0:
+                fill_ranked = select_top_stories(
+                    remaining_pool,
+                    usage_by_model,
+                    needed,
+                    openai_cfg["reasoning_model"],
+                )
+                selected.extend(fill_ranked[:needed])
+                ranked_candidates.extend(fill_ranked)
+        selected = dedupe_links_by_url(selected)
+        selected = selected[:target_story_count]
+    else:
+        ranked_candidates = select_top_stories(
+            all_links,
+            usage_by_model,
+            limits_cfg["select_top_stories"],
+            openai_cfg["reasoning_model"],
+        )
+        selected = post_process_selected(
+            ranked_candidates,
+            limits_cfg["max_per_category"],
+            limits_cfg["final_top_stories"],
+            {},
+        )
+        target_story_count = len(selected)
+
     if not ranked_candidates:
         print("No top stories selected.")
         return
+    if not selected:
+        print("No stories selected after ranking/quotas.")
+        return
 
     print(f"ranked_selected: total={len(ranked_candidates)}")
-    print(
-        f"ranked_by_source_type: {format_counts(ranked_candidates, 'source_type')}"
-    )
+    print(f"ranked_by_source_type: {format_counts(ranked_candidates, 'source_type')}")
     print(
         f"ranked_by_source_name_top10: {format_counts(ranked_candidates, 'source_name', top_n=10)}"
     )
 
-    selected = post_process_selected(
-        ranked_candidates,
-        limits_cfg["max_per_category"],
-        limits_cfg["final_top_stories"],
-        normalize_source_quotas(limits_cfg.get("source_quotas")),
-    )
-    if not selected:
-        print("No stories selected after category caps.")
-        return
-
-    target_story_count = len(selected)
+    target_story_count = min(target_story_count, len(selected))
     selected_urls = {item.get("url", "") for item in selected}
     fallback_candidates = [
         item for item in ranked_candidates if item.get("url", "") not in selected_urls
@@ -972,6 +1016,23 @@ def run_job(config: dict, service) -> None:
         skipped_count += 1
         replacement_summary = None
         replacement_item = None
+        source_type = item.get("source_type", "") or "unknown"
+        source_fallback_queue = fallback_by_source.get(source_type, [])
+        while source_fallback_queue and replacement_summary is None:
+            candidate = source_fallback_queue.pop(0)
+            candidate_summary = process_story(
+                candidate,
+                usage_by_model,
+                lock,
+                limits_cfg["max_article_chars"],
+                openai_cfg["summary_model"],
+            )
+            if candidate_summary:
+                replacement_summary = candidate_summary
+                replacement_item = candidate
+            else:
+                skipped_count += 1
+
         while fallback_candidates and replacement_summary is None:
             candidate = fallback_candidates.pop(0)
             candidate_summary = process_story(
