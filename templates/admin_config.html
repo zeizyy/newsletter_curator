@@ -33,6 +33,10 @@
       <div class="banner-ok">{{ message }}</div>
     {% endif %}
 
+    {% if token_note %}
+      <div class="muted" style="margin-bottom:10px;">{{ token_note }}</div>
+    {% endif %}
+
     {% if errors %}
       <div class="banner-err">
         {% for err in errors %}

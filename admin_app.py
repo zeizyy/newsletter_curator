@@ -2,13 +2,14 @@ import datetime as dt
 import os
 from pathlib import Path
 
-from flask import Flask, abort, redirect, render_template, request, url_for
+from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
 
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts
 
 
 app = Flask(__name__)
+ADMIN_TOKEN_COOKIE = "curator_admin_token"
 
 
 def load_config_file() -> dict:
@@ -23,17 +24,23 @@ def load_merged_config() -> dict:
     return merge_dicts(DEFAULT_CONFIG, load_config_file())
 
 
-def require_admin_token() -> None:
-    expected = os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
-    if not expected:
-        return
-    provided = (
+def get_provided_admin_token() -> str:
+    return (
         request.headers.get("X-Admin-Token", "").strip()
         or request.args.get("token", "").strip()
         or request.form.get("token", "").strip()
+        or request.cookies.get(ADMIN_TOKEN_COOKIE, "").strip()
     )
+
+
+def require_admin_token() -> str:
+    expected = os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
+    if not expected:
+        return ""
+    provided = get_provided_admin_token()
     if provided != expected:
         abort(401)
+    return provided
 
 
 def parse_bool(value: str | None) -> bool:
@@ -165,9 +172,23 @@ def health():
     return {"ok": True}
 
 
+@app.errorhandler(401)
+def unauthorized(_):
+    return (
+        "Unauthorized. Provide CURATOR_ADMIN_TOKEN via '?token=YOUR_TOKEN' "
+        "or header 'X-Admin-Token'.",
+        401,
+    )
+
+
 @app.route("/", methods=["GET", "POST"])
 def config_editor():
-    require_admin_token()
+    provided_token = require_admin_token()
+    token_from_request = (
+        request.args.get("token", "").strip()
+        or request.form.get("token", "").strip()
+        or provided_token
+    )
     raw = load_config_file()
     merged = merge_dicts(DEFAULT_CONFIG, raw)
     message = ""
@@ -181,20 +202,46 @@ def config_editor():
             backup_config(path)
             with path.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(updated_raw, handle, sort_keys=False)
-            return redirect(url_for("config_editor", saved="1"))
+            response = redirect(
+                url_for("config_editor", saved="1", token=token_from_request or None)
+            )
+            if token_from_request:
+                response.set_cookie(
+                    ADMIN_TOKEN_COOKIE,
+                    token_from_request,
+                    httponly=True,
+                    samesite="Lax",
+                )
+            return response
         merged = merge_dicts(DEFAULT_CONFIG, updated_raw)
 
     if request.args.get("saved") == "1":
         message = f"Saved {CONFIG_PATH} successfully."
 
-    return render_template(
-        "admin_config.html",
-        config=merged,
-        config_path=CONFIG_PATH,
-        message=message,
-        errors=errors,
-        token=request.args.get("token", ""),
+    response = make_response(
+        render_template(
+            "admin_config.html",
+            config=merged,
+            config_path=CONFIG_PATH,
+            message=message,
+            errors=errors,
+            token=token_from_request,
+            token_note=(
+                "Token auth is active via session cookie."
+                if os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
+                and not request.args.get("token", "").strip()
+                else ""
+            ),
+        )
     )
+    if request.args.get("token", "").strip():
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            request.args.get("token", "").strip(),
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
 
 
 if __name__ == "__main__":
