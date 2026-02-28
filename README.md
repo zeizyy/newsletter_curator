@@ -57,6 +57,50 @@ First run will open a browser for Google OAuth and create `secrets/token.json`.
 
 If you change Gmail scopes later, delete `secrets/token.json` and re-run to re-auth.
 
+## Deploy As Daily Cronjob (Server)
+Use this when hosting the curator on a server (for example, the same machine that hosts your admin UI).
+
+1) Prepare runtime once:
+```bash
+cd /root/newsletter_curator
+uv sync
+```
+
+2) Ensure required runtime files/env are present:
+- `secrets/credentials.json`
+- `secrets/token.json` (generate once with an interactive run if needed)
+- `OPENAI_API_KEY` available to cron (via shell profile or explicit cron env line)
+
+3) Test one manual run:
+```bash
+cd /root/newsletter_curator
+OPENAI_API_KEY='your_key' uv run python main.py
+```
+
+4) Create a cron entry (example: every day at 7:00 AM server time):
+```bash
+crontab -e
+```
+Add:
+```cron
+0 7 * * * cd /root/newsletter_curator && OPENAI_API_KEY='your_key' /root/.local/bin/uv run python main.py >> /root/newsletter_curator/cron.log 2>&1
+```
+
+5) Verify cron is installed:
+```bash
+crontab -l
+```
+
+6) Check logs after scheduled run:
+```bash
+tail -n 200 /root/newsletter_curator/cron.log
+```
+
+Notes:
+- Cron uses the server timezone. Set it explicitly on the server if needed.
+- Use absolute paths in cron commands.
+- If your API key rotates, update the cron entry or env source accordingly.
+
 ## Web Config UI
 Run a local admin UI to edit `config.yaml`:
 
