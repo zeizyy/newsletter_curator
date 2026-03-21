@@ -139,3 +139,11 @@ Add new entries below this line.
 - Outcome: Both scheduled ingest jobs now run a seven-day TTL cleanup for centrally fetched stories, old article snapshots are removed via cascade, and cleanup stats are recorded in ingest results.
 - Open risks: Paywalled stories can still enter the repository and surface in digests until `T13` lands.
 - Next recommended task: `T13` Add token-efficient paywall detection and exclude paywalled stories from the newsletter.
+
+### 2026-03-21 - T13 added token-efficient paywall detection and digest filtering
+- Context: Added deterministic paywall heuristics in the ingest path and filtered flagged stories out of repository-backed preview and delivery reads.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/content.py`, `curator/gmail.py`, `curator/jobs.py`, `curator/repository.py`, `curator/sources.py`, `templates/story_explorer.html`, `tests/integration/test_paywalled_stories_are_excluded_from_digest.py`
+- Tests run: `uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_gmail_ingest_then_delivery_from_db.py`
+- Outcome: Ingest now marks likely paywalled snapshots without LLM calls, paywall state is persisted in the repository, and paywalled stories are excluded from preview and delivery while remaining visible to operators in the story explorer.
+- Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the requested feature wave is otherwise complete.
+- Next recommended task: none; all tasks in `agent_tasks.json` are complete.

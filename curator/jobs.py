@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import BASE_DIR
-from .content import extract_links_from_html, fetch_article_text
+from .content import detect_paywalled_article, extract_links_from_html, fetch_article_text
 from .gmail import (
     collect_live_gmail_links,
     collect_repository_gmail_links,
@@ -71,6 +71,7 @@ def run_fetch_sources_job(
         "stories_persisted": 0,
         "snapshots_persisted": 0,
         "article_failures": 0,
+        "paywall_stories": 0,
     }
     failures: list[dict] = []
 
@@ -98,11 +99,18 @@ def run_fetch_sources_job(
                 )
                 continue
 
+            paywall_detected, paywall_reason = detect_paywalled_article(
+                article_text, story.get("url", "")
+            )
             repository.upsert_article_snapshot(
                 story_id,
                 article_text,
                 metadata={"job": "fetch_sources"},
+                paywall_detected=paywall_detected,
+                paywall_reason=paywall_reason,
             )
+            if paywall_detected:
+                stats["paywall_stories"] += 1
             stats["snapshots_persisted"] += 1
 
         final_status = "completed"
@@ -123,6 +131,7 @@ def run_fetch_sources_job(
                 "stories_persisted": stats["stories_persisted"],
                 "snapshots_persisted": stats["snapshots_persisted"],
                 "article_failures": stats["article_failures"],
+                "paywall_stories": stats["paywall_stories"],
                 "failures": failures,
             },
         )
@@ -156,6 +165,7 @@ def run_fetch_gmail_job(
         "stories_persisted": 0,
         "snapshots_persisted": 0,
         "article_failures": 0,
+        "paywall_stories": 0,
     }
     failures: list[dict] = []
 
@@ -183,11 +193,18 @@ def run_fetch_gmail_job(
                 )
                 continue
 
+            paywall_detected, paywall_reason = detect_paywalled_article(
+                article_text, story.get("url", "")
+            )
             repository.upsert_article_snapshot(
                 story_id,
                 article_text,
                 metadata={"job": "fetch_gmail"},
+                paywall_detected=paywall_detected,
+                paywall_reason=paywall_reason,
             )
+            if paywall_detected:
+                stats["paywall_stories"] += 1
             stats["snapshots_persisted"] += 1
 
         final_status = "completed"
@@ -208,6 +225,7 @@ def run_fetch_gmail_job(
                 "stories_persisted": stats["stories_persisted"],
                 "snapshots_persisted": stats["snapshots_persisted"],
                 "article_failures": stats["article_failures"],
+                "paywall_stories": stats["paywall_stories"],
                 "failures": failures,
             },
         )
@@ -243,7 +261,11 @@ def assess_delivery_readiness(config: dict, repository: SQLiteRepository) -> dic
 
     for source_type in required_source_types:
         cutoff = _delivery_cutoff(config, source_type)
-        stories = repository.list_stories(source_type=source_type, published_after=cutoff)
+        stories = repository.list_stories(
+            source_type=source_type,
+            published_after=cutoff,
+            include_paywalled=False,
+        )
         latest_run = repository.get_latest_ingestion_run(source_type)
         latest_completed_run = repository.get_latest_ingestion_run(source_type, status="completed")
         warnings: list[str] = []

@@ -93,6 +93,9 @@
               {% else %}
                 <span class="pill pill-muted">metadata only</span>
               {% endif %}
+              {% if story.paywall_detected %}
+                <div style="margin-top:6px;"><span class="pill pill-muted">paywalled</span></div>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

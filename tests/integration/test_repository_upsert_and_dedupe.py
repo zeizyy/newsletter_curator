@@ -64,7 +64,7 @@ def test_repository_upsert_and_dedupe(tmp_path):
     )
 
     counts = repository.get_table_counts()
-    assert counts["schema_migrations"] == 1
+    assert counts["schema_migrations"] == 2
     assert counts["sources"] == 2
     assert counts["ingestion_runs"] == 1
     assert counts["delivery_runs"] == 1

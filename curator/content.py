@@ -6,6 +6,26 @@ from bs4 import BeautifulSoup
 import requests
 
 
+PAYWALL_STRONG_MARKERS = {
+    "subscribe to continue reading": "subscribe_to_continue",
+    "subscribe to read this article": "subscribe_to_read",
+    "subscription required": "subscription_required",
+    "this content is for subscribers": "subscribers_only",
+    "already a subscriber": "already_a_subscriber",
+    "sign in to continue reading": "sign_in_to_continue",
+    "start your subscription": "start_subscription",
+    "unlock this article": "unlock_article",
+}
+
+PAYWALL_WEAK_MARKERS = {
+    "subscribe now": "subscribe_now",
+    "continue reading": "continue_reading",
+    "subscriber-only": "subscriber_only",
+    "membership required": "membership_required",
+    "join to read more": "join_to_read",
+}
+
+
 def normalize_whitespace(text: str) -> str:
     return " ".join(text.split())
 
@@ -153,6 +173,29 @@ def fetch_article_text(
     except requests.RequestException as exc:
         print(f"Failed to fetch article: {url} ({exc})")
         return ""
+
+
+def detect_paywalled_article(article_text: str, url: str = "") -> tuple[bool, str]:
+    text = normalize_whitespace(article_text).lower()
+    if not text:
+        return False, ""
+
+    for marker, reason in PAYWALL_STRONG_MARKERS.items():
+        if marker in text and len(text) <= 2500:
+            return True, reason
+
+    weak_hits = [reason for marker, reason in PAYWALL_WEAK_MARKERS.items() if marker in text]
+    parsed = urlparse(url)
+    paywallish_path = any(
+        token in parsed.path.lower()
+        for token in ["/subscribe", "/subscription", "/member", "/login", "/signin"]
+    )
+    if len(weak_hits) >= 2 and len(text) <= 1500:
+        return True, weak_hits[0]
+    if weak_hits and paywallish_path and len(text) <= 1800:
+        return True, weak_hits[0]
+
+    return False, ""
 
 
 def dedupe_links_by_url(items: list[dict]) -> list[dict]:

@@ -202,7 +202,11 @@ def gmail_query_cutoff(query: str) -> str | None:
 
 def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
     cutoff = gmail_query_cutoff(config["gmail"]["query_time_window"])
-    stories = repository.list_stories(source_type="gmail", published_after=cutoff)
+    stories = repository.list_stories(
+        source_type="gmail",
+        published_after=cutoff,
+        include_paywalled=False,
+    )
     links = []
     for story in stories:
         links.append(

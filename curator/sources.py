@@ -134,6 +134,7 @@ def collect_repository_source_links(
     stories = repository.list_stories(
         source_type="additional_source",
         published_after=cutoff.isoformat(),
+        include_paywalled=False,
     )
     enabled_map = {
         (row["source_type"], row["source_name"]): row["enabled"]

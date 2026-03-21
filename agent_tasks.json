@@ -320,7 +320,7 @@
     {
       "id": "T13",
       "title": "Add token-efficient paywall detection and exclude paywalled stories from the newsletter",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T12"],
       "scope": [
         "Detect likely paywalled content during ingestion or delivery without using LLM calls",
