@@ -65,7 +65,7 @@
     {
       "id": "T2",
       "title": "Add persistence and migrations for the central content repository",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T1"],
       "scope": [
         "Introduce SQLite as the default repository backend",

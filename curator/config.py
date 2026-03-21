@@ -12,6 +12,7 @@ DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest.html"
 DEFAULT_CONFIG = {
     "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
     "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
+    "database": {"path": "data/newsletter_curator.sqlite3"},
     "additional_sources": {
         "enabled": False,
         "script_path": "skills/daily-news-curator/scripts/build_daily_digest.py",
