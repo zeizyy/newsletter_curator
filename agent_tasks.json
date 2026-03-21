@@ -43,7 +43,7 @@
     {
       "id": "T1",
       "title": "Refactor the monolith into modules behind interfaces with no behavior change",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T0"],
       "scope": [
         "Split main.py responsibilities into config, Gmail ingestion, source ingestion, ranking, summarization, rendering, delivery, and repository interfaces",

@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = os.getenv("NEWSLETTER_CONFIG", "config.yaml")
+DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest.html"
+DEFAULT_CONFIG = {
+    "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
+    "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
+    "additional_sources": {
+        "enabled": False,
+        "script_path": "skills/daily-news-curator/scripts/build_daily_digest.py",
+        "feeds_file": "",
+        "hours": 24,
+        "top_per_category": 5,
+        "max_total": 20,
+    },
+    "openai": {"reasoning_model": "gpt-4o-mini", "summary_model": "gpt-5-mini"},
+    "limits": {
+        "max_links_per_email": 15,
+        "select_top_stories": 20,
+        "max_per_category": 3,
+        "final_top_stories": 15,
+        "source_quotas": {"gmail": 10, "additional_source": 5},
+        "max_article_chars": 6000,
+        "max_summary_workers": 5,
+    },
+    "email": {
+        "digest_recipients": ["zeizyy@gmail.com", "maisongting@gmail.com"],
+        "digest_subject": "Daily Newsletter Digest",
+        "alert_recipient": "zeizyy@gmail.com",
+        "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
+    },
+}
+
+
+def merge_dicts(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_config(config_path: str | os.PathLike[str] | None = None) -> dict:
+    resolved_path = Path(config_path or DEFAULT_CONFIG_PATH)
+    if not resolved_path.exists():
+        return dict(DEFAULT_CONFIG)
+    with resolved_path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    return merge_dicts(DEFAULT_CONFIG, data)
