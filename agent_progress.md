@@ -123,3 +123,11 @@ Add new entries below this line.
 - Outcome: The admin UI now exposes a preview page that runs the real repository-backed digest pipeline, captures the rendered HTML and plain-text output, and shows the newsletter in a web page on demand.
 - Open risks: The admin UI still only exposes configuration and preview flows; browsing all fetched repository stories is the next missing operator surface.
 - Next recommended task: `T11` Add an admin story explorer for centrally fetched stories.
+
+### 2026-03-21 - T11 added an admin story explorer for repository stories
+- Context: Added a simple operator view for browsing centrally fetched stories so repository contents can be inspected directly from the admin app.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `templates/admin_config.html`, `templates/digest_preview.html`, `templates/story_explorer.html`, `tests/integration/test_admin_story_explorer_lists_repository_stories.py`
+- Tests run: `uv run pytest tests/integration/test_admin_story_explorer_lists_repository_stories.py tests/integration/test_admin_preview_renders_digest.py`
+- Outcome: The admin UI now exposes a `/stories` view with recent-first repository stories, source/category/publish metadata, snapshot status, and simple source filters.
+- Open risks: Repository growth is still unbounded until TTL cleanup lands in `T12`.
+- Next recommended task: `T12` Add a seven-day TTL cleanup for centrally fetched stories.

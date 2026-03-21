@@ -274,7 +274,7 @@
     {
       "id": "T11",
       "title": "Add an admin story explorer for centrally fetched stories",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T10"],
       "scope": [
         "Add an admin page to browse centrally fetched stories",

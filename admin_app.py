@@ -317,6 +317,44 @@ def preview_newsletter():
     return response
 
 
+@app.route("/stories", methods=["GET"])
+def story_explorer():
+    provided_token = require_admin_token()
+    token_from_request = resolve_request_token(provided_token)
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    source_type = request.args.get("source_type", "").strip() or None
+    source_name = request.args.get("source_name", "").strip() or None
+    stories = repository.list_stories(source_type=source_type) if repository else []
+    if source_name:
+        source_name_lower = source_name.lower()
+        stories = [
+            story
+            for story in stories
+            if source_name_lower in str(story.get("source_name", "")).lower()
+        ]
+    available_sources = repository.list_sources_with_selection() if repository else []
+    response = make_response(
+        render_template(
+            "story_explorer.html",
+            config_path=CONFIG_PATH,
+            stories=stories,
+            source_type=source_type or "",
+            source_name=source_name or "",
+            available_sources=available_sources,
+            token=token_from_request,
+        )
+    )
+    if token_from_request:
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            token_from_request,
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
+
+
 if __name__ == "__main__":
     host = os.getenv("CURATOR_ADMIN_HOST", "127.0.0.1")
     port = int(os.getenv("CURATOR_ADMIN_PORT", "8080"))
