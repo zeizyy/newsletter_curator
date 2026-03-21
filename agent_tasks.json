@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "project": "newsletter-curator",
+  "updated_at": "2026-03-21",
+  "session_contract": [
+    "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
+    "Pick exactly one pending task whose dependencies are complete.",
+    "Implement only that task plus minimal prerequisite refactors required to finish it cleanly.",
+    "Add or update the task's integration test before marking the task complete.",
+    "Run the task's listed test command and any necessary regression tests.",
+    "Commit the completed task to the git repository with a descriptive non-interactive commit message.",
+    "Update `agent_tasks.json` status fields and append a concise entry to `agent_progress.md`.",
+    "Leave the repository in a clean state with the next recommended task called out explicitly."
+  ],
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "Initialize the long-running agent harness",
+      "status": "completed",
+      "depends_on": [],
+      "scope": [
+        "Add pytest and test configuration",
+        "Create tests/integration and fixture directories",
+        "Add deterministic fake adapters for Gmail, source fetch, article fetch, and OpenAI",
+        "Create temp-config and temp-database test helpers",
+        "Keep all test runs offline by default"
+      ],
+      "artifacts": [
+        "pyproject.toml",
+        "tests/",
+        "tests/integration/",
+        "tests/fixtures/"
+      ],
+      "test_command": "uv run pytest tests/integration/test_smoke_offline_pipeline.py",
+      "integration_test": "tests/integration/test_smoke_offline_pipeline.py",
+      "done_when": [
+        "The repo has a repeatable offline smoke test",
+        "A fake-service based pipeline run completes without network access",
+        "Test scaffolding is ready for later tasks"
+      ],
+      "notes": "This is the initializer task. Do not start architectural work before this exists."
+    },
+    {
+      "id": "T1",
+      "title": "Refactor the monolith into modules behind interfaces with no behavior change",
+      "status": "pending",
+      "depends_on": ["T0"],
+      "scope": [
+        "Split main.py responsibilities into config, Gmail ingestion, source ingestion, ranking, summarization, rendering, delivery, and repository interfaces",
+        "Preserve the current CLI entry behavior",
+        "Keep runtime behavior unchanged aside from module boundaries"
+      ],
+      "artifacts": [
+        "main.py",
+        "new module files under the project root or a package directory"
+      ],
+      "test_command": "uv run pytest tests/integration/test_legacy_equivalent_delivery.py",
+      "integration_test": "tests/integration/test_legacy_equivalent_delivery.py",
+      "done_when": [
+        "The previous single-run flow still works through a thin composition layer",
+        "The new boundaries are explicit enough for later storage and job split work",
+        "The legacy-equivalent integration test passes"
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Add persistence and migrations for the central content repository",
+      "status": "pending",
+      "depends_on": ["T1"],
+      "scope": [
+        "Introduce SQLite as the default repository backend",
+        "Add schema or migrations for sources, fetched stories, article snapshots, ingestion runs, delivery runs, user source selections, and optional persona metadata",
+        "Expose repository methods for upsert, dedupe, and query patterns needed by later jobs"
+      ],
+      "artifacts": [
+        "repository module",
+        "migration files or schema bootstrap code",
+        "config defaults for database path"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_upsert_and_dedupe.py",
+      "integration_test": "tests/integration/test_repository_upsert_and_dedupe.py",
+      "done_when": [
+        "Stories can be inserted idempotently",
+        "Repository queries can filter by source and recency",
+        "A repeated ingest does not duplicate data"
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Build the centralized source-fetch job",
+      "status": "pending",
+      "depends_on": ["T2"],
+      "scope": [
+        "Replace on-demand RSS source retrieval with a standalone fetch job",
+        "Normalize fetched stories and store them in the repository",
+        "Store article snapshots or equivalent delivery-ready text for centrally fetched stories",
+        "Record ingestion runs and partial failures"
+      ],
+      "artifacts": [
+        "CLI entrypoint for fetch-sources",
+        "source ingestion job modules",
+        "repository writes for fetched content"
+      ],
+      "test_command": "uv run pytest tests/integration/test_fetch_sources_job_writes_repository.py",
+      "integration_test": "tests/integration/test_fetch_sources_job_writes_repository.py",
+      "done_when": [
+        "fetch-sources populates the repository without attempting newsletter delivery",
+        "The job is idempotent over repeated runs",
+        "Canned feed and article fixtures can drive the full ingest path offline"
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Switch newsletter delivery to use the central repository for non-Gmail sources",
+      "status": "pending",
+      "depends_on": ["T3"],
+      "scope": [
+        "Remove live direct-source fetching from the delivery path",
+        "Read centrally fetched stories and article snapshots from the repository",
+        "Preserve current Gmail live ingestion behavior for now"
+      ],
+      "artifacts": [
+        "delivery pipeline modules",
+        "ranking and summarization inputs sourced from repository data"
+      ],
+      "test_command": "uv run pytest tests/integration/test_delivery_uses_repository_not_live_fetch.py",
+      "integration_test": "tests/integration/test_delivery_uses_repository_not_live_fetch.py",
+      "done_when": [
+        "Delivery succeeds with outbound source fetching disabled",
+        "Repository-backed stories participate in ranking, selection, and summarization",
+        "The old on-the-fly direct-source path is no longer needed by delivery"
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Add repository-backed source selection in the admin app",
+      "status": "pending",
+      "depends_on": ["T4"],
+      "scope": [
+        "Add source selection UI to the admin app",
+        "Persist source eligibility in the repository instead of static YAML",
+        "Apply source selection during newsletter delivery queries"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "templates/admin_config.html",
+        "repository-backed source selection logic"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_source_selection_filters_delivery.py",
+      "integration_test": "tests/integration/test_admin_source_selection_filters_delivery.py",
+      "done_when": [
+        "Users can enable or disable centrally fetched sources in the admin app",
+        "Selections persist across runs",
+        "Disabled sources do not appear in delivered digests"
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Add canned central-fetch mode for development",
+      "status": "pending",
+      "depends_on": ["T3"],
+      "scope": [
+        "Add a dev or test mode that seeds the repository from canned fetched stories",
+        "Add deterministic fake ranker and summarizer implementations",
+        "Ensure local development does not require live domains or live LLM calls"
+      ],
+      "artifacts": [
+        "fixture loading code",
+        "offline mode config knobs",
+        "fake inference adapters"
+      ],
+      "test_command": "uv run pytest tests/integration/test_offline_canned_repository_mode.py",
+      "integration_test": "tests/integration/test_offline_canned_repository_mode.py",
+      "done_when": [
+        "A full local run can complete entirely offline",
+        "Canned data drives both ingestion-derived content and delivery",
+        "Digest output is deterministic under test"
+      ]
+    },
+    {
+      "id": "T7",
+      "title": "Add persona-aware ranking and summarization",
+      "status": "pending",
+      "depends_on": ["T1", "T4", "T6"],
+      "scope": [
+        "Add persona.text to config and admin editing surface",
+        "Centralize prompt construction for ranking and summarization",
+        "Make ranking and the summary's why-this-matters section persona-conditioned"
+      ],
+      "artifacts": [
+        "config schema",
+        "admin UI fields",
+        "prompt builder modules"
+      ],
+      "test_command": "uv run pytest tests/integration/test_persona_changes_ranking_and_summary.py",
+      "integration_test": "tests/integration/test_persona_changes_ranking_and_summary.py",
+      "done_when": [
+        "Persona text is configurable",
+        "Ranking and summary prompts include persona context",
+        "Two personas produce different deterministic outputs under test"
+      ]
+    },
+    {
+      "id": "T8",
+      "title": "Optionally ingest Gmail into the same repository for full delivery decoupling",
+      "status": "pending",
+      "depends_on": ["T2"],
+      "scope": [
+        "Move Gmail extraction into a standalone ingest job",
+        "Store extracted Gmail links in the repository",
+        "Allow delivery to run without live Gmail reads"
+      ],
+      "artifacts": [
+        "CLI entrypoint for Gmail ingest",
+        "repository writes for Gmail-derived candidates",
+        "delivery path that can read Gmail candidates from storage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_gmail_ingest_then_delivery_from_db.py",
+      "integration_test": "tests/integration/test_gmail_ingest_then_delivery_from_db.py",
+      "done_when": [
+        "Delivery can run from repository data only",
+        "Gmail candidate ingestion is separated from newsletter send time",
+        "No live Gmail reads are required during delivery when this path is enabled"
+      ],
+      "optional": true,
+      "notes": "Do this only if full decoupling across both Gmail and centrally fetched sources is desired."
+    },
+    {
+      "id": "T9",
+      "title": "Finalize the two-job production flow and remove obsolete paths",
+      "status": "pending",
+      "depends_on": ["T5", "T6", "T7"],
+      "scope": [
+        "Document and wire cron-friendly fetch and deliver jobs",
+        "Add structured logging and run records",
+        "Add stale-data and partial-failure handling",
+        "Remove dead on-the-fly source-fetch code",
+        "If T8 is completed, include the Gmail ingest job in the final documented flow"
+      ],
+      "artifacts": [
+        "README.md",
+        "final CLI entrypoints",
+        "production logging and alerting paths"
+      ],
+      "test_command": "uv run pytest tests/integration/test_full_two_job_pipeline.py",
+      "integration_test": "tests/integration/test_full_two_job_pipeline.py",
+      "done_when": [
+        "The documented production architecture matches the implemented job split",
+        "All obsolete direct-fetch delivery paths are removed",
+        "A full two-job integration test passes end to end"
+      ]
+    }
+  ]
+}
