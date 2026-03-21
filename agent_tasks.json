@@ -203,7 +203,7 @@
     {
       "id": "T8",
       "title": "Ingest Gmail into the same repository for full delivery decoupling",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T2"],
       "scope": [
         "Move Gmail extraction into a standalone ingest job",

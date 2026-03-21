@@ -99,3 +99,11 @@ Add new entries below this line.
 - Outcome: Persona text is now configurable, prompt construction is centralized, both live and deterministic development inference paths can use persona context, and the integration test verifies that two personas produce different story selection and summary language.
 - Open risks: Gmail is still live-read during delivery until `T8` lands. `admin_app.py` still emits a `datetime.utcnow()` deprecation warning during tests.
 - Next recommended task: `T8` Ingest Gmail into the same repository for full delivery decoupling.
+
+### 2026-03-21 - T8 ingested Gmail into the repository and enabled repo-first delivery
+- Context: Added a standalone Gmail ingest job and switched delivery to prefer repository-stored Gmail candidates so the newsletter can run without live Gmail reads after ingest has populated the DB.
+- Files changed: `curator/gmail.py`, `curator/jobs.py`, `curator/pipeline.py`, `main.py`, `fetch_gmail.py`, `tests/integration/test_gmail_ingest_then_delivery_from_db.py`, `agent_tasks.json`
+- Tests run: `uv run pytest tests/integration/test_smoke_offline_pipeline.py tests/integration/test_legacy_equivalent_delivery.py tests/integration/test_repository_upsert_and_dedupe.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_admin_source_selection_filters_delivery.py tests/integration/test_offline_canned_repository_mode.py tests/integration/test_persona_changes_ranking_and_summary.py tests/integration/test_gmail_ingest_then_delivery_from_db.py`
+- Outcome: The repo now has `fetch_gmail.py`, Gmail candidate and article snapshot persistence, and a repo-first Gmail delivery path verified by an integration test that fails if delivery attempts live Gmail reads.
+- Open risks: The compatibility fallback to live Gmail reads still exists and should be removed during `T9`. `admin_app.py` still emits a `datetime.utcnow()` deprecation warning during tests.
+- Next recommended task: `T9` Finalize the two-job production flow and remove obsolete paths.

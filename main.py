@@ -29,6 +29,8 @@ walk_parts = gmail.walk_parts
 extract_bodies = gmail.extract_bodies
 get_header_value = gmail.get_header_value
 get_label_id = gmail.get_label_id
+collect_live_gmail_links = gmail.collect_live_gmail_links
+collect_repository_gmail_links = gmail.collect_repository_gmail_links
 send_email = gmail.send_email
 send_email_to_recipients = gmail.send_email_to_recipients
 
@@ -92,6 +94,30 @@ def summarize_article_with_llm(
 
 def collect_additional_source_links(config: dict) -> list[dict]:
     return sources.collect_repository_source_links(config, base_dir=os.path.dirname(__file__))
+
+
+def collect_gmail_links(config: dict, service) -> list[dict]:
+    repository = None
+    try:
+        from curator.jobs import get_repository_from_config
+
+        repository = get_repository_from_config(config)
+    except Exception:
+        repository = None
+    if repository is not None:
+        repository_links = collect_repository_gmail_links(config, repository=repository)
+        if repository_links:
+            return repository_links
+    return collect_live_gmail_links(
+        service,
+        config,
+        get_label_id_fn=get_label_id,
+        list_message_ids_for_label_fn=list_message_ids_for_label,
+        get_message_fn=get_message,
+        extract_bodies_fn=extract_bodies,
+        get_header_value_fn=get_header_value,
+        extract_links_from_html_fn=extract_links_from_html,
+    )
 
 
 def process_story(
@@ -164,6 +190,7 @@ def run_job(config: dict, service) -> None:
     return pipeline.run_job(
         config,
         service,
+        collect_gmail_links_fn=collect_gmail_links,
         get_label_id_fn=get_label_id,
         list_message_ids_for_label_fn=list_message_ids_for_label,
         get_message_fn=get_message,

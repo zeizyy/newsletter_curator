@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import email.utils
 from email.message import EmailMessage
 from typing import Iterable
+from datetime import UTC
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -117,6 +119,109 @@ def get_label_id(service, label_name: str) -> str:
         if label.get("name") == label_name:
             return label.get("id", "")
     raise ValueError(f"Label not found: {label_name}")
+
+
+def parse_email_datetime(value: str) -> str:
+    if not value.strip():
+        return ""
+    parsed = email.utils.parsedate_to_datetime(value)
+    return parsed.astimezone(UTC).isoformat() if parsed else ""
+
+
+def collect_live_gmail_links(
+    service,
+    config: dict,
+    *,
+    get_label_id_fn=get_label_id,
+    list_message_ids_for_label_fn=list_message_ids_for_label,
+    get_message_fn=get_message,
+    extract_bodies_fn=extract_bodies,
+    get_header_value_fn=get_header_value,
+    extract_links_from_html_fn=None,
+) -> list[dict]:
+    if extract_links_from_html_fn is None:
+        raise ValueError("extract_links_from_html_fn is required")
+
+    gmail_cfg = config["gmail"]
+    limits_cfg = config["limits"]
+    query = gmail_cfg["query_time_window"]
+    label_id = get_label_id_fn(service, gmail_cfg["label"])
+    message_ids = list_message_ids_for_label_fn(service, label_id, query)
+
+    all_links = []
+    for message_id in message_ids:
+        message = get_message_fn(service, message_id)
+        payload = message.get("payload", {})
+        headers = payload.get("headers", [])
+        subject = get_header_value_fn(headers, "Subject")
+        from_header = get_header_value_fn(headers, "From")
+        date_header = get_header_value_fn(headers, "Date")
+
+        _text_bodies, html_bodies = extract_bodies_fn(payload)
+        links = []
+        for html in html_bodies:
+            links.extend(extract_links_from_html_fn(html))
+        links = links[: limits_cfg["max_links_per_email"]]
+        for link in links:
+            all_links.append(
+                {
+                    "subject": subject,
+                    "from": from_header,
+                    "source_name": from_header or "gmail",
+                    "source_type": "gmail",
+                    "date": date_header,
+                    "published_at": parse_email_datetime(date_header),
+                    "url": link["url"],
+                    "anchor_text": link["anchor_text"],
+                    "context": link["context"],
+                }
+            )
+    return all_links
+
+
+def _gmail_query_cutoff(query: str) -> str | None:
+    query = query.strip().lower()
+    if query.startswith("newer_than:") and query.endswith("d"):
+        try:
+            days = int(query.removeprefix("newer_than:")[:-1])
+        except ValueError:
+            return None
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    if query.startswith("newer_than:") and query.endswith("h"):
+        try:
+            hours = int(query.removeprefix("newer_than:")[:-1])
+        except ValueError:
+            return None
+        from datetime import UTC, datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+    return None
+
+
+def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
+    cutoff = _gmail_query_cutoff(config["gmail"]["query_time_window"])
+    stories = repository.list_stories(source_type="gmail", published_after=cutoff)
+    links = []
+    for story in stories:
+        links.append(
+            {
+                "subject": str(story.get("subject", "")).strip(),
+                "from": str(story.get("source_name", "")).strip() or "gmail",
+                "source_name": str(story.get("source_name", "")).strip() or "gmail",
+                "source_type": "gmail",
+                "date": str(story.get("published_at", "")).strip(),
+                "published_at": str(story.get("published_at", "")).strip(),
+                "url": str(story.get("url", "")).strip(),
+                "anchor_text": str(story.get("anchor_text", "")).strip(),
+                "context": str(story.get("context", "")).strip(),
+                "category": str(story.get("category", "")).strip(),
+                "summary": str(story.get("summary", "")).strip(),
+                "article_text": str(story.get("article_text", "") or ""),
+            }
+        )
+    return links
 
 
 def send_email(

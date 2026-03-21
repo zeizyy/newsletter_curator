@@ -5,6 +5,7 @@ from threading import Lock
 
 from .content import dedupe_links_by_url, extract_links_from_html, fetch_article_text
 from .gmail import (
+    collect_live_gmail_links,
     extract_bodies,
     get_header_value,
     get_label_id,
@@ -135,6 +136,7 @@ def run_job(
     config: dict,
     service,
     *,
+    collect_gmail_links_fn=None,
     get_label_id_fn=get_label_id,
     list_message_ids_for_label_fn=list_message_ids_for_label,
     get_message_fn=get_message,
@@ -155,44 +157,28 @@ def run_job(
     email_cfg = config["email"]
 
     query = gmail_cfg["query_time_window"]
-    label_id = get_label_id_fn(service, gmail_cfg["label"])
-    message_ids = list_message_ids_for_label_fn(service, label_id, query)
-    print(f"Found {len(message_ids)} messages for query: {query}")
+    live_gmail_collector = collect_gmail_links_fn or (
+        lambda cfg, svc: collect_live_gmail_links(
+            svc,
+            cfg,
+            get_label_id_fn=get_label_id_fn,
+            list_message_ids_for_label_fn=list_message_ids_for_label_fn,
+            get_message_fn=get_message_fn,
+            extract_bodies_fn=extract_bodies_fn,
+            get_header_value_fn=get_header_value_fn,
+            extract_links_from_html_fn=extract_links_from_html_fn,
+        )
+    )
+    gmail_links = live_gmail_collector(config, service)
+    print(f"Found {len(gmail_links)} gmail candidate links for query: {query}")
 
-    all_links = []
-    for message_id in message_ids:
-        message = get_message_fn(service, message_id)
-        payload = message.get("payload", {})
-        headers = payload.get("headers", [])
-        subject = get_header_value_fn(headers, "Subject")
-        from_header = get_header_value_fn(headers, "From")
-        date_header = get_header_value_fn(headers, "Date")
-
-        text_bodies, html_bodies = extract_bodies_fn(payload)
-        links = []
-        for html in html_bodies:
-            links.extend(extract_links_from_html_fn(html))
-        links = links[: limits_cfg["max_links_per_email"]]
-        for link in links:
-            all_links.append(
-                {
-                    "subject": subject,
-                    "from": from_header,
-                    "source_name": from_header or "gmail",
-                    "source_type": "gmail",
-                    "date": date_header,
-                    "url": link["url"],
-                    "anchor_text": link["anchor_text"],
-                    "context": link["context"],
-                }
-            )
-
-    gmail_links_count = len(all_links)
+    all_links = list(gmail_links)
+    gmail_links_count = len(gmail_links)
     source_links = collect_additional_source_links_fn(config)
     all_links.extend(source_links)
     all_links = dedupe_links_by_url_fn(all_links)
     print("\n=== Pipeline Stats ===")
-    print(f"messages_retrieved: {len(message_ids)}")
+    print(f"messages_retrieved: gmail_links={len(gmail_links)}")
     print(f"links_retrieved: gmail={gmail_links_count}, additional_sources={len(source_links)}")
     print(f"links_merged_deduped: total={len(all_links)}")
     print(f"links_by_source_type: {format_counts(all_links, 'source_type')}")
