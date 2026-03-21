@@ -117,8 +117,14 @@ def collect_repository_source_links(
         source_type="additional_source",
         published_after=cutoff.isoformat(),
     )
+    enabled_map = {
+        (row["source_type"], row["source_name"]): row["enabled"]
+        for row in repository.list_enabled_sources()
+    }
     links = []
     for story in stories:
+        if not enabled_map.get((story["source_type"], story["source_name"]), True):
+            continue
         title = str(story.get("anchor_text", "")).strip() or str(story.get("subject", "")).strip()
         source_name = str(story.get("source_name", "")).strip() or "Additional Source"
         category = str(story.get("category", "")).strip()

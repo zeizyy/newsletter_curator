@@ -134,7 +134,7 @@
     {
       "id": "T5",
       "title": "Add repository-backed source selection in the admin app",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T4"],
       "scope": [
         "Add source selection UI to the admin app",

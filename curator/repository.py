@@ -331,6 +331,9 @@ class SQLiteRepository:
 
     def set_source_selection(self, *, source_type: str, source_name: str, enabled: bool) -> int:
         source_id = self.upsert_source(source_type=source_type, source_name=source_name)
+        return self.set_source_selection_by_id(source_id, enabled=enabled)
+
+    def set_source_selection_by_id(self, source_id: int, *, enabled: bool) -> int:
         with self.connect() as connection:
             connection.execute(
                 """
@@ -349,11 +352,15 @@ class SQLiteRepository:
             ).fetchone()
             return int(row["id"])
 
-    def list_enabled_sources(self) -> list[dict]:
+    def list_sources_with_selection(self) -> list[dict]:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT s.source_type, s.source_name, uss.enabled
+                SELECT
+                    s.id AS source_id,
+                    s.source_type,
+                    s.source_name,
+                    uss.enabled
                 FROM sources s
                 LEFT JOIN user_source_selections uss ON uss.source_id = s.id
                 ORDER BY s.source_type, s.source_name
@@ -361,9 +368,21 @@ class SQLiteRepository:
             ).fetchall()
         return [
             {
+                "id": int(row["source_id"]),
                 "source_type": row["source_type"],
                 "source_name": row["source_name"],
                 "enabled": True if row["enabled"] is None else bool(row["enabled"]),
+            }
+            for row in rows
+        ]
+
+    def list_enabled_sources(self) -> list[dict]:
+        rows = self.list_sources_with_selection()
+        return [
+            {
+                "source_type": row["source_type"],
+                "source_name": row["source_name"],
+                "enabled": row["enabled"],
             }
             for row in rows
         ]

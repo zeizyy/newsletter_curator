@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
 
+from curator.jobs import get_repository_from_config
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts
 
 
@@ -22,6 +23,13 @@ def load_config_file() -> dict:
 
 def load_merged_config() -> dict:
     return merge_dicts(DEFAULT_CONFIG, load_config_file())
+
+
+def load_repository(config: dict):
+    try:
+        return get_repository_from_config(config)
+    except Exception:
+        return None
 
 
 def get_provided_admin_token() -> str:
@@ -167,6 +175,17 @@ def backup_config(path: Path) -> None:
     backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
+def update_source_selections(repository, form) -> None:
+    if repository is None:
+        return
+    for source in repository.list_sources_with_selection():
+        field_name = f"source_enabled_{source['id']}"
+        repository.set_source_selection_by_id(
+            int(source["id"]),
+            enabled=parse_bool(form.get(field_name)),
+        )
+
+
 @app.route("/health", methods=["GET"])
 def health():
     return {"ok": True}
@@ -191,17 +210,22 @@ def config_editor():
     )
     raw = load_config_file()
     merged = merge_dicts(DEFAULT_CONFIG, raw)
+    repository = load_repository(merged)
+    available_sources = repository.list_sources_with_selection() if repository else []
     message = ""
     errors: list[str] = []
 
     if request.method == "POST":
         updated_raw, errors = update_config_from_form(raw, request.form)
         if not errors:
+            updated_merged = merge_dicts(DEFAULT_CONFIG, updated_raw)
             path = Path(CONFIG_PATH)
             path.parent.mkdir(parents=True, exist_ok=True)
             backup_config(path)
             with path.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(updated_raw, handle, sort_keys=False)
+            repository = load_repository(updated_merged)
+            update_source_selections(repository, request.form)
             response = redirect(
                 url_for("config_editor", saved="1", token=token_from_request or None)
             )
@@ -214,6 +238,8 @@ def config_editor():
                 )
             return response
         merged = merge_dicts(DEFAULT_CONFIG, updated_raw)
+        repository = load_repository(merged)
+        available_sources = repository.list_sources_with_selection() if repository else []
 
     if request.args.get("saved") == "1":
         message = f"Saved {CONFIG_PATH} successfully."
@@ -223,6 +249,7 @@ def config_editor():
             "admin_config.html",
             config=merged,
             config_path=CONFIG_PATH,
+            available_sources=available_sources,
             message=message,
             errors=errors,
             token=token_from_request,

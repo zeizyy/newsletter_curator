@@ -170,6 +170,28 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Source Selection</h2>
+        {% if available_sources %}
+          <div class="muted" style="margin-bottom:10px;">These toggles control which centrally fetched repository sources are eligible during delivery.</div>
+          {% for source in available_sources %}
+            <div class="checkbox" style="margin-top:10px;">
+              <input
+                id="source_enabled_{{ source.id }}"
+                type="checkbox"
+                name="source_enabled_{{ source.id }}"
+                {% if source.enabled %}checked{% endif %}
+              />
+              <label for="source_enabled_{{ source.id }}">
+                {{ source.source_name }} <span class="muted">({{ source.source_type }})</span>
+              </label>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="muted">No centrally fetched sources are stored yet. Run the fetch job first.</div>
+        {% endif %}
+      </div>
+
       <div class="actions">
         <div class="muted">On save, a timestamped backup of config is created.</div>
         <button type="submit">Save Config</button>
