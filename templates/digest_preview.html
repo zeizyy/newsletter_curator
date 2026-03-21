@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Newsletter Preview</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+    .muted { font-size: 12px; color: #6b778c; }
+    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
+    .preview-frame { background: #ffffff; border: 1px solid #e6ecf5; border-radius: 12px; padding: 12px; }
+    pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+      <div>
+        <h1 style="margin:0 0 6px 0;">Newsletter Preview</h1>
+        <div class="muted">Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code></div>
+      </div>
+      <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
+    </div>
+
+    {% if error %}
+      <div class="banner-err">{{ error }}</div>
+    {% endif %}
+
+    {% if preview %}
+      <div class="card">
+        <div style="font-size:13px; color:#42526e; margin-bottom:6px;">Subject</div>
+        <div style="font-size:22px; font-weight:700; color:#152238;">{{ preview.subject }}</div>
+        {% if result %}
+          <div class="muted" style="margin-top:8px;">
+            ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div style="font-size:16px; font-weight:700; margin-bottom:10px;">HTML Preview</div>
+        <div class="preview-frame">{{ preview.html_body | safe }}</div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:16px; font-weight:700; margin-bottom:10px;">Plain Text</div>
+        <pre>{{ preview.body }}</pre>
+      </div>
+    {% endif %}
+  </div>
+</body>
+</html>

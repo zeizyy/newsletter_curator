@@ -20,6 +20,7 @@
     .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
     .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
     button { background: #0b57d0; color: #fff; border: 0; border-radius: 7px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
     .muted { font-size: 12px; color: #6b778c; }
     @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
   </style>
@@ -203,7 +204,10 @@
 
       <div class="actions">
         <div class="muted">On save, a timestamped backup of config is created.</div>
-        <button type="submit">Save Config</button>
+        <div style="display:flex; gap:10px;">
+          <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Newsletter</a>
+          <button type="submit">Save Config</button>
+        </div>
       </div>
     </form>
   </div>

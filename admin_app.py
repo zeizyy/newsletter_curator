@@ -6,7 +6,7 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 import yaml
 
 from curator.jobs import get_repository_from_config
-from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts
+from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
 
 
 app = Flask(__name__)
@@ -49,6 +49,14 @@ def require_admin_token() -> str:
     if provided != expected:
         abort(401)
     return provided
+
+
+def resolve_request_token(provided_token: str) -> str:
+    return (
+        request.args.get("token", "").strip()
+        or request.form.get("token", "").strip()
+        or provided_token
+    )
 
 
 def parse_bool(value: str | None) -> bool:
@@ -204,11 +212,7 @@ def unauthorized(_):
 @app.route("/", methods=["GET", "POST"])
 def config_editor():
     provided_token = require_admin_token()
-    token_from_request = (
-        request.args.get("token", "").strip()
-        or request.form.get("token", "").strip()
-        or provided_token
-    )
+    token_from_request = resolve_request_token(provided_token)
     raw = load_config_file()
     merged = merge_dicts(DEFAULT_CONFIG, raw)
     repository = load_repository(merged)
@@ -266,6 +270,47 @@ def config_editor():
         response.set_cookie(
             ADMIN_TOKEN_COOKIE,
             request.args.get("token", "").strip(),
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
+
+
+@app.route("/preview", methods=["GET"])
+def preview_newsletter():
+    provided_token = require_admin_token()
+    token_from_request = resolve_request_token(provided_token)
+    merged = load_merged_config()
+    error = ""
+    preview = None
+    result = None
+    status_code = 200
+
+    try:
+        result = preview_job(merged)
+        preview = result.get("preview")
+        if preview is None:
+            error = "Preview generation completed but did not produce a digest."
+            status_code = 500
+    except Exception as exc:
+        error = str(exc)
+        status_code = 500
+
+    response = make_response(
+        render_template(
+            "digest_preview.html",
+            config_path=CONFIG_PATH,
+            preview=preview,
+            result=result,
+            error=error,
+            token=token_from_request,
+        ),
+        status_code,
+    )
+    if token_from_request:
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            token_from_request,
             httponly=True,
             samesite="Lax",
         )

@@ -122,6 +122,28 @@ def process_story(
 
 
 def run_job(config: dict, service) -> dict:
+    return _run_delivery(config, service, send_email_fn=send_email)
+
+
+def preview_job(config: dict) -> dict:
+    captured_messages: list[dict] = []
+
+    def capture_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        captured_messages.append(
+            {
+                "to": to_address,
+                "subject": subject,
+                "body": body,
+                "html_body": html_body or "",
+            }
+        )
+
+    result = _run_delivery(config, service=None, send_email_fn=capture_send_email)
+    preview = captured_messages[0] if captured_messages else None
+    return {**result, "preview": preview}
+
+
+def _run_delivery(config: dict, service, *, send_email_fn) -> dict:
     from curator.jobs import run_delivery_job
 
     development_cfg = config.get("development", {})
@@ -181,7 +203,7 @@ def run_job(config: dict, service) -> dict:
         process_story_fn=process_story_fn,
         group_summaries_by_category_fn=group_summaries_by_category,
         render_digest_html_fn=render_digest_html,
-        send_email_fn=send_email,
+        send_email_fn=send_email_fn,
     )
 
 

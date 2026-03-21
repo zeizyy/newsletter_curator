@@ -115,3 +115,11 @@ Add new entries below this line.
 - Outcome: Delivery is now repository-only by default, `deliver_digest.py` mirrors the final production architecture, delivery runs are recorded with readiness metadata, stale or failed latest ingests are surfaced without blocking healthy source types, and the new two-job end-to-end integration test passes.
 - Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the app code no longer emits the previous `datetime.utcnow()` warning.
 - Next recommended task: none; all tasks in `agent_tasks.json` are complete.
+
+### 2026-03-21 - T10 added on-demand web preview for the newsletter
+- Context: Extended the admin app so the current repository-backed digest can be rendered on demand in the browser without sending email.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `main.py`, `templates/admin_config.html`, `templates/digest_preview.html`, `tests/integration/test_admin_preview_renders_digest.py`
+- Tests run: `uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_admin_source_selection_filters_delivery.py tests/integration/test_delivery_uses_repository_not_live_fetch.py`
+- Outcome: The admin UI now exposes a preview page that runs the real repository-backed digest pipeline, captures the rendered HTML and plain-text output, and shows the newsletter in a web page on demand.
+- Open risks: The admin UI still only exposes configuration and preview flows; browsing all fetched repository stories is the next missing operator surface.
+- Next recommended task: `T11` Add an admin story explorer for centrally fetched stories.

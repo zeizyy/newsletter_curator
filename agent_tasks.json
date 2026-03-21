@@ -247,6 +247,98 @@
         "All obsolete direct-fetch delivery paths are removed",
         "A full two-job integration test passes end to end"
       ]
+    },
+    {
+      "id": "T10",
+      "title": "Add an on-demand web preview for the newsletter",
+      "status": "completed",
+      "depends_on": ["T9"],
+      "scope": [
+        "Add an admin route that renders the current repository-backed newsletter on demand",
+        "Reuse the delivery pipeline without sending email",
+        "Expose the preview from the admin UI"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "preview template files",
+        "delivery preview helpers"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "A user can open a web page and see the current newsletter on demand",
+        "Preview rendering uses repository-backed digest generation",
+        "The preview integration test passes"
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Add an admin story explorer for centrally fetched stories",
+      "status": "pending",
+      "depends_on": ["T10"],
+      "scope": [
+        "Add an admin page to browse centrally fetched stories",
+        "Include source, category, publish time, and snapshot status",
+        "Keep the first version simple and readable"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "story explorer template files",
+        "repository query helpers if needed"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "integration_test": "tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "done_when": [
+        "Admins can view centrally fetched stories in the web UI",
+        "The page shows enough metadata to inspect repository contents",
+        "The story explorer integration test passes"
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Add a seven-day TTL cleanup for centrally fetched stories",
+      "status": "pending",
+      "depends_on": ["T11"],
+      "scope": [
+        "Delete centrally fetched stories older than seven days",
+        "Remove associated article snapshots safely",
+        "Expose cleanup through the scheduled job flow"
+      ],
+      "artifacts": [
+        "repository cleanup methods",
+        "job wiring for TTL cleanup",
+        "integration tests for retention behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_ttl_cleanup_removes_old_stories.py",
+      "integration_test": "tests/integration/test_repository_ttl_cleanup_removes_old_stories.py",
+      "done_when": [
+        "Stories older than seven days are removed from the repository",
+        "Recent stories remain available for delivery and admin views",
+        "The TTL cleanup integration test passes"
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "Add token-efficient paywall detection and exclude paywalled stories from the newsletter",
+      "status": "pending",
+      "depends_on": ["T12"],
+      "scope": [
+        "Detect likely paywalled content during ingestion or delivery without using LLM calls",
+        "Store or derive paywall status in a reusable way",
+        "Exclude paywalled stories from preview and delivered newsletters"
+      ],
+      "artifacts": [
+        "content or ingestion heuristics",
+        "repository metadata for paywall status if needed",
+        "integration tests for paywall filtering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "done_when": [
+        "Likely paywalled stories are identified without LLM inference",
+        "Paywalled stories do not appear in the newsletter or preview",
+        "The paywall filtering integration test passes"
+      ]
     }
   ]
 }
