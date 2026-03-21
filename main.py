@@ -59,12 +59,15 @@ def select_top_stories(
     usage_by_model: dict,
     top_stories: int,
     reasoning_model: str,
+    *,
+    persona_text: str = "",
 ) -> list[dict]:
     return llm.select_top_stories(
         items,
         usage_by_model,
         top_stories,
         reasoning_model,
+        persona_text=persona_text,
         client_factory=OpenAI,
     )
 
@@ -74,12 +77,15 @@ def summarize_article_with_llm(
     usage_by_model: dict,
     lock,
     summary_model: str,
+    *,
+    persona_text: str = "",
 ) -> str:
     return llm.summarize_article_with_llm(
         article_text,
         usage_by_model,
         lock,
         summary_model,
+        persona_text=persona_text,
         client_factory=OpenAI,
     )
 
@@ -108,15 +114,40 @@ def process_story(
 
 def run_job(config: dict, service) -> None:
     development_cfg = config.get("development", {})
+    persona_text = str(config.get("persona", {}).get("text", "")).strip()
     select_top_stories_fn = (
-        dev.fake_select_top_stories
+        (lambda items, usage_by_model, top_stories, reasoning_model: dev.fake_select_top_stories(
+            items,
+            usage_by_model,
+            top_stories,
+            reasoning_model,
+            persona_text=persona_text,
+        ))
         if development_cfg.get("fake_inference", False)
-        else select_top_stories
+        else (lambda items, usage_by_model, top_stories, reasoning_model: select_top_stories(
+            items,
+            usage_by_model,
+            top_stories,
+            reasoning_model,
+            persona_text=persona_text,
+        ))
     )
     summarize_fn = (
-        dev.fake_summarize_article
+        (lambda article_text, usage_by_model, lock, summary_model: dev.fake_summarize_article(
+            article_text,
+            usage_by_model,
+            lock,
+            summary_model,
+            persona_text=persona_text,
+        ))
         if development_cfg.get("fake_inference", False)
-        else summarize_article_with_llm
+        else (lambda article_text, usage_by_model, lock, summary_model: summarize_article_with_llm(
+            article_text,
+            usage_by_model,
+            lock,
+            summary_model,
+            persona_text=persona_text,
+        ))
     )
 
     def process_story_fn(item, usage_by_model, lock, max_article_chars, summary_model):

@@ -89,6 +89,7 @@ def update_config_from_form(raw_config: dict, form) -> tuple[dict, list[str]]:
             form.get("openai_summary_model", "").strip()
             or DEFAULT_CONFIG["openai"]["summary_model"]
         )
+        ensure(["persona"])["text"] = form.get("persona_text", "").strip()
 
         additional_sources = ensure(["additional_sources"])
         additional_sources["enabled"] = parse_bool(form.get("additional_enabled"))

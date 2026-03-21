@@ -91,3 +91,11 @@ Add new entries below this line.
 - Outcome: The repo now supports canned source ingestion, deterministic fake ranking and summarization, and an offline end-to-end development workflow that uses repository snapshots instead of live fetches.
 - Open risks: Persona-aware prompt handling is still pending in `T7`, and Gmail is still live-read during delivery until the now-required `T8` ingest milestone lands. `admin_app.py` still emits a `datetime.utcnow()` deprecation warning during tests.
 - Next recommended task: `T7` Add persona-aware ranking and summarization. `T8` is now a required milestone and a dependency for `T9`.
+
+### 2026-03-21 - T7 added persona-aware ranking and summaries
+- Context: Added persona configuration and centralized prompt builders so ranking and “why this matters” can be tailored to a user persona without changing the surrounding pipeline shape.
+- Files changed: `curator/config.py`, `curator/prompts.py`, `curator/llm.py`, `curator/dev.py`, `main.py`, `admin_app.py`, `templates/admin_config.html`, `tests/helpers.py`, `tests/integration/test_persona_changes_ranking_and_summary.py`, `agent_tasks.json`
+- Tests run: `uv run pytest tests/integration/test_smoke_offline_pipeline.py tests/integration/test_legacy_equivalent_delivery.py tests/integration/test_repository_upsert_and_dedupe.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_admin_source_selection_filters_delivery.py tests/integration/test_offline_canned_repository_mode.py tests/integration/test_persona_changes_ranking_and_summary.py`
+- Outcome: Persona text is now configurable, prompt construction is centralized, both live and deterministic development inference paths can use persona context, and the integration test verifies that two personas produce different story selection and summary language.
+- Open risks: Gmail is still live-read during delivery until `T8` lands. `admin_app.py` still emits a `datetime.utcnow()` deprecation warning during tests.
+- Next recommended task: `T8` Ingest Gmail into the same repository for full delivery decoupling.

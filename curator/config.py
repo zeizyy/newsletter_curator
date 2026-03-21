@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
         "canned_sources_file": "tests/fixtures/canned_sources.json",
         "fake_inference": False,
     },
+    "persona": {"text": ""},
     "additional_sources": {
         "enabled": False,
         "script_path": "skills/daily-news-curator/scripts/build_daily_digest.py",

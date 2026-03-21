@@ -180,7 +180,7 @@
     {
       "id": "T7",
       "title": "Add persona-aware ranking and summarization",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T1", "T4", "T6"],
       "scope": [
         "Add persona.text to config and admin editing surface",

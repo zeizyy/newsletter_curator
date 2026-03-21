@@ -20,6 +20,7 @@ def deep_merge(base: dict, override: dict) -> dict:
 
 def write_temp_config(tmp_path: Path, overrides: dict | None = None) -> Path:
     config_path = tmp_path / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     config = deep_merge(main.DEFAULT_CONFIG, overrides or {})
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return config_path
