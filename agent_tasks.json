@@ -88,7 +88,7 @@
     {
       "id": "T3",
       "title": "Build the centralized source-fetch job",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T2"],
       "scope": [
         "Replace on-demand RSS source retrieval with a standalone fetch job",
