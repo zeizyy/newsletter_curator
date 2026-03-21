@@ -112,7 +112,7 @@
     {
       "id": "T4",
       "title": "Switch newsletter delivery to use the central repository for non-Gmail sources",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T3"],
       "scope": [
         "Remove live direct-source fetching from the delivery path",

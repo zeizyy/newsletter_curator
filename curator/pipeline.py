@@ -27,7 +27,9 @@ def process_story(
     article_fetcher=fetch_article_text,
     summarize_article_with_llm_fn=summarize_article_with_llm,
 ) -> str | None:
-    article_text = article_fetcher(item.get("url", ""), max_article_chars)
+    article_text = str(item.get("article_text", "") or "").strip()
+    if not article_text:
+        article_text = article_fetcher(item.get("url", ""), max_article_chars)
     if not article_text:
         return None
     summary = summarize_article_with_llm_fn(article_text, usage_by_model, lock, summary_model)

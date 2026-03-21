@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,7 @@ import subprocess
 
 from .config import BASE_DIR
 from .content import trim_context
+from .repository import SQLiteRepository
 
 
 def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike[str] | None = None) -> list[dict]:
@@ -87,6 +89,54 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
                 "url": url,
                 "anchor_text": title or source,
                 "context": context,
+            }
+        )
+    return links
+
+
+def collect_repository_source_links(
+    config: dict,
+    *,
+    repository: SQLiteRepository | None = None,
+    base_dir: str | os.PathLike[str] | None = None,
+) -> list[dict]:
+    source_cfg = config.get("additional_sources", {})
+    if not source_cfg.get("enabled", False):
+        return []
+
+    database_path = config.get("database", {}).get("path", "data/newsletter_curator.sqlite3")
+    root_dir = Path(base_dir or BASE_DIR)
+    if not Path(database_path).is_absolute():
+        database_path = root_dir / database_path
+
+    repository = repository or SQLiteRepository(Path(database_path))
+    repository.initialize()
+
+    cutoff = datetime.now(UTC) - timedelta(hours=int(source_cfg.get("hours", 24)))
+    stories = repository.list_stories(
+        source_type="additional_source",
+        published_after=cutoff.isoformat(),
+    )
+    links = []
+    for story in stories:
+        title = str(story.get("anchor_text", "")).strip() or str(story.get("subject", "")).strip()
+        source_name = str(story.get("source_name", "")).strip() or "Additional Source"
+        category = str(story.get("category", "")).strip()
+        summary = str(story.get("summary", "")).strip()
+        context = trim_context(story.get("context") or summary or title or story.get("url", ""))
+        links.append(
+            {
+                "subject": str(story.get("subject", "")).strip() or f"[{category or 'general'}] {title or source_name}",
+                "from": source_name,
+                "source_name": source_name,
+                "source_type": "additional_source",
+                "date": str(story.get("published_at", "")).strip(),
+                "url": str(story.get("url", "")).strip(),
+                "anchor_text": title or source_name,
+                "context": context,
+                "category": category,
+                "summary": summary,
+                "article_text": str(story.get("article_text", "") or ""),
             }
         )
     return links
