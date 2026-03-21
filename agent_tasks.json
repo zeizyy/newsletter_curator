@@ -157,7 +157,7 @@
     {
       "id": "T6",
       "title": "Add canned central-fetch mode for development",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T3"],
       "scope": [
         "Add a dev or test mode that seeds the repository from canned fetched stories",
@@ -202,7 +202,7 @@
     },
     {
       "id": "T8",
-      "title": "Optionally ingest Gmail into the same repository for full delivery decoupling",
+      "title": "Ingest Gmail into the same repository for full delivery decoupling",
       "status": "pending",
       "depends_on": ["T2"],
       "scope": [
@@ -221,21 +221,19 @@
         "Delivery can run from repository data only",
         "Gmail candidate ingestion is separated from newsletter send time",
         "No live Gmail reads are required during delivery when this path is enabled"
-      ],
-      "optional": true,
-      "notes": "Do this only if full decoupling across both Gmail and centrally fetched sources is desired."
+      ]
     },
     {
       "id": "T9",
       "title": "Finalize the two-job production flow and remove obsolete paths",
       "status": "pending",
-      "depends_on": ["T5", "T6", "T7"],
+      "depends_on": ["T5", "T6", "T7", "T8"],
       "scope": [
         "Document and wire cron-friendly fetch and deliver jobs",
         "Add structured logging and run records",
         "Add stale-data and partial-failure handling",
         "Remove dead on-the-fly source-fetch code",
-        "If T8 is completed, include the Gmail ingest job in the final documented flow"
+        "Include the Gmail ingest job in the final documented flow"
       ],
       "artifacts": [
         "README.md",

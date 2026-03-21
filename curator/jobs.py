@@ -5,7 +5,7 @@ from pathlib import Path
 from .config import BASE_DIR
 from .content import fetch_article_text
 from .repository import SQLiteRepository
-from .sources import collect_additional_source_links
+from .sources import collect_additional_source_links, load_canned_source_links
 
 
 def get_repository_from_config(config: dict) -> SQLiteRepository:
@@ -26,7 +26,11 @@ def run_fetch_sources_job(
     article_fetcher=None,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
-    source_fetcher = source_fetcher or collect_additional_source_links
+    if source_fetcher is None:
+        if config.get("development", {}).get("use_canned_sources", False):
+            source_fetcher = load_canned_source_links
+        else:
+            source_fetcher = collect_additional_source_links
     article_fetcher = article_fetcher or fetch_article_text
     run_id = repository.create_ingestion_run("additional_source", metadata={"job": "fetch_sources"})
     stats = {
@@ -45,10 +49,12 @@ def run_fetch_sources_job(
             story_id = repository.upsert_story(story, ingestion_run_id=run_id)
             stats["stories_persisted"] += 1
 
-            article_text = article_fetcher(
-                story.get("url", ""),
-                config["limits"]["max_article_chars"],
-            )
+            article_text = str(story.get("article_text", "") or "").strip()
+            if not article_text:
+                article_text = article_fetcher(
+                    story.get("url", ""),
+                    config["limits"]["max_article_chars"],
+                )
             if not article_text:
                 stats["article_failures"] += 1
                 failures.append(

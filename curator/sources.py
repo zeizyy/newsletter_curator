@@ -94,6 +94,24 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
     return links
 
 
+def load_canned_source_links(
+    config: dict,
+    *,
+    base_dir: str | os.PathLike[str] | None = None,
+) -> list[dict]:
+    development_cfg = config.get("development", {})
+    canned_file = development_cfg.get("canned_sources_file", "tests/fixtures/canned_sources.json")
+    root_dir = Path(base_dir or BASE_DIR)
+    canned_path = Path(canned_file)
+    if not canned_path.is_absolute():
+        canned_path = root_dir / canned_path
+    with canned_path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, list):
+        raise ValueError("canned sources file must contain a JSON list")
+    return [dict(item) for item in data if isinstance(item, dict)]
+
+
 def collect_repository_source_links(
     config: dict,
     *,

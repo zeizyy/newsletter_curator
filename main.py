@@ -4,7 +4,7 @@ import traceback
 from openai import OpenAI
 
 from curator import config as config_module
-from curator import content, gmail, llm, pipeline, rendering, sources
+from curator import content, dev, gmail, llm, pipeline, rendering, sources
 
 
 CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
@@ -107,6 +107,29 @@ def process_story(
 
 
 def run_job(config: dict, service) -> None:
+    development_cfg = config.get("development", {})
+    select_top_stories_fn = (
+        dev.fake_select_top_stories
+        if development_cfg.get("fake_inference", False)
+        else select_top_stories
+    )
+    summarize_fn = (
+        dev.fake_summarize_article
+        if development_cfg.get("fake_inference", False)
+        else summarize_article_with_llm
+    )
+
+    def process_story_fn(item, usage_by_model, lock, max_article_chars, summary_model):
+        return pipeline.process_story(
+            item,
+            usage_by_model,
+            lock,
+            max_article_chars,
+            summary_model,
+            article_fetcher=fetch_article_text,
+            summarize_article_with_llm_fn=summarize_fn,
+        )
+
     return pipeline.run_job(
         config,
         service,
@@ -118,8 +141,8 @@ def run_job(config: dict, service) -> None:
         extract_links_from_html_fn=extract_links_from_html,
         collect_additional_source_links_fn=collect_additional_source_links,
         dedupe_links_by_url_fn=dedupe_links_by_url,
-        select_top_stories_fn=select_top_stories,
-        process_story_fn=process_story,
+        select_top_stories_fn=select_top_stories_fn,
+        process_story_fn=process_story_fn,
         group_summaries_by_category_fn=group_summaries_by_category,
         render_digest_html_fn=render_digest_html,
         send_email_fn=send_email,
