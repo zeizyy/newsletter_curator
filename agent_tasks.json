@@ -226,7 +226,7 @@
     {
       "id": "T9",
       "title": "Finalize the two-job production flow and remove obsolete paths",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T5", "T6", "T7", "T8"],
       "scope": [
         "Document and wire cron-friendly fetch and deliver jobs",

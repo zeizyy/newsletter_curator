@@ -212,6 +212,48 @@ class SQLiteRepository:
                 (status, utc_now(), json.dumps(merged_metadata, sort_keys=True), run_id),
             )
 
+    def get_latest_ingestion_run(
+        self, source_type: str, *, status: str | None = None
+    ) -> dict | None:
+        conditions = ["source_type = ?"]
+        params: list[str] = [source_type]
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        where_clause = " AND ".join(conditions)
+        with self.connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT id, source_type, status, started_at, finished_at, metadata_json
+                FROM ingestion_runs
+                WHERE {where_clause}
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                params,
+            ).fetchone()
+        return self._run_row_to_dict(row)
+
+    def get_latest_delivery_run(self) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, status, started_at, finished_at, metadata_json
+                FROM delivery_runs
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        return self._run_row_to_dict(row)
+
+    def _run_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
+        if row is None:
+            return None
+        payload = dict(row)
+        metadata_json = str(payload.pop("metadata_json", "") or "{}")
+        payload["metadata"] = json.loads(metadata_json)
+        return payload
+
     def upsert_source(self, *, source_type: str, source_name: str) -> int:
         now = utc_now()
         with self.connect() as connection:

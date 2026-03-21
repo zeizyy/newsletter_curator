@@ -28,3 +28,9 @@ def write_temp_config(tmp_path: Path, overrides: dict | None = None) -> Path:
 
 def temp_db_path(tmp_path: Path) -> Path:
     return tmp_path / "test_repository.sqlite3"
+
+
+def create_completed_ingestion_run(repository, source_type: str) -> int:
+    run_id = repository.create_ingestion_run(source_type, metadata={"test": True})
+    repository.complete_ingestion_run(run_id, status="completed", metadata={"test": True})
+    return run_id

@@ -97,27 +97,10 @@ def collect_additional_source_links(config: dict) -> list[dict]:
 
 
 def collect_gmail_links(config: dict, service) -> list[dict]:
-    repository = None
-    try:
-        from curator.jobs import get_repository_from_config
+    from curator.jobs import get_repository_from_config
 
-        repository = get_repository_from_config(config)
-    except Exception:
-        repository = None
-    if repository is not None:
-        repository_links = collect_repository_gmail_links(config, repository=repository)
-        if repository_links:
-            return repository_links
-    return collect_live_gmail_links(
-        service,
-        config,
-        get_label_id_fn=get_label_id,
-        list_message_ids_for_label_fn=list_message_ids_for_label,
-        get_message_fn=get_message,
-        extract_bodies_fn=extract_bodies,
-        get_header_value_fn=get_header_value,
-        extract_links_from_html_fn=extract_links_from_html,
-    )
+    repository = get_repository_from_config(config)
+    return collect_repository_gmail_links(config, repository=repository)
 
 
 def process_story(
@@ -138,7 +121,9 @@ def process_story(
     )
 
 
-def run_job(config: dict, service) -> None:
+def run_job(config: dict, service) -> dict:
+    from curator.jobs import run_delivery_job
+
     development_cfg = config.get("development", {})
     persona_text = str(config.get("persona", {}).get("text", "")).strip()
     select_top_stories_fn = (
@@ -183,22 +168,15 @@ def run_job(config: dict, service) -> None:
             lock,
             max_article_chars,
             summary_model,
-            article_fetcher=fetch_article_text,
+            article_fetcher=lambda url, chars, timeout=25, retries=3: "",
             summarize_article_with_llm_fn=summarize_fn,
         )
 
-    return pipeline.run_job(
+    return run_delivery_job(
         config,
         service,
         collect_gmail_links_fn=collect_gmail_links,
-        get_label_id_fn=get_label_id,
-        list_message_ids_for_label_fn=list_message_ids_for_label,
-        get_message_fn=get_message,
-        extract_bodies_fn=extract_bodies,
-        get_header_value_fn=get_header_value,
-        extract_links_from_html_fn=extract_links_from_html,
-        collect_additional_source_links_fn=collect_additional_source_links,
-        dedupe_links_by_url_fn=dedupe_links_by_url,
+        collect_source_links_fn=collect_additional_source_links,
         select_top_stories_fn=select_top_stories_fn,
         process_story_fn=process_story_fn,
         group_summaries_by_category_fn=group_summaries_by_category,

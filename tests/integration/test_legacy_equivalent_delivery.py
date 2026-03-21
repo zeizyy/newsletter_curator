@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 
+from curator.jobs import run_fetch_gmail_job, run_fetch_sources_job
 from tests.fakes import (
     FakeArticleFetcher,
     FakeGmailService,
@@ -62,6 +63,7 @@ def test_legacy_equivalent_delivery(monkeypatch, repo_root, tmp_path):
     config_path = write_temp_config(
         tmp_path,
         overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
             "email": {
                 "digest_recipients": ["entrypoint@example.com"],
                 "digest_subject": "Legacy Equivalent Digest",
@@ -89,9 +91,15 @@ def test_legacy_equivalent_delivery(monkeypatch, repo_root, tmp_path):
         artifact_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
-    monkeypatch.setattr(main, "get_gmail_service", lambda paths: service)
-    monkeypatch.setattr(main, "collect_additional_source_links", source_fetcher)
-    monkeypatch.setattr(main, "fetch_article_text", article_fetcher)
+    run_fetch_gmail_job(main.load_config(), service, article_fetcher=article_fetcher)
+    run_fetch_sources_job(
+        main.load_config(),
+        source_fetcher=source_fetcher,
+        article_fetcher=article_fetcher,
+    )
+
+    delivery_service = FakeGmailService(messages=[])
+    monkeypatch.setattr(main, "get_gmail_service", lambda paths: delivery_service)
     monkeypatch.setattr(main, "OpenAI", lambda: fake_openai)
     monkeypatch.setattr(main, "send_email", fake_send_email)
 

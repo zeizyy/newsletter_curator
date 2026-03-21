@@ -184,6 +184,13 @@ def run_job(
     print(f"links_by_source_type: {format_counts(all_links, 'source_type')}")
     print(f"links_by_source_name_top10: {format_counts(all_links, 'source_name', top_n=10)}")
 
+    result = {
+        "status": "running",
+        "gmail_links": len(gmail_links),
+        "additional_source_links": len(source_links),
+        "deduped_links": len(all_links),
+    }
+
     usage_by_model = {}
     source_quotas = normalize_source_quotas(limits_cfg.get("source_quotas"))
     ranked_candidates = []
@@ -248,10 +255,15 @@ def run_job(
 
     if not ranked_candidates:
         print("No top stories selected.")
-        return
+        return {**result, "status": "no_ranked_candidates", "ranked_candidates": 0, "selected": 0}
     if not selected:
         print("No stories selected after ranking/quotas.")
-        return
+        return {
+            **result,
+            "status": "no_selected_candidates",
+            "ranked_candidates": len(ranked_candidates),
+            "selected": 0,
+        }
 
     print(f"ranked_selected: total={len(ranked_candidates)}")
     print(f"ranked_by_source_type: {format_counts(ranked_candidates, 'source_type')}")
@@ -327,7 +339,15 @@ def run_job(
     print(f"summaries_skipped_fetch_or_empty: {skipped_count}")
     if not summaries:
         print("No stories could be summarized after fetch/filter checks.")
-        return
+        return {
+            **result,
+            "status": "no_summaries",
+            "ranked_candidates": len(ranked_candidates),
+            "selected": len(selected),
+            "accepted_items": 0,
+            "backfilled_count": backfilled_count,
+            "skipped_count": skipped_count,
+        }
 
     print(f"returned_final: total={len(accepted_items)}")
     print(f"final_by_source_type: {format_counts(accepted_items, 'source_type')}")
@@ -359,3 +379,13 @@ def run_job(
             body=final_text,
             html_body=digest_html,
         )
+    return {
+        **result,
+        "status": "completed",
+        "ranked_candidates": len(ranked_candidates),
+        "selected": len(selected),
+        "accepted_items": len(accepted_items),
+        "backfilled_count": backfilled_count,
+        "skipped_count": skipped_count,
+        "sent_recipients": len(email_cfg["digest_recipients"]),
+    }

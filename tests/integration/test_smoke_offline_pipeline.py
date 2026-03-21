@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 
+from curator.jobs import run_fetch_gmail_job, run_fetch_sources_job
 from tests.fakes import (
     FakeArticleFetcher,
     FakeGmailService,
@@ -63,6 +64,7 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
     config_path = write_temp_config(
         tmp_path,
         overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
             "email": {
                 "digest_recipients": ["integration@example.com"],
                 "digest_subject": "Offline Smoke Digest",
@@ -77,6 +79,9 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     config = main.load_config()
+
+    run_fetch_gmail_job(config, service, article_fetcher=article_fetcher)
+    run_fetch_sources_job(config, source_fetcher=source_fetcher, article_fetcher=article_fetcher)
 
     sent_messages: list[dict] = []
 
@@ -93,12 +98,11 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
         artifact_path = outbox_dir / f"{len(sent_messages):02d}_{to_address.replace('@', '_')}.json"
         artifact_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    monkeypatch.setattr(main, "collect_additional_source_links", source_fetcher)
-    monkeypatch.setattr(main, "fetch_article_text", article_fetcher)
     monkeypatch.setattr(main, "OpenAI", lambda: fake_openai)
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    main.run_job(config, service)
+    delivery_service = FakeGmailService(messages=[])
+    main.run_job(config, delivery_service)
 
     artifact_path = tmp_path / "artifacts" / "01_integration_example.com.json"
     assert artifact_path.exists()

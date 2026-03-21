@@ -6,6 +6,17 @@ paths:
   credentials: secrets/credentials.json
   token: secrets/token.json
 
+database:
+  path: data/newsletter_curator.sqlite3
+
+development:
+  use_canned_sources: false
+  canned_sources_file: tests/fixtures/canned_sources.json
+  fake_inference: false
+
+persona:
+  text: ""
+
 additional_sources:
   enabled: true
   script_path: skills/daily-news-curator/scripts/build_daily_digest.py

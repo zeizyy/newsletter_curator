@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .config import BASE_DIR
 from .content import extract_links_from_html, fetch_article_text
-from .gmail import collect_live_gmail_links
+from .gmail import (
+    collect_live_gmail_links,
+    collect_repository_gmail_links,
+    gmail_query_cutoff,
+    send_email,
+)
+from .llm import select_top_stories
+from .pipeline import process_story, run_job as run_pipeline_job
+from .rendering import group_summaries_by_category, render_digest_html
 from .repository import SQLiteRepository
-from .sources import collect_additional_source_links, load_canned_source_links
+from .sources import (
+    collect_additional_source_links,
+    collect_repository_source_links,
+    load_canned_source_links,
+)
 
 
 def get_repository_from_config(config: dict) -> SQLiteRepository:
@@ -178,3 +192,153 @@ def run_fetch_gmail_job(
         )
 
     return return_payload
+
+
+def _required_delivery_source_types(config: dict) -> list[str]:
+    source_types: list[str] = []
+    quotas = config.get("limits", {}).get("source_quotas", {})
+    if int(quotas.get("gmail", 0) or 0) > 0:
+        source_types.append("gmail")
+    if config.get("additional_sources", {}).get("enabled", False) and int(
+        quotas.get("additional_source", 0) or 0
+    ) > 0:
+        source_types.append("additional_source")
+    return source_types
+
+
+def _delivery_cutoff(config: dict, source_type: str) -> str | None:
+    if source_type == "gmail":
+        return gmail_query_cutoff(config["gmail"]["query_time_window"])
+    if source_type == "additional_source":
+        hours = int(config.get("additional_sources", {}).get("hours", 24))
+        return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+    return None
+
+
+def assess_delivery_readiness(config: dict, repository: SQLiteRepository) -> dict:
+    sources = []
+    ready_source_types: list[str] = []
+    required_source_types = _required_delivery_source_types(config)
+
+    for source_type in required_source_types:
+        cutoff = _delivery_cutoff(config, source_type)
+        stories = repository.list_stories(source_type=source_type, published_after=cutoff)
+        latest_run = repository.get_latest_ingestion_run(source_type)
+        latest_completed_run = repository.get_latest_ingestion_run(source_type, status="completed")
+        warnings: list[str] = []
+        if latest_run is None:
+            warnings.append("no_ingest_run")
+        elif latest_run["status"] != "completed":
+            warnings.append(f"latest_run_status={latest_run['status']}")
+        if latest_completed_run is None:
+            warnings.append("no_successful_ingest")
+        if not stories:
+            warnings.append("no_fresh_stories")
+        ready = bool(stories) and latest_completed_run is not None
+        if ready:
+            ready_source_types.append(source_type)
+        sources.append(
+            {
+                "source_type": source_type,
+                "cutoff": cutoff,
+                "fresh_story_count": len(stories),
+                "ready": ready,
+                "latest_run_id": latest_run["id"] if latest_run else None,
+                "latest_run_status": latest_run["status"] if latest_run else None,
+                "latest_completed_run_id": (
+                    latest_completed_run["id"] if latest_completed_run else None
+                ),
+                "latest_completed_finished_at": (
+                    latest_completed_run["finished_at"] if latest_completed_run else None
+                ),
+                "warnings": warnings,
+            }
+        )
+
+    return {
+        "required_source_types": required_source_types,
+        "ready_source_types": ready_source_types,
+        "sources": sources,
+        "ok": bool(ready_source_types) or not required_source_types,
+    }
+
+
+def run_delivery_job(
+    config: dict,
+    service,
+    *,
+    repository: SQLiteRepository | None = None,
+    collect_gmail_links_fn=None,
+    collect_source_links_fn=None,
+    select_top_stories_fn=select_top_stories,
+    process_story_fn=None,
+    group_summaries_by_category_fn=group_summaries_by_category,
+    render_digest_html_fn=render_digest_html,
+    send_email_fn=send_email,
+) -> dict:
+    repository = repository or get_repository_from_config(config)
+    readiness = assess_delivery_readiness(config, repository)
+    print(
+        json.dumps(
+            {"event": "delivery_readiness", "readiness": readiness},
+            sort_keys=True,
+        )
+    )
+    if not readiness["ok"]:
+        raise RuntimeError(
+            "No delivery-ready repository data is available for the required source types."
+        )
+
+    collect_gmail_links_fn = collect_gmail_links_fn or (
+        lambda cfg, svc: collect_repository_gmail_links(cfg, repository=repository)
+    )
+    collect_source_links_fn = collect_source_links_fn or (
+        lambda cfg: collect_repository_source_links(cfg, repository=repository)
+    )
+    process_story_fn = process_story_fn or (
+        lambda item, usage_by_model, lock, max_article_chars, summary_model: process_story(
+            item,
+            usage_by_model,
+            lock,
+            max_article_chars,
+            summary_model,
+            article_fetcher=lambda url, chars, timeout=25, retries=3: "",
+        )
+    )
+
+    run_id = repository.create_delivery_run(
+        metadata={"job": "deliver_digest", "readiness": readiness}
+    )
+    try:
+        pipeline_result = run_pipeline_job(
+            config,
+            service,
+            collect_gmail_links_fn=collect_gmail_links_fn,
+            collect_additional_source_links_fn=collect_source_links_fn,
+            select_top_stories_fn=select_top_stories_fn,
+            process_story_fn=process_story_fn,
+            group_summaries_by_category_fn=group_summaries_by_category_fn,
+            render_digest_html_fn=render_digest_html_fn,
+            send_email_fn=send_email_fn,
+        )
+        repository.complete_delivery_run(
+            run_id,
+            status="completed",
+            metadata={
+                "job": "deliver_digest",
+                "readiness": readiness,
+                "pipeline_result": pipeline_result,
+            },
+        )
+        return {"run_id": run_id, "status": "completed", **pipeline_result}
+    except Exception as exc:
+        repository.complete_delivery_run(
+            run_id,
+            status="failed",
+            metadata={
+                "job": "deliver_digest",
+                "readiness": readiness,
+                "error": str(exc),
+            },
+        )
+        raise

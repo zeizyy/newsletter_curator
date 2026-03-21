@@ -107,3 +107,11 @@ Add new entries below this line.
 - Outcome: The repo now has `fetch_gmail.py`, Gmail candidate and article snapshot persistence, and a repo-first Gmail delivery path verified by an integration test that fails if delivery attempts live Gmail reads.
 - Open risks: The compatibility fallback to live Gmail reads still exists and should be removed during `T9`. `admin_app.py` still emits a `datetime.utcnow()` deprecation warning during tests.
 - Next recommended task: `T9` Finalize the two-job production flow and remove obsolete paths.
+
+### 2026-03-21 - T9 finalized the repository-first production flow
+- Context: Removed the remaining delivery-time live-read assumptions, added the dedicated delivery entrypoint, recorded delivery readiness in the repository, and documented the final cron-friendly job split.
+- Files changed: `.gitignore`, `README.md`, `admin_app.py`, `config.yaml`, `curator/gmail.py`, `curator/jobs.py`, `curator/pipeline.py`, `curator/repository.py`, `deliver_digest.py`, `main.py`, `tests/helpers.py`, `tests/integration/test_admin_source_selection_filters_delivery.py`, `tests/integration/test_delivery_uses_repository_not_live_fetch.py`, `tests/integration/test_full_two_job_pipeline.py`, `tests/integration/test_legacy_equivalent_delivery.py`, `tests/integration/test_persona_changes_ranking_and_summary.py`, `tests/integration/test_smoke_offline_pipeline.py`, `agent_tasks.json`
+- Tests run: `uv run pytest tests/integration`
+- Outcome: Delivery is now repository-only by default, `deliver_digest.py` mirrors the final production architecture, delivery runs are recorded with readiness metadata, stale or failed latest ingests are surfaced without blocking healthy source types, and the new two-job end-to-end integration test passes.
+- Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the app code no longer emits the previous `datetime.utcnow()` warning.
+- Next recommended task: none; all tasks in `agent_tasks.json` are complete.

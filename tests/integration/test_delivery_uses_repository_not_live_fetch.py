@@ -5,7 +5,7 @@ import json
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
-from tests.helpers import write_temp_config
+from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
 def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
@@ -31,6 +31,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     config = main.load_config()
 
     repository = get_repository_from_config(config)
+    ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
     repository.upsert_article_snapshot(
         repository.upsert_story(
             {
@@ -43,7 +44,8 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
                 "category": "Markets / stocks / macro / economy",
                 "published_at": "2026-03-21T07:30:00+00:00",
                 "summary": "Rates reset summary",
-            }
+            },
+            ingestion_run_id=ingestion_run_id,
         ),
         "Rates reset changes software valuations and reprices growth.",
     )
@@ -59,7 +61,8 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
                 "category": "AI & ML industry developments",
                 "published_at": "2026-03-21T06:00:00+00:00",
                 "summary": "Pricing summary",
-            }
+            },
+            ingestion_run_id=ingestion_run_id,
         ),
         "Open model pricing changed and pushes buyers to recalculate inference budgets.",
     )

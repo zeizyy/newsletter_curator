@@ -4,7 +4,7 @@ import importlib
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
-from tests.helpers import write_temp_config
+from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
 def build_admin_form(config: dict, enabled_source_ids: set[int]) -> dict[str, str]:
@@ -62,6 +62,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     config = main.load_config()
 
     repository = get_repository_from_config(config)
+    ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
     repository.upsert_story(
         {
             "source_type": "additional_source",
@@ -73,7 +74,8 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
             "category": "Markets / stocks / macro / economy",
             "published_at": "2026-03-21T07:30:00+00:00",
             "summary": "Rates reset summary",
-        }
+        },
+        ingestion_run_id=ingestion_run_id,
     )
     macro_story = repository.list_stories(source_name="Macro Wire")[0]
     repository.upsert_article_snapshot(
@@ -91,7 +93,8 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
             "category": "AI & ML industry developments",
             "published_at": "2026-03-21T06:00:00+00:00",
             "summary": "Pricing summary",
-        }
+        },
+        ingestion_run_id=ingestion_run_id,
     )
     ai_story = repository.list_stories(source_name="AI Wire")[0]
     repository.upsert_article_snapshot(

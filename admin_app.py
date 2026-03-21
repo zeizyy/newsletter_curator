@@ -171,7 +171,7 @@ def update_config_from_form(raw_config: dict, form) -> tuple[dict, list[str]]:
 def backup_config(path: Path) -> None:
     if not path.exists():
         return
-    timestamp = dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%d%H%M%S")
     backup = path.with_suffix(path.suffix + f".{timestamp}.bak")
     backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
