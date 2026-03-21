@@ -1,0 +1,4 @@
+interface:
+  display_name: "Iterative Agent Harness"
+  short_description: "Run one-task-per-session long-horizon coding workflows"
+  default_prompt: "Use $iterative-agent-harness to set up an initializer, task file, progress log, and incremental execution workflow for this project."
