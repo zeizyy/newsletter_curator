@@ -8,6 +8,7 @@ paths:
 
 database:
   path: data/newsletter_curator.sqlite3
+  ttl_days: 7
 
 development:
   use_canned_sources: false

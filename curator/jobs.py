@@ -33,6 +33,21 @@ def get_repository_from_config(config: dict) -> SQLiteRepository:
     return repository
 
 
+def run_repository_ttl_cleanup(
+    config: dict,
+    repository: SQLiteRepository,
+    *,
+    source_types: list[str] | None = None,
+) -> dict[str, int]:
+    ttl_days = int(config.get("database", {}).get("ttl_days", 7))
+    cutoff = (datetime.now(UTC) - timedelta(days=ttl_days)).isoformat()
+    cleanup_result = repository.delete_stories_older_than(
+        cutoff,
+        source_types=source_types or ["gmail", "additional_source"],
+    )
+    return {"ttl_days": ttl_days, "cutoff": cutoff, **cleanup_result}
+
+
 def run_fetch_sources_job(
     config: dict,
     *,
@@ -47,9 +62,11 @@ def run_fetch_sources_job(
         else:
             source_fetcher = collect_additional_source_links
     article_fetcher = article_fetcher or fetch_article_text
+    cleanup_result = run_repository_ttl_cleanup(config, repository)
     run_id = repository.create_ingestion_run("additional_source", metadata={"job": "fetch_sources"})
     stats = {
         "run_id": run_id,
+        "ttl_cleanup": cleanup_result,
         "stories_seen": 0,
         "stories_persisted": 0,
         "snapshots_persisted": 0,
@@ -101,6 +118,7 @@ def run_fetch_sources_job(
             status=final_status,
             metadata={
                 "job": "fetch_sources",
+                "ttl_cleanup": cleanup_result,
                 "stories_seen": stats["stories_seen"],
                 "stories_persisted": stats["stories_persisted"],
                 "snapshots_persisted": stats["snapshots_persisted"],
@@ -122,6 +140,7 @@ def run_fetch_gmail_job(
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     article_fetcher = article_fetcher or fetch_article_text
+    cleanup_result = run_repository_ttl_cleanup(config, repository)
     collect_gmail_links_fn = collect_gmail_links_fn or (
         lambda service, config: collect_live_gmail_links(
             service,
@@ -132,6 +151,7 @@ def run_fetch_gmail_job(
     run_id = repository.create_ingestion_run("gmail", metadata={"job": "fetch_gmail"})
     stats = {
         "run_id": run_id,
+        "ttl_cleanup": cleanup_result,
         "stories_seen": 0,
         "stories_persisted": 0,
         "snapshots_persisted": 0,
@@ -183,6 +203,7 @@ def run_fetch_gmail_job(
             status=final_status,
             metadata={
                 "job": "fetch_gmail",
+                "ttl_cleanup": cleanup_result,
                 "stories_seen": stats["stories_seen"],
                 "stories_persisted": stats["stories_persisted"],
                 "snapshots_persisted": stats["snapshots_persisted"],

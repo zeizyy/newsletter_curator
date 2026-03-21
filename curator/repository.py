@@ -476,6 +476,63 @@ class SQLiteRepository:
             rows = connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
+    def delete_stories_older_than(
+        self,
+        cutoff: str,
+        *,
+        source_types: list[str] | None = None,
+    ) -> dict[str, int]:
+        source_types = source_types or []
+        conditions = ["COALESCE(NULLIF(published_at, ''), first_seen_at) < ?"]
+        params: list[str] = [cutoff]
+        if source_types:
+            placeholders = ", ".join("?" for _ in source_types)
+            conditions.append(f"source_type IN ({placeholders})")
+            params.extend(source_types)
+        where_clause = " AND ".join(conditions)
+
+        with self.connect() as connection:
+            story_row = connection.execute(
+                f"SELECT COUNT(*) AS count FROM fetched_stories WHERE {where_clause}",
+                params,
+            ).fetchone()
+            stories_deleted = int(story_row["count"])
+
+            snapshot_row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM article_snapshots
+                WHERE story_id IN (
+                    SELECT id FROM fetched_stories WHERE {where_clause}
+                )
+                """,
+                params,
+            ).fetchone()
+            snapshots_deleted = int(snapshot_row["count"])
+
+            connection.execute(f"DELETE FROM fetched_stories WHERE {where_clause}", params)
+
+            source_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM sources
+                WHERE id NOT IN (SELECT DISTINCT source_id FROM fetched_stories)
+                """
+            ).fetchone()
+            orphaned_sources_deleted = int(source_row["count"])
+            connection.execute(
+                """
+                DELETE FROM sources
+                WHERE id NOT IN (SELECT DISTINCT source_id FROM fetched_stories)
+                """
+            )
+
+        return {
+            "stories_deleted": stories_deleted,
+            "snapshots_deleted": snapshots_deleted,
+            "orphaned_sources_deleted": orphaned_sources_deleted,
+        }
+
     def get_table_counts(self) -> dict[str, int]:
         tables = [
             "schema_migrations",

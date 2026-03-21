@@ -297,7 +297,7 @@
     {
       "id": "T12",
       "title": "Add a seven-day TTL cleanup for centrally fetched stories",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T11"],
       "scope": [
         "Delete centrally fetched stories older than seven days",

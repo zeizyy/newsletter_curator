@@ -131,3 +131,11 @@ Add new entries below this line.
 - Outcome: The admin UI now exposes a `/stories` view with recent-first repository stories, source/category/publish metadata, snapshot status, and simple source filters.
 - Open risks: Repository growth is still unbounded until TTL cleanup lands in `T12`.
 - Next recommended task: `T12` Add a seven-day TTL cleanup for centrally fetched stories.
+
+### 2026-03-21 - T12 added seven-day TTL cleanup for centrally fetched stories
+- Context: Added automatic retention cleanup to the ingest flow so repository growth is bounded without requiring a separate manual maintenance step.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `config.yaml`, `curator/config.py`, `curator/jobs.py`, `curator/repository.py`, `tests/integration/test_repository_ttl_cleanup_removes_old_stories.py`
+- Tests run: `uv run pytest tests/integration/test_repository_ttl_cleanup_removes_old_stories.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_gmail_ingest_then_delivery_from_db.py`
+- Outcome: Both scheduled ingest jobs now run a seven-day TTL cleanup for centrally fetched stories, old article snapshots are removed via cascade, and cleanup stats are recorded in ingest results.
+- Open risks: Paywalled stories can still enter the repository and surface in digests until `T13` lands.
+- Next recommended task: `T13` Add token-efficient paywall detection and exclude paywalled stories from the newsletter.
