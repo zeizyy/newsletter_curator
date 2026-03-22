@@ -171,3 +171,11 @@ Add new entries below this line.
 - Outcome: Default ingest now extracts article body and metadata via Trafilatura, generic newsletter CTA anchors are replaced with document titles when better metadata is available, and the story explorer regression test verifies the bad `Read More` titles are gone.
 - Open risks: The repository still carries a growing migration chain; `T17` will collapse schema bootstrap into a single rebuilt baseline. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: `T17` Collapse repository migrations into a rebuilt baseline schema.
+
+### 2026-03-22 - T17 collapsed repository bootstrap into a rebuilt baseline schema
+- Context: Removed the incremental SQLite migration chain and replaced it with a current-schema bootstrap that recreates managed tables when it encounters an old migrated database.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/repository.py`, `tests/integration/test_repository_schema_bootstrap_after_reset.py`, `tests/integration/test_repository_upsert_and_dedupe.py`
+- Tests run: `uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py tests/integration/test_repository_upsert_and_dedupe.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_gmail_ingest_then_delivery_from_db.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Repository initialization now creates the full current schema in one pass, old migrated DB files trigger a one-time managed-table reset instead of stepwise migration, and the new integration test verifies the reset path and current columns.
+- Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but this feature wave is otherwise complete.
+- Next recommended task: none; `T14` through `T17` are complete.

@@ -412,7 +412,7 @@
     {
       "id": "T17",
       "title": "Collapse repository migrations into a rebuilt baseline schema",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T15", "T16"],
       "scope": [
         "Replace incremental schema migrations with a single current-schema creation path",

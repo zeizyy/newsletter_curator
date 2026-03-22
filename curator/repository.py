@@ -51,35 +51,89 @@ class SQLiteRepository:
 
     def initialize(self) -> None:
         with self.connect() as connection:
-            self._run_migrations(connection)
+            if self._needs_schema_reset(connection):
+                self._drop_managed_tables(connection)
+            self._create_schema(connection)
 
-    def _run_migrations(self, connection: sqlite3.Connection) -> None:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version INTEGER PRIMARY KEY,
-                applied_at TEXT NOT NULL
-            )
-            """
-        )
-        applied_versions = {
-            row["version"]
-            for row in connection.execute("SELECT version FROM schema_migrations").fetchall()
+    def _table_exists(self, connection: sqlite3.Connection, table_name: str) -> bool:
+        row = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
+    def _table_columns(self, connection: sqlite3.Connection, table_name: str) -> set[str]:
+        if not self._table_exists(connection, table_name):
+            return set()
+        rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(row["name"]) for row in rows}
+
+    def _needs_schema_reset(self, connection: sqlite3.Connection) -> bool:
+        if self._table_exists(connection, "schema_migrations"):
+            return True
+
+        expected_columns = {
+            "sources": {"id", "source_type", "source_name", "created_at", "updated_at"},
+            "ingestion_runs": {"id", "source_type", "status", "started_at", "finished_at", "metadata_json"},
+            "delivery_runs": {"id", "status", "started_at", "finished_at", "metadata_json"},
+            "fetched_stories": {
+                "id",
+                "story_key",
+                "source_id",
+                "ingestion_run_id",
+                "source_type",
+                "source_name",
+                "subject",
+                "url",
+                "canonical_url",
+                "anchor_text",
+                "context",
+                "category",
+                "published_at",
+                "summary",
+                "raw_payload_json",
+                "first_seen_at",
+                "last_seen_at",
+            },
+            "article_snapshots": {
+                "id",
+                "story_id",
+                "article_text",
+                "content_hash",
+                "fetched_at",
+                "metadata_json",
+                "paywall_detected",
+                "paywall_reason",
+                "summary_raw",
+                "summary_headline",
+                "summary_body",
+                "summary_model",
+                "summarized_at",
+            },
+            "user_source_selections": {"id", "source_id", "enabled", "updated_at"},
         }
-        migrations = {1: self._migration_v1, 2: self._migration_v2, 3: self._migration_v3}
-        for version, migration in migrations.items():
-            if version in applied_versions:
-                continue
-            migration(connection)
-            connection.execute(
-                "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                (version, utc_now()),
-            )
+        for table_name, expected in expected_columns.items():
+            columns = self._table_columns(connection, table_name)
+            if columns and not expected.issubset(columns):
+                return True
+        return False
 
-    def _migration_v1(self, connection: sqlite3.Connection) -> None:
+    def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
+        for table_name in [
+            "schema_migrations",
+            "article_snapshots",
+            "user_source_selections",
+            "fetched_stories",
+            "delivery_runs",
+            "ingestion_runs",
+            "sources",
+        ]:
+            connection.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+    def _create_schema(self, connection: sqlite3.Connection) -> None:
         connection.executescript(
             """
-            CREATE TABLE sources (
+            CREATE TABLE IF NOT EXISTS sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_type TEXT NOT NULL,
                 source_name TEXT NOT NULL,
@@ -88,7 +142,7 @@ class SQLiteRepository:
                 UNIQUE(source_type, source_name)
             );
 
-            CREATE TABLE ingestion_runs (
+            CREATE TABLE IF NOT EXISTS ingestion_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_type TEXT NOT NULL,
                 status TEXT NOT NULL,
@@ -97,7 +151,7 @@ class SQLiteRepository:
                 metadata_json TEXT NOT NULL DEFAULT '{}'
             );
 
-            CREATE TABLE delivery_runs (
+            CREATE TABLE IF NOT EXISTS delivery_runs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 status TEXT NOT NULL,
                 started_at TEXT NOT NULL,
@@ -105,7 +159,7 @@ class SQLiteRepository:
                 metadata_json TEXT NOT NULL DEFAULT '{}'
             );
 
-            CREATE TABLE fetched_stories (
+            CREATE TABLE IF NOT EXISTS fetched_stories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 story_key TEXT NOT NULL UNIQUE,
                 source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
@@ -125,51 +179,33 @@ class SQLiteRepository:
                 last_seen_at TEXT NOT NULL
             );
 
-            CREATE INDEX idx_fetched_stories_source_type ON fetched_stories(source_type);
-            CREATE INDEX idx_fetched_stories_source_name ON fetched_stories(source_name);
-            CREATE INDEX idx_fetched_stories_published_at ON fetched_stories(published_at);
+            CREATE INDEX IF NOT EXISTS idx_fetched_stories_source_type ON fetched_stories(source_type);
+            CREATE INDEX IF NOT EXISTS idx_fetched_stories_source_name ON fetched_stories(source_name);
+            CREATE INDEX IF NOT EXISTS idx_fetched_stories_published_at ON fetched_stories(published_at);
 
-            CREATE TABLE article_snapshots (
+            CREATE TABLE IF NOT EXISTS article_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 story_id INTEGER NOT NULL UNIQUE REFERENCES fetched_stories(id) ON DELETE CASCADE,
                 article_text TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
                 fetched_at TEXT NOT NULL,
-                metadata_json TEXT NOT NULL DEFAULT '{}'
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                paywall_detected INTEGER NOT NULL DEFAULT 0,
+                paywall_reason TEXT NOT NULL DEFAULT '',
+                summary_raw TEXT NOT NULL DEFAULT '',
+                summary_headline TEXT NOT NULL DEFAULT '',
+                summary_body TEXT NOT NULL DEFAULT '',
+                summary_model TEXT NOT NULL DEFAULT '',
+                summarized_at TEXT
             );
 
-            CREATE TABLE user_source_selections (
+            CREATE TABLE IF NOT EXISTS user_source_selections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_id INTEGER NOT NULL UNIQUE REFERENCES sources(id) ON DELETE CASCADE,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL
             );
             """
-        )
-
-    def _migration_v2(self, connection: sqlite3.Connection) -> None:
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN paywall_detected INTEGER NOT NULL DEFAULT 0"
-        )
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN paywall_reason TEXT NOT NULL DEFAULT ''"
-        )
-
-    def _migration_v3(self, connection: sqlite3.Connection) -> None:
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN summary_raw TEXT NOT NULL DEFAULT ''"
-        )
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN summary_headline TEXT NOT NULL DEFAULT ''"
-        )
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN summary_body TEXT NOT NULL DEFAULT ''"
-        )
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN summary_model TEXT NOT NULL DEFAULT ''"
-        )
-        connection.execute(
-            "ALTER TABLE article_snapshots ADD COLUMN summarized_at TEXT"
         )
 
     def create_ingestion_run(self, source_type: str, metadata: dict | None = None) -> int:
@@ -625,6 +661,9 @@ class SQLiteRepository:
         counts = {}
         with self.connect() as connection:
             for table in tables:
+                if not self._table_exists(connection, table):
+                    counts[table] = 0
+                    continue
                 row = connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
                 counts[table] = int(row["count"])
         return counts
