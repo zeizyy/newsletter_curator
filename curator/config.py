@@ -27,7 +27,7 @@ DEFAULT_CONFIG = {
         "top_per_category": 5,
         "max_total": 20,
     },
-    "openai": {"reasoning_model": "gpt-4o-mini", "summary_model": "gpt-5-mini"},
+    "openai": {"reasoning_model": "gpt-5-mini", "summary_model": "gpt-5-mini"},
     "limits": {
         "max_links_per_email": 15,
         "select_top_stories": 20,
@@ -57,10 +57,17 @@ def merge_dicts(base: dict, override: dict) -> dict:
     return merged
 
 
+def normalize_openai_config(config: dict) -> dict:
+    openai_cfg = config.setdefault("openai", {})
+    if str(openai_cfg.get("reasoning_model", "")).strip() == "gpt-4o-mini":
+        openai_cfg["reasoning_model"] = "gpt-5-mini"
+    return config
+
+
 def load_config(config_path: str | os.PathLike[str] | None = None) -> dict:
     resolved_path = Path(config_path or DEFAULT_CONFIG_PATH)
     if not resolved_path.exists():
-        return dict(DEFAULT_CONFIG)
+        return normalize_openai_config(dict(DEFAULT_CONFIG))
     with resolved_path.open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle) or {}
-    return merge_dicts(DEFAULT_CONFIG, data)
+    return normalize_openai_config(merge_dicts(DEFAULT_CONFIG, data))

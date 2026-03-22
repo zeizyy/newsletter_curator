@@ -499,6 +499,29 @@
         "Lower-ranked unsummarized candidates are not persisted as stories or snapshots",
         "The summarized-only persistence integration test passes"
       ]
+    },
+    {
+      "id": "T21",
+      "title": "Switch default OpenAI models to the latest comparable low-cost tier and document pricing deltas",
+      "status": "completed",
+      "depends_on": ["T20"],
+      "scope": [
+        "Move the remaining legacy `gpt-4o-mini` default to the latest low-cost GPT-5 tier",
+        "Keep legacy configs working by upgrading the old default at config-load time",
+        "Document before-and-after input and output token prices for the switch"
+      ],
+      "artifacts": [
+        "updated config defaults for OpenAI models",
+        "legacy default model upgrade logic",
+        "pricing documentation and regression coverage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_openai_models_use_gpt5_mini.py",
+      "integration_test": "tests/integration/test_default_openai_models_use_gpt5_mini.py",
+      "done_when": [
+        "The default reasoning model uses the latest comparable GPT-5 mini tier",
+        "Legacy configs pinned to the old default are upgraded automatically at load time",
+        "Before-and-after token pricing is documented in the repo and the model-default regression test passes"
+      ]
     }
   ]
 }

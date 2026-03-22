@@ -146,11 +146,28 @@ Edit `config.yaml`:
 - `limits.source_quotas` (default `gmail: 10`, `additional_source: 5`)
 - `limits.max_article_chars`
 - `limits.max_summary_workers`
-- `openai.reasoning_model` (default `gpt-4o-mini`)
+- `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
 - `email.digest_recipients` and `email.alert_recipient`
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
+
+## Model Pricing
+As of March 21, 2026, the repo default is `gpt-5-mini` for both reasoning and summary work. This switch replaces the older `gpt-4o-mini` reasoning default with the latest low-cost GPT-5 mini tier while keeping the summary model unchanged.
+
+Per 1M text tokens:
+
+| Use | Before model | Before input | Before output | After model | After input | After output |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reasoning / ranking | `gpt-4o-mini` | $0.15 | $0.60 | `gpt-5-mini` | $0.25 | $2.00 |
+| Summary | `gpt-5-mini` | $0.25 | $2.00 | `gpt-5-mini` | $0.25 | $2.00 |
+
+Notes:
+- The pricing change only affects the reasoning path because the summary path was already on `gpt-5-mini`.
+- Legacy configs that still pin `gpt-4o-mini` for `openai.reasoning_model` are upgraded to `gpt-5-mini` at load time unless you explicitly choose a different non-legacy model.
+- Pricing sources:
+  - OpenAI API pricing: https://openai.com/api/pricing/
+  - GPT-5 model docs: https://platform.openai.com/docs/models/gpt-5/
 
 ## Notes
 - Article fetching requires outbound network access during ingest jobs, not during delivery.

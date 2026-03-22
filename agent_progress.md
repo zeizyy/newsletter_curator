@@ -203,3 +203,11 @@ Add new entries below this line.
 - Outcome: Ingest now writes only servable summarized winners into the repository, repository counts reflect top-20-only persistence, and paywalled/unsummarized candidates remain completely absent from storage.
 - Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the requested repository-storage contract is now enforced.
 - Next recommended task: none; `T20` is complete.
+
+### 2026-03-21 - T21 switched legacy low-cost OpenAI defaults to GPT-5 mini
+- Context: Replaced the remaining `gpt-4o-mini` default with `gpt-5-mini`, added a config-load upgrade path so older configs still switch automatically, and documented the before/after input-output pricing in the README.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/config.py`, `README.md`, `tests/integration/test_default_openai_models_use_gpt5_mini.py`
+- Tests run: `uv run pytest tests/integration/test_default_openai_models_use_gpt5_mini.py tests/integration/test_default_config_uses_24h_window.py tests/integration/test_fetch_sources_job_writes_repository.py -q`
+- Outcome: New configs now default both reasoning and summary to `gpt-5-mini`, legacy configs that still pin `gpt-4o-mini` for reasoning are upgraded automatically at load time, and the repo now records the exact per-1M token price delta for the switch.
+- Open risks: The pricing table is a dated snapshot and should be re-verified against OpenAI pricing before future model changes. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: none; `T21` is complete.
