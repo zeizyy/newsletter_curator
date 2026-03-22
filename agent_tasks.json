@@ -757,7 +757,7 @@
     {
       "id": "T32",
       "title": "Harden and document how persona influences ingest scoring, ranking, and summary framing",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T28"],
       "scope": [
         "Add explicit regression coverage that persona affects ingest-time scoring, final ranking, and the why-this-matters summary framing",

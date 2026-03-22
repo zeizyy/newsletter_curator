@@ -8,7 +8,7 @@ Personal newsletter curator with a repository-first architecture: Gmail newslett
 - Local SQLite repository for normalized stories, article snapshots, and run history
 - Admin UI for source selection and persona text
 - Repo-only delivery job with no live Gmail reads or live article fetches at send time
-- Two-stage LLM flow: select top stories, then summarize stored article text
+- Two-stage LLM flow: persona-aware ingest scoring and ranking, followed by persona-aware summaries over stored article text
 - Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
 - Delivery readiness checks against ingest run history and stored fresh stories
 - Deterministic canned-data mode for local development and integration testing
@@ -193,6 +193,14 @@ Edit `config.yaml`:
 - `openai.summary_model` (default `gpt-5-mini`)
 - `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
 - `email.digest_recipients` and `email.alert_recipient`
+
+### Persona Behavior
+`persona.text` is used in three distinct places:
+- ingest scoring decides which fetched articles are worth an expensive stored summary
+- delivery ranking chooses which stored stories make the final newsletter
+- summary generation shapes the `Why this matters to me` framing for each stored article summary
+
+In practice, this means the same persona can change both what gets summarized during ingest and what ultimately gets selected for delivery or preview later.
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
 

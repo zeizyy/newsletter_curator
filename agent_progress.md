@@ -299,3 +299,11 @@ Add new entries below this line.
 - Outcome: The admin app now exposes `/analytics` with trailing-window rollups, recent-newsletter open and click summaries, CTR, and a top-clicked-stories table, all backed by repository aggregation queries and linked from the existing admin, preview, and story-explorer screens.
 - Open risks: Unique-open and unique-click counts are still heuristic approximations based on IP and user-agent pairs, so forwarded traffic, privacy relays, and image proxies can blur uniqueness. CTR is intentionally defined as unique clicks divided by unique opens, which is a practical operator metric but not a delivery-system ground truth.
 - Next recommended task: `T32` Harden and document how persona influences ingest scoring, ranking, and summary framing.
+
+### 2026-03-22 - T32 hardened persona coverage across ingest, ranking, and summary framing
+- Context: Tightened the persona contract so operators and tests both reflect the real pipeline: persona affects ingest triage, final ranking, and the why-this-matters framing of stored summaries.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `templates/admin_config.html`, `tests/integration/test_persona_influences_ranking_scoring_and_summary.py`
+- Tests run: `uv run pytest tests/integration/test_persona_influences_ranking_scoring_and_summary.py tests/integration/test_persona_changes_ranking_and_summary.py -q`; `uv run pytest tests/integration -q`
+- Outcome: The repo now has an integration test that exercises persona-aware ingest scoring plus delivery ranking and summary framing in one flow, and the README/admin UI now state explicitly that `persona.text` influences all three stages.
+- Open risks: Persona influence still depends on prompt wording rather than a separately versioned policy layer, so future prompt rewrites should re-run the new regression test before rollout.
+- Next recommended task: none; `T32` is complete.
