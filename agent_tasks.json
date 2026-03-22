@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-22",
+  "updated_at": "2026-03-21",
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -430,6 +430,51 @@
         "Repository initialization recreates the current schema without applying a long migration chain",
         "Legacy migration steps are removed or collapsed into a single baseline schema definition",
         "The schema bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Remove the temporary 48-hour test config path and restore 24-hour testing defaults",
+      "status": "completed",
+      "depends_on": ["T17"],
+      "scope": [
+        "Delete the ad hoc 48-hour config artifact used for manual testing",
+        "Keep the project on the standard 24-hour testing window for faster local validation",
+        "Add a regression test that locks the default testing window back to 24 hours"
+      ],
+      "artifacts": [
+        "cleanup of temporary config.48h.yaml usage",
+        "24-hour default config regression coverage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_config_uses_24h_window.py",
+      "integration_test": "tests/integration/test_default_config_uses_24h_window.py",
+      "done_when": [
+        "The temporary 48-hour config artifact is removed from the repo",
+        "The default config continues to use a 24-hour Gmail/source window",
+        "The 24-hour config regression test passes"
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Add a lightweight LLM scoring gate so only the top 20 articles are summarized per run",
+      "status": "pending",
+      "depends_on": ["T18"],
+      "scope": [
+        "Introduce a cheaper LLM scoring step over fetched article candidates",
+        "Only run the expensive summary-generation model for the top 20 scored articles per ingest run",
+        "Persist any scoring metadata needed for debugging or operator visibility"
+      ],
+      "artifacts": [
+        "lightweight ingest scoring layer",
+        "top-20 summary gating in fetch jobs",
+        "integration coverage for score-then-summarize behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py",
+      "integration_test": "tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py",
+      "done_when": [
+        "Fetched articles are scored with a lightweight LLM step before expensive summarization",
+        "At most 20 articles are summarized per ingest run",
+        "The ingest score-gating integration test passes"
       ]
     }
   ]

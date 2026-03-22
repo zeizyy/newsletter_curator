@@ -179,3 +179,11 @@ Add new entries below this line.
 - Outcome: Repository initialization now creates the full current schema in one pass, old migrated DB files trigger a one-time managed-table reset instead of stepwise migration, and the new integration test verifies the reset path and current columns.
 - Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but this feature wave is otherwise complete.
 - Next recommended task: none; `T14` through `T17` are complete.
+
+### 2026-03-21 - T18 removed the temporary 48-hour testing config path
+- Context: Cleaned up the ad hoc `config.48h.yaml` artifact from manual testing and added a regression to keep the project on the default 24-hour Gmail/source windows for faster local runs.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `tests/integration/test_default_config_uses_24h_window.py`
+- Tests run: `uv run pytest tests/integration/test_default_config_uses_24h_window.py -q`
+- Outcome: The temporary 48-hour config file is gone, the default config remains `newer_than:1d` plus `additional_sources.hours = 24`, and the regression test locks that behavior in place.
+- Open risks: The fetch path still summarizes every ingested article; `T19` will add a lightweight LLM scoring gate so only the top 20 articles are summarized each run.
+- Next recommended task: `T19` Add a lightweight LLM scoring gate so only the top 20 articles are summarized per run.
