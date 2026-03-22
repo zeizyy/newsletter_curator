@@ -9,6 +9,7 @@ import yaml
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = os.getenv("NEWSLETTER_CONFIG", "config.yaml")
 DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest.html"
+EMAIL_SAFE_DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest_email_safe.html"
 DEFAULT_CONFIG = {
     "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
     "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},

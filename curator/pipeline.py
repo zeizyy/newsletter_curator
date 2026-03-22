@@ -18,6 +18,7 @@ from .rendering import (
     build_render_groups,
     group_summaries_by_category,
     parse_summary_block,
+    render_email_safe_digest_html,
     render_digest_html,
 )
 from .sources import collect_additional_source_links
@@ -167,6 +168,7 @@ def run_job(
     group_summaries_by_category_fn=group_summaries_by_category,
     build_render_groups_fn=build_render_groups,
     render_digest_html_fn=render_digest_html,
+    render_email_safe_digest_html_fn=render_email_safe_digest_html,
     send_email_fn=send_email,
 ) -> None:
     gmail_cfg = config["gmail"]
@@ -390,6 +392,7 @@ def run_job(
 
     render_groups = build_render_groups_fn(summaries)
     digest_html = render_digest_html_fn(render_groups)
+    email_safe_digest_html = render_email_safe_digest_html_fn(render_groups)
     digest_subject = email_cfg["digest_subject"]
     accepted_story_payloads = []
     for _, item, summary_block in summaries:
@@ -418,4 +421,6 @@ def run_job(
         "digest_subject": digest_subject,
         "digest_body": final_text,
         "digest_html": digest_html,
+        "email_safe_digest_html": email_safe_digest_html,
+        "render_groups": render_groups,
     }

@@ -913,6 +913,7 @@ def run_delivery_job(
                     "accepted_items": pipeline_result.get("accepted_items", 0),
                     "backfilled_count": pipeline_result.get("backfilled_count", 0),
                     "skipped_count": pipeline_result.get("skipped_count", 0),
+                    "render_groups": pipeline_result.get("render_groups", {}),
                     "newsletter_ttl_cleanup": newsletter_cleanup,
                 },
             )

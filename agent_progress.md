@@ -371,3 +371,11 @@ Add new entries below this line.
 - Outcome: The checked-in `config.yaml` now includes the supplied AI strategy persona as the default `persona.text`, and a regression test locks in the committed persona wording so fresh deployments inherit the same profile.
 - Open risks: The committed persona is intentionally opinionated; operators who want a neutral or different reader profile should override `persona.text` in their own deployed config.
 - Next recommended task: none; `T34` through `T39` are complete.
+
+### 2026-03-22 - T40 added an email-safe admin preview mode
+- Context: Added a second preview surface aimed at Gmail-safe email rendering, while preserving the richer browser-first preview for newsletter iteration and keeping the cached daily-newsletter path intact.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/config.py`, `curator/jobs.py`, `curator/pipeline.py`, `curator/rendering.py`, `templates/digest_email_safe.html`, `templates/digest_preview.html`, `tests/integration/test_admin_preview_renders_digest.py`
+- Tests run: `uv run pytest tests/integration/test_admin_preview_renders_digest.py -q`
+- Outcome: The admin preview now exposes toggle buttons for the existing Market Tape preview and a new email-safe preview, cached newsletters persist `render_groups` metadata so the alternate template can be rerendered without another ranking run, and the email-safe path uses a conservative table-based HTML shell for closer Gmail behavior.
+- Open risks: Delivery still sends the existing primary digest HTML; this task only adds preview visibility for the email-safe variant so the actual send template can be switched deliberately in a later rollout.
+- Next recommended task: none; `T40` is complete.

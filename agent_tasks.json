@@ -937,6 +937,29 @@
         "A regression test locks in that default persona",
         "The persona config change is committed to the repo"
       ]
+    },
+    {
+      "id": "T40",
+      "title": "Add an email-safe template preview surface in the admin UI",
+      "status": "completed",
+      "depends_on": ["T35", "T37"],
+      "scope": [
+        "Add a second admin preview mode for an email-safe digest template",
+        "Persist enough structured digest metadata to rerender that alternate template from cached newsletters",
+        "Keep the existing richer web preview available alongside the email-safe mode"
+      ],
+      "artifacts": [
+        "email-safe digest template",
+        "admin preview template toggle",
+        "integration coverage for alternate preview rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "Admins can switch between the existing web preview and an email-safe preview",
+        "Cached daily newsletters can be rerendered in the email-safe mode without reranking",
+        "The admin preview integration test passes for both modes"
+      ]
     }
   ]
 }

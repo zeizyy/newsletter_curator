@@ -6,7 +6,7 @@ import re
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
-from .config import DIGEST_TEMPLATE_PATH
+from .config import DIGEST_TEMPLATE_PATH, EMAIL_SAFE_DIGEST_TEMPLATE_PATH
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
@@ -217,6 +217,58 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
         )
 
     with DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
+        template_html = handle.read()
+    rendered = template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
+    return rendered.replace("{{HERO_COUNT}}", str(total_entries))
+
+
+def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
+    category_sections = []
+    total_entries = 0
+    for category, entries in grouped.items():
+        total_entries += len(entries)
+        cards = []
+        for entry in entries:
+            title = str(entry.get("title", "")).strip() or "Untitled"
+            url = str(entry.get("url", "")).strip()
+            body = str(entry.get("body", "")).strip()
+            source_name = str(entry.get("source_name", "")).strip()
+            timestamp = str(entry.get("display_timestamp", "")).strip()
+            body_html = render_summary_body_html(body)
+            link_html = (
+                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0b57d0;text-decoration:underline;font-weight:700;">Read original</a>'
+                if url
+                else ""
+            )
+
+            metadata_parts = []
+            if timestamp:
+                metadata_parts.append(html.escape(timestamp))
+            if source_name:
+                metadata_parts.append(html.escape(source_name))
+            metadata_line = " | ".join(metadata_parts)
+            metadata_html = (
+                f'<div style="margin:0 0 10px 0;font-size:12px;line-height:1.5;color:#5b6a78;">{metadata_line}</div>'
+                if metadata_line
+                else ""
+            )
+
+            cards.append(
+                (
+                    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+                    'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:16px;margin:0 0 14px 0;">'
+                    '<tr><td style="padding:18px 18px 16px 18px;">'
+                    f'<div style="margin:0 0 8px 0;font-size:12px;line-height:1.4;color:#0c7a5b;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">{html.escape(category)}</div>'
+                    f"{metadata_html}"
+                    f'<div style="margin:0 0 14px 0;font-size:30px;line-height:1.1;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
+                    f'<div style="font-size:15px;line-height:1.6;color:#223240;">{body_html}</div>'
+                    f'<div style="margin-top:14px;font-size:14px;line-height:1.5;">{link_html}</div>'
+                    "</td></tr></table>"
+                )
+            )
+        category_sections.append("".join(cards))
+
+    with EMAIL_SAFE_DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
     rendered = template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
     return rendered.replace("{{HERO_COUNT}}", str(total_entries))

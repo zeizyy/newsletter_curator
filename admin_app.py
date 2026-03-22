@@ -8,6 +8,7 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 import yaml
 
 from curator.jobs import current_newsletter_date, get_repository_from_config
+from curator.rendering import render_digest_html, render_email_safe_digest_html
 from curator.telemetry import strip_tracking_pixel
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
 
@@ -36,15 +37,26 @@ def load_repository(config: dict):
         return None
 
 
-def build_preview_payload(newsletter: dict | None) -> dict | None:
+def build_preview_payload(newsletter: dict | None, *, preview_template: str = "market_tape") -> dict | None:
     if not newsletter:
         return None
+    metadata = newsletter.get("metadata", {}) or {}
+    render_groups = metadata.get("render_groups", {})
     html_body = str(newsletter.get("html_body", "") or "")
+    if preview_template == "email_safe" and render_groups:
+        html_body = render_email_safe_digest_html(render_groups)
+    elif preview_template == "market_tape" and render_groups:
+        html_body = render_digest_html(render_groups)
     return {
         "subject": str(newsletter.get("subject", "") or ""),
         "body": str(newsletter.get("body", "") or ""),
         "html_body": strip_tracking_pixel(html_body) if html_body else "",
     }
+
+
+def resolve_preview_template() -> str:
+    template_name = request.args.get("template", "").strip().lower()
+    return "email_safe" if template_name == "email_safe" else "market_tape"
 
 
 def start_preview_generation(config: dict, newsletter_date: str, generation_token: str) -> None:
@@ -327,6 +339,7 @@ def config_editor():
 def preview_newsletter():
     provided_token = require_admin_token()
     token_from_request = resolve_request_token(provided_token)
+    preview_template = resolve_preview_template()
     merged = load_merged_config()
     repository = load_repository(merged)
     error = ""
@@ -340,7 +353,7 @@ def preview_newsletter():
     newsletter_date = current_newsletter_date()
     cached_newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
     if cached_newsletter is not None:
-        preview = build_preview_payload(cached_newsletter)
+        preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
         metadata = cached_newsletter.get("metadata", {})
         result = {
             "status": "completed",
@@ -371,7 +384,7 @@ def preview_newsletter():
     if generation_in_progress and repository:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
-            preview = build_preview_payload(cached_newsletter)
+            preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
             metadata = cached_newsletter.get("metadata", {})
             result = {
                 "status": "completed",
@@ -396,6 +409,7 @@ def preview_newsletter():
             generation_in_progress=generation_in_progress,
             generation_state=generation_state,
             generation_started=generation_started,
+            preview_template=preview_template,
         ),
         status_code,
     )
