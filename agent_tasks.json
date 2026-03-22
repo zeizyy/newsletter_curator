@@ -776,6 +776,29 @@
         "The repo documents how persona changes the newsletter output",
         "The persona-behavior integration test passes"
       ]
+    },
+    {
+      "id": "T33",
+      "title": "Add preview-generation locking and an in-progress preview state",
+      "status": "completed",
+      "depends_on": ["T22"],
+      "scope": [
+        "Add repository-backed preview generation state so concurrent /preview requests do not kick off duplicate newsletter generations",
+        "Return an explicit in-progress page or status from /preview while a generation is already running",
+        "Keep cached daily newsletter reuse intact once generation completes"
+      ],
+      "artifacts": [
+        "preview generation state in the repository",
+        "updated /preview admin route and template",
+        "integration coverage for concurrent preview requests"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "integration_test": "tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "done_when": [
+        "A second /preview request shows generation in progress instead of starting another generation",
+        "Only one preview generation runs for a given day at a time",
+        "The preview-lock integration test passes"
+      ]
     }
   ]
 }

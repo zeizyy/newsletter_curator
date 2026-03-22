@@ -5,12 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <meta name="supported-color-schemes" content="light dark" />
+  {% if generation_in_progress %}
+  <meta http-equiv="refresh" content="4" />
+  {% endif %}
   <title>Newsletter Preview</title>
   <style>
     body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: linear-gradient(180deg,#eef4f3,#f8fbfb); color: #16222f; }
     .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 40px; }
     .card { background: rgba(255,255,255,0.88); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 22px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(17,27,45,0.08); }
     .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+    .banner-info { background: #eef5ff; border: 1px solid #c6dafd; color: #174ea6; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
     .muted { font-size: 12px; color: #5b6a78; }
     .button-link { display: inline-block; background: #ddf3eb; color: #0c7a5b; border: 1px solid rgba(12,122,91,0.18); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
     .preview-frame { background: rgba(255,255,255,0.5); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 14px; }
@@ -51,6 +55,15 @@
 
     {% if error %}
       <div class="banner-err">{{ error }}</div>
+    {% endif %}
+
+    {% if generation_in_progress %}
+      <div class="banner-info">
+        Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
+        {% if generation_state and generation_state.started_at %}
+          <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
+        {% endif %}
+      </div>
     {% endif %}
 
     {% if preview %}

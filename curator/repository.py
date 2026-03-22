@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -86,6 +87,16 @@ class SQLiteRepository:
                 "selected_items_json",
                 "metadata_json",
                 "created_at",
+                "updated_at",
+            },
+            "preview_generations": {
+                "id",
+                "newsletter_date",
+                "status",
+                "generation_token",
+                "started_at",
+                "finished_at",
+                "last_error",
                 "updated_at",
             },
             "fetched_stories": {
@@ -173,6 +184,7 @@ class SQLiteRepository:
             "fetched_stories",
             "delivery_runs",
             "daily_newsletters",
+            "preview_generations",
             "ingestion_runs",
             "sources",
         ]:
@@ -217,6 +229,17 @@ class SQLiteRepository:
                 selected_items_json TEXT NOT NULL DEFAULT '[]',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS preview_generations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                newsletter_date TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL,
+                generation_token TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                last_error TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
 
@@ -433,6 +456,125 @@ class SQLiteRepository:
         )
         payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
         return payload
+
+    def get_preview_generation(self, newsletter_date: str) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    newsletter_date,
+                    status,
+                    generation_token,
+                    started_at,
+                    finished_at,
+                    last_error,
+                    updated_at
+                FROM preview_generations
+                WHERE newsletter_date = ?
+                LIMIT 1
+                """,
+                (newsletter_date,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def acquire_preview_generation(
+        self,
+        newsletter_date: str,
+        *,
+        stale_after_seconds: int = 900,
+    ) -> dict:
+        now_dt = datetime.now(UTC)
+        now = now_dt.isoformat()
+        stale_cutoff = (now_dt - timedelta(seconds=max(1, stale_after_seconds))).isoformat()
+        generation_token = secrets.token_hex(12)
+
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO preview_generations (
+                    newsletter_date,
+                    status,
+                    generation_token,
+                    started_at,
+                    finished_at,
+                    last_error,
+                    updated_at
+                )
+                VALUES (?, 'running', ?, ?, NULL, '', ?)
+                ON CONFLICT(newsletter_date)
+                DO UPDATE SET
+                    status = 'running',
+                    generation_token = excluded.generation_token,
+                    started_at = excluded.started_at,
+                    finished_at = NULL,
+                    last_error = '',
+                    updated_at = excluded.updated_at
+                WHERE preview_generations.status != 'running'
+                   OR preview_generations.started_at < ?
+                """,
+                (
+                    newsletter_date,
+                    generation_token,
+                    now,
+                    now,
+                    stale_cutoff,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    newsletter_date,
+                    status,
+                    generation_token,
+                    started_at,
+                    finished_at,
+                    last_error,
+                    updated_at
+                FROM preview_generations
+                WHERE newsletter_date = ?
+                LIMIT 1
+                """,
+                (newsletter_date,),
+            ).fetchone()
+
+        payload = dict(row) if row is not None else {}
+        payload["acquired"] = bool(
+            payload
+            and payload.get("status") == "running"
+            and payload.get("generation_token") == generation_token
+        )
+        return payload
+
+    def complete_preview_generation(
+        self,
+        newsletter_date: str,
+        generation_token: str,
+        *,
+        status: str,
+        last_error: str = "",
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE preview_generations
+                SET status = ?,
+                    finished_at = ?,
+                    last_error = ?,
+                    updated_at = ?
+                WHERE newsletter_date = ?
+                  AND generation_token = ?
+                """,
+                (
+                    status,
+                    utc_now(),
+                    last_error,
+                    utc_now(),
+                    newsletter_date,
+                    generation_token,
+                ),
+            )
 
     def upsert_daily_newsletter(
         self,
@@ -1159,6 +1301,7 @@ class SQLiteRepository:
             "ingestion_runs",
             "delivery_runs",
             "daily_newsletters",
+            "preview_generations",
             "newsletter_telemetry",
             "tracked_links",
             "newsletter_open_events",

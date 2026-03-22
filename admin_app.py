@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
 
-from curator.jobs import get_repository_from_config
+from curator.jobs import current_newsletter_date, get_repository_from_config
 from curator.telemetry import strip_tracking_pixel
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
 
@@ -33,6 +33,17 @@ def load_repository(config: dict):
         return get_repository_from_config(config)
     except Exception:
         return None
+
+
+def build_preview_payload(newsletter: dict | None) -> dict | None:
+    if not newsletter:
+        return None
+    html_body = str(newsletter.get("html_body", "") or "")
+    return {
+        "subject": str(newsletter.get("subject", "") or ""),
+        "body": str(newsletter.get("body", "") or ""),
+        "html_body": strip_tracking_pixel(html_body) if html_body else "",
+    }
 
 
 def get_provided_admin_token() -> str:
@@ -284,22 +295,85 @@ def preview_newsletter():
     provided_token = require_admin_token()
     token_from_request = resolve_request_token(provided_token)
     merged = load_merged_config()
+    repository = load_repository(merged)
     error = ""
     preview = None
     result = None
     status_code = 200
+    generation_in_progress = False
+    generation_state = None
 
-    try:
-        result = preview_job(merged)
-        preview = result.get("preview")
-        if preview is None:
-            error = "Preview generation completed but did not produce a digest."
-            status_code = 500
-        elif preview.get("html_body"):
-            preview = {**preview, "html_body": strip_tracking_pixel(preview["html_body"])}
-    except Exception as exc:
-        error = str(exc)
-        status_code = 500
+    newsletter_date = current_newsletter_date()
+    cached_newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
+    if cached_newsletter is not None:
+        preview = build_preview_payload(cached_newsletter)
+        metadata = cached_newsletter.get("metadata", {})
+        result = {
+            "status": "completed",
+            "ranked_candidates": int(metadata.get("ranked_candidates", 0) or 0),
+            "selected": int(metadata.get("selected", 0) or 0),
+            "accepted_items": len(cached_newsletter.get("selected_items", []) or []),
+            "cached_preview": True,
+        }
+    else:
+        lock_state = (
+            repository.acquire_preview_generation(newsletter_date)
+            if repository
+            else {"acquired": True, "generation_token": ""}
+        )
+        if not lock_state.get("acquired", True):
+            generation_in_progress = True
+            generation_state = lock_state
+            status_code = 202
+        else:
+            generation_token = str(lock_state.get("generation_token", ""))
+            try:
+                result = preview_job(merged)
+                preview = result.get("preview")
+                if preview is None:
+                    error = "Preview generation completed but did not produce a digest."
+                    status_code = 500
+                    if repository and generation_token:
+                        repository.complete_preview_generation(
+                            newsletter_date,
+                            generation_token,
+                            status="failed",
+                            last_error=error,
+                        )
+                elif preview.get("html_body"):
+                    preview = {**preview, "html_body": strip_tracking_pixel(preview["html_body"])}
+                if preview is not None and repository and generation_token:
+                    repository.complete_preview_generation(
+                        newsletter_date,
+                        generation_token,
+                        status="completed",
+                    )
+            except Exception as exc:
+                error = str(exc)
+                status_code = 500
+                if repository and generation_token:
+                    repository.complete_preview_generation(
+                        newsletter_date,
+                        generation_token,
+                        status="failed",
+                        last_error=error,
+                    )
+
+    if generation_in_progress and repository:
+        cached_newsletter = repository.get_daily_newsletter(newsletter_date)
+        if cached_newsletter is not None:
+            preview = build_preview_payload(cached_newsletter)
+            metadata = cached_newsletter.get("metadata", {})
+            result = {
+                "status": "completed",
+                "ranked_candidates": int(metadata.get("ranked_candidates", 0) or 0),
+                "selected": int(metadata.get("selected", 0) or 0),
+                "accepted_items": len(cached_newsletter.get("selected_items", []) or []),
+                "cached_preview": True,
+            }
+            generation_in_progress = False
+            generation_state = None
+            status_code = 200
 
     response = make_response(
         render_template(
@@ -309,6 +383,8 @@ def preview_newsletter():
             result=result,
             error=error,
             token=token_from_request,
+            generation_in_progress=generation_in_progress,
+            generation_state=generation_state,
         ),
         status_code,
     )

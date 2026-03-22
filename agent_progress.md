@@ -307,3 +307,11 @@ Add new entries below this line.
 - Outcome: The repo now has an integration test that exercises persona-aware ingest scoring plus delivery ranking and summary framing in one flow, and the README/admin UI now state explicitly that `persona.text` influences all three stages.
 - Open risks: Persona influence still depends on prompt wording rather than a separately versioned policy layer, so future prompt rewrites should re-run the new regression test before rollout.
 - Next recommended task: none; `T32` is complete.
+
+### 2026-03-22 - T33 added preview-generation locking and in-progress UI
+- Context: Prevented duplicate `/preview` generations by adding repository-backed generation state for the current newsletter date and surfacing an explicit in-progress response when another request already owns that work.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/repository.py`, `templates/digest_preview.html`, `tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py`
+- Tests run: `uv run pytest tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py tests/integration/test_admin_preview_renders_digest.py -q`; `uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_newsletter_telemetry_tracking_endpoints.py -q`; `uv run pytest tests/integration -q`
+- Outcome: `/preview` now returns `202` with an in-progress banner and auto-refresh when a generation is already running, only one generation can own a given newsletter date at a time, and completed cached newsletters still render immediately on later requests.
+- Open risks: A crashed process can leave a running preview marker behind until the 15-minute stale-lock timeout passes, which is intentional to avoid duplicate work but may delay retries briefly after hard failures.
+- Next recommended task: none; `T33` is complete.
