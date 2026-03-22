@@ -104,10 +104,12 @@ Notes:
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedules default to:
-  - `15 6 * * *` fetch Gmail
-  - `25 6 * * *` fetch additional sources
-  - `0 7 * * *` deliver the digest
+  - `15 16 * * *` fetch Gmail
+  - `25 16 * * *` fetch additional sources
+  - `0 17 * * *` deliver the digest
+- The generated cron file sets `CRON_TZ=America/Los_Angeles`, so those times run in Pacific time even if the server itself is on UTC.
 - Override schedules with:
+  - `--cron-timezone`
   - `--fetch-gmail-schedule`
   - `--fetch-sources-schedule`
   - `--deliver-schedule`

@@ -592,6 +592,29 @@
         "A one-shot script can generate or install the admin server and cron assets",
         "The deployment bootstrap integration test passes"
       ]
+    },
+    {
+      "id": "T25",
+      "title": "Add Pacific-time cron support and afternoon default schedules to the deployment bootstrap",
+      "status": "completed",
+      "depends_on": ["T24"],
+      "scope": [
+        "Add an explicit cron timezone option to the deployment bootstrap script",
+        "Default generated cron assets to Pacific time rather than server-local UTC",
+        "Shift the default Gmail, source, and delivery schedules to late afternoon Pacific"
+      ],
+      "artifacts": [
+        "bootstrap script cron-timezone option",
+        "updated deployment docs for Pacific-time scheduling",
+        "integration coverage for generated cron timezone and schedule defaults"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The generated cron file includes CRON_TZ=America/Los_Angeles by default",
+        "The default schedules are 16:15 PST for Gmail, 16:25 PST for sources, and 17:00 PST for delivery",
+        "The deployment bootstrap integration test passes"
+      ]
     }
   ]
 }

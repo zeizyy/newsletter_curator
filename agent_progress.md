@@ -235,3 +235,11 @@ Add new entries below this line.
 - Outcome: The repo now includes a one-shot server bootstrap script, generated deployment assets for the admin server plus fetch and delivery jobs, and updated hosted-server instructions that match the script’s install and verification flow.
 - Open risks: The one-shot install path currently targets `systemd --user` plus user crontab; non-systemd hosts or operators who need system-wide services will still need a small adaptation. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: none; `T24` is complete.
+
+### 2026-03-21 - T25 switched deployment cron defaults to Pacific-time afternoons
+- Context: Added explicit cron timezone support to the deployment bootstrap so hosted servers can stay on UTC while the generated daily jobs still run on Pacific time, then shifted the default schedules to late afternoon Pacific.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`
+- Outcome: Generated cron assets now include `CRON_TZ=America/Los_Angeles` by default, and the default schedules are `16:15` for Gmail ingest, `16:25` for source ingest, and `17:00` for delivery in Pacific time.
+- Open risks: The cron timezone line depends on a cron implementation that supports `CRON_TZ`; most modern Linux cron setups do, but very old or unusual cron environments may need a fallback to explicit UTC-converted schedules.
+- Next recommended task: none; `T25` is complete.

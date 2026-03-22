@@ -21,9 +21,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--admin-port", type=int, default=8080)
     parser.add_argument("--admin-token", default=os.getenv("CURATOR_ADMIN_TOKEN", ""))
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
-    parser.add_argument("--fetch-gmail-schedule", default="15 6 * * *")
-    parser.add_argument("--fetch-sources-schedule", default="25 6 * * *")
-    parser.add_argument("--deliver-schedule", default="0 7 * * *")
+    parser.add_argument("--cron-timezone", default="America/Los_Angeles")
+    parser.add_argument("--fetch-gmail-schedule", default="15 16 * * *")
+    parser.add_argument("--fetch-sources-schedule", default="25 16 * * *")
+    parser.add_argument("--deliver-schedule", default="0 17 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
@@ -81,6 +82,7 @@ def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoi
 
 def build_cron_file(
     *,
+    cron_timezone: str,
     fetch_gmail_schedule: str,
     fetch_sources_schedule: str,
     deliver_schedule: str,
@@ -93,6 +95,7 @@ def build_cron_file(
         [
             "SHELL=/bin/bash",
             f"PATH={os.getenv('PATH', '/usr/local/bin:/usr/bin:/bin')}",
+            f"CRON_TZ={cron_timezone}",
             "",
             f"{fetch_gmail_schedule} {quote(fetch_gmail_script)} >> {quote(log_file)} 2>&1",
             f"{fetch_sources_schedule} {quote(fetch_sources_script)} >> {quote(log_file)} 2>&1",
@@ -220,6 +223,7 @@ def main() -> None:
     write_file(
         cron_file,
         build_cron_file(
+            cron_timezone=args.cron_timezone,
             fetch_gmail_schedule=args.fetch_gmail_schedule,
             fetch_sources_schedule=args.fetch_sources_schedule,
             deliver_schedule=args.deliver_schedule,
