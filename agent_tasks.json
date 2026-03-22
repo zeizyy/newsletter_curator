@@ -849,7 +849,7 @@
     {
       "id": "T36",
       "title": "Render story timestamps in local time with Pacific fallback",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T28"],
       "scope": [
         "Format newsletter timestamps in the viewer's local timezone where possible",
@@ -913,6 +913,29 @@
         "JavaScript-blocked placeholder pages are treated as unservable content",
         "Those stories do not get summarized or delivered",
         "The paywall/placeholder exclusion test passes"
+      ]
+    },
+    {
+      "id": "T39",
+      "title": "Commit the supplied AI strategy persona as the checked-in default config",
+      "status": "pending",
+      "depends_on": ["T32"],
+      "scope": [
+        "Update the checked-in persona.text in config.yaml to the supplied AI value-capture profile",
+        "Add regression coverage that the repo default config now includes the committed persona",
+        "Commit the config change so fresh deployments inherit the intended default reader profile"
+      ],
+      "artifacts": [
+        "config.yaml",
+        "integration coverage for the checked-in default persona",
+        "harness metadata"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_config_includes_repo_persona.py",
+      "integration_test": "tests/integration/test_default_config_includes_repo_persona.py",
+      "done_when": [
+        "The checked-in config carries the supplied default persona text",
+        "A regression test locks in that default persona",
+        "The persona config change is committed to the repo"
       ]
     }
   ]

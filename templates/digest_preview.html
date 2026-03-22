@@ -92,5 +92,33 @@
       </div>
     {% endif %}
   </div>
+  <script>
+  (function () {
+    const nodes = document.querySelectorAll('.preview-frame .story-time[data-story-timestamp]');
+    if (!nodes.length) return;
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+    nodes.forEach((node) => {
+      const raw = node.getAttribute('data-story-timestamp');
+      const fallback = node.getAttribute('data-story-timestamp-fallback') || node.textContent || '';
+      if (!raw) {
+        node.textContent = fallback;
+        return;
+      }
+      const parsed = new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        node.textContent = fallback;
+        return;
+      }
+      node.textContent = formatter.format(parsed);
+      node.setAttribute('title', fallback);
+    });
+  })();
+  </script>
 </body>
 </html>

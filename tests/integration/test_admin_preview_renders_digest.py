@@ -93,4 +93,6 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Open model pricing changed" in page
     assert "Read original" in page
     assert 'target="_blank"' in page
-    assert "Mar 21, 7:30 AM UTC" in page
+    assert "Mar 21, 12:30 AM PT" in page
+    assert "data-story-timestamp" in page
+    assert "Intl.DateTimeFormat" in page

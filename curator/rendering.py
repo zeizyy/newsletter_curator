@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 import html
 import re
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 from .config import DIGEST_TEMPLATE_PATH
 
@@ -29,10 +30,13 @@ def parse_summary_block(summary_block: str) -> tuple[str, str, str]:
     return title, url, body
 
 
-def format_story_timestamp(published_at: str) -> str:
+PACIFIC_TIMEZONE = ZoneInfo("America/Los_Angeles")
+
+
+def parse_story_datetime(published_at: str) -> datetime | None:
     raw = str(published_at or "").strip()
     if not raw:
-        return ""
+        return None
 
     parsed = None
     try:
@@ -44,16 +48,32 @@ def format_story_timestamp(published_at: str) -> str:
             parsed = None
 
     if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def normalize_story_timestamp_iso(published_at: str) -> str:
+    parsed = parse_story_datetime(published_at)
+    if parsed is None:
+        return ""
+    return parsed.astimezone(UTC).isoformat()
+
+
+def format_story_timestamp(published_at: str) -> str:
+    parsed = parse_story_datetime(published_at)
+    raw = str(published_at or "").strip()
+    if parsed is None:
         return raw
 
-    month = parsed.strftime("%b")
-    day = parsed.day
-    hour = parsed.strftime("%I").lstrip("0") or "12"
-    minute = parsed.strftime("%M")
-    meridiem = parsed.strftime("%p")
-    timezone = parsed.strftime("%Z")
-    suffix = f" {timezone}" if timezone else ""
-    return f"{month} {day}, {hour}:{minute} {meridiem}{suffix}"
+    pacific = parsed.astimezone(PACIFIC_TIMEZONE)
+    month = pacific.strftime("%b")
+    day = pacific.day
+    hour = pacific.strftime("%I").lstrip("0") or "12"
+    minute = pacific.strftime("%M")
+    meridiem = pacific.strftime("%p")
+    return f"{month} {day}, {hour}:{minute} {meridiem} PT"
 
 
 def build_render_groups(summaries: list[tuple[int, dict, str]]) -> dict[str, list[dict]]:
@@ -69,6 +89,7 @@ def build_render_groups(summaries: list[tuple[int, dict, str]]) -> dict[str, lis
                 "source_name": item.get("source_name", ""),
                 "published_at": item.get("published_at", ""),
                 "display_timestamp": format_story_timestamp(str(item.get("published_at", ""))),
+                "timestamp_iso": normalize_story_timestamp_iso(str(item.get("published_at", ""))),
             }
         )
     return grouped
@@ -165,7 +186,7 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                 else ""
             )
             time_html = (
-                f'<span class="story-time" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
+                f'<span class="story-time" data-story-timestamp="{html.escape(str(entry.get("timestamp_iso", "")).strip())}" data-story-timestamp-fallback="{html.escape(timestamp)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
                 if timestamp
                 else ""
             )

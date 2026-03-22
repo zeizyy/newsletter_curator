@@ -98,6 +98,6 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     assert "Open model pricing changed and" in payload["body"]
     assert "Read original" in payload["html_body"]
     assert 'target="_blank"' in payload["html_body"]
-    assert "Mar 21, 7:30 AM UTC" in payload["html_body"]
+    assert "Mar 21, 12:30 AM PT" in payload["html_body"]
     assert "Newsletter Digest" in payload["html_body"]
     assert len(fake_openai.calls) == 3
