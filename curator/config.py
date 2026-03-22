@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         "source_quotas": {"gmail": 10, "additional_source": 5},
         "max_article_chars": 6000,
         "max_summary_workers": 5,
+        "max_ingest_summaries": 20,
     },
     "email": {
         "digest_recipients": ["zeizyy@gmail.com", "maisongting@gmail.com"],

@@ -16,13 +16,19 @@ from .content import (
     fetch_article_details,
 )
 from .dev import fake_summarize_article
+from .dev import fake_score_story_candidates
 from .gmail import (
     collect_live_gmail_links,
     collect_repository_gmail_links,
     gmail_query_cutoff,
     send_email,
 )
-from .llm import extract_summary_json, select_top_stories, summarize_article_with_llm
+from .llm import (
+    extract_summary_json,
+    score_story_candidates,
+    select_top_stories,
+    summarize_article_with_llm,
+)
 from .pipeline import process_story, run_job as run_pipeline_job
 from .rendering import group_summaries_by_category, render_digest_html
 from .repository import SQLiteRepository
@@ -71,6 +77,79 @@ def summarize_for_ingest(
         )
     headline, body = extract_summary_json(summary_raw)
     return summary_raw, headline, body
+
+
+def score_for_ingest(
+    config: dict,
+    prepared: list[dict],
+    usage_by_model: dict,
+) -> list[dict]:
+    candidates = [item for item in prepared if not item["paywall_detected"]]
+    if not candidates:
+        return []
+
+    max_ingest_summaries = max(
+        1,
+        int(config.get("limits", {}).get("max_ingest_summaries", 20) or 20),
+    )
+    persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    development_cfg = config.get("development", {})
+    scoring_model = config["openai"]["reasoning_model"]
+    scoring_items = []
+    for position, item in enumerate(candidates):
+        story = item["story"]
+        scoring_items.append(
+            {
+                "_candidate_position": position,
+                "anchor_text": story.get("anchor_text", ""),
+                "subject": story.get("subject", ""),
+                "source_name": story.get("source_name", ""),
+                "category": story.get("category", ""),
+                "context": story.get("context", ""),
+                "article_excerpt": item["article_text"][:600],
+                "url": story.get("url", ""),
+            }
+        )
+
+    if development_cfg.get("fake_inference", False):
+        ranked = fake_score_story_candidates(
+            scoring_items,
+            usage_by_model,
+            max_ingest_summaries,
+            scoring_model,
+            persona_text=persona_text,
+        )
+    else:
+        ranked = score_story_candidates(
+            scoring_items,
+            usage_by_model,
+            max_ingest_summaries,
+            scoring_model,
+            persona_text=persona_text,
+            client_factory=OpenAI,
+        )
+
+    if not ranked:
+        ranked = scoring_items[:max_ingest_summaries]
+
+    for item in prepared:
+        item["summary_selected"] = False
+        item["ingest_score"] = ""
+        item["ingest_rationale"] = ""
+
+    selected_candidates: list[dict] = []
+    seen_positions = set()
+    for ranked_item in ranked:
+        position = ranked_item.get("_candidate_position")
+        if not isinstance(position, int) or position in seen_positions:
+            continue
+        candidate = candidates[position]
+        candidate["summary_selected"] = True
+        candidate["ingest_score"] = ranked_item.get("score", "")
+        candidate["ingest_rationale"] = ranked_item.get("rationale", "")
+        selected_candidates.append(candidate)
+        seen_positions.add(position)
+    return selected_candidates
 
 
 def _prepare_ingest_snapshot_candidates(
@@ -135,6 +214,9 @@ def _prepare_ingest_snapshot_candidates(
                 "summary_raw": "",
                 "summary_headline": "",
                 "summary_body": "",
+                "summary_selected": False,
+                "ingest_score": "",
+                "ingest_rationale": "",
             }
         )
     return prepared
@@ -147,7 +229,9 @@ def _run_parallel_ingest_summaries(
     usage_by_model: dict,
     lock: Lock,
 ) -> int:
-    summarizable = [item for item in prepared if not item["paywall_detected"]]
+    summarizable = [
+        item for item in prepared if item.get("summary_selected") and not item["paywall_detected"]
+    ]
     configured_workers = max(1, int(config.get("limits", {}).get("max_summary_workers", 1) or 1))
     worker_count = min(configured_workers, len(summarizable)) if summarizable else 0
     if worker_count == 0:
@@ -186,8 +270,11 @@ def _persist_ingest_snapshots(
     for item in prepared:
         story = item["story"]
         paywall_detected = item["paywall_detected"]
+        summary_selected = bool(item.get("summary_selected"))
         summary_body = str(item["summary_body"]).strip()
-        if not paywall_detected and (not summary_body or summary_body == "No article text available."):
+        if summary_selected and not paywall_detected and (
+            not summary_body or summary_body == "No article text available."
+        ):
             stats["summary_failures"] += 1
             failures.append(
                 {
@@ -201,14 +288,27 @@ def _persist_ingest_snapshots(
         repository.upsert_article_snapshot(
             item["story_id"],
             item["article_text"],
-            metadata={"job": job_name},
+            metadata={
+                "job": job_name,
+                "summary_selected": summary_selected,
+                "ingest_score": item.get("ingest_score", ""),
+                "ingest_rationale": item.get("ingest_rationale", ""),
+            },
             paywall_detected=paywall_detected,
             paywall_reason=item["paywall_reason"],
             summary_raw=item["summary_raw"],
             summary_headline=item["summary_headline"],
             summary_body=item["summary_body"],
-            summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
-            summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
+            summary_model=(
+                config["openai"]["summary_model"]
+                if (summary_selected and not paywall_detected)
+                else ""
+            ),
+            summarized_at=(
+                datetime.now(UTC).isoformat()
+                if (summary_selected and not paywall_detected)
+                else None
+            ),
         )
         if paywall_detected:
             stats["paywall_stories"] += 1
@@ -256,6 +356,8 @@ def run_fetch_sources_job(
         "paywall_stories": 0,
         "summary_failures": 0,
         "summary_workers": 0,
+        "scored_candidates": 0,
+        "summary_candidates": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -273,6 +375,13 @@ def run_fetch_sources_job(
             stats=stats,
             failures=failures,
         )
+        selected_candidates = score_for_ingest(
+            config,
+            prepared,
+            usage_by_model,
+        )
+        stats["scored_candidates"] = len([item for item in prepared if not item["paywall_detected"]])
+        stats["summary_candidates"] = len(selected_candidates)
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
@@ -319,6 +428,8 @@ def run_fetch_sources_job(
                 "paywall_stories": stats["paywall_stories"],
                 "summary_failures": stats["summary_failures"],
                 "summary_workers": stats["summary_workers"],
+                "scored_candidates": stats["scored_candidates"],
+                "summary_candidates": stats["summary_candidates"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },
@@ -356,6 +467,8 @@ def run_fetch_gmail_job(
         "paywall_stories": 0,
         "summary_failures": 0,
         "summary_workers": 0,
+        "scored_candidates": 0,
+        "summary_candidates": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -373,6 +486,13 @@ def run_fetch_gmail_job(
             stats=stats,
             failures=failures,
         )
+        selected_candidates = score_for_ingest(
+            config,
+            prepared,
+            usage_by_model,
+        )
+        stats["scored_candidates"] = len([item for item in prepared if not item["paywall_detected"]])
+        stats["summary_candidates"] = len(selected_candidates)
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
@@ -419,6 +539,8 @@ def run_fetch_gmail_job(
                 "paywall_stories": stats["paywall_stories"],
                 "summary_failures": stats["summary_failures"],
                 "summary_workers": stats["summary_workers"],
+                "scored_candidates": stats["scored_candidates"],
+                "summary_candidates": stats["summary_candidates"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },

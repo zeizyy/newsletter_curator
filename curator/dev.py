@@ -36,6 +36,31 @@ def fake_select_top_stories(
     return ranked
 
 
+def fake_score_story_candidates(
+    items: list[dict],
+    usage_by_model: dict,
+    top_stories: int,
+    reasoning_model: str,
+    *,
+    persona_text: str = "",
+) -> list[dict]:
+    if not items:
+        return []
+
+    stats = usage_by_model.setdefault(reasoning_model, {"input": 0, "output": 0, "total": 0})
+    stats["input"] += len(items)
+    stats["output"] += min(len(items), top_stories)
+    stats["total"] += len(items) + min(len(items), top_stories)
+
+    ranked = []
+    for index, item in enumerate(items[:top_stories], start=1):
+        ranked_item = dict(item)
+        ranked_item["score"] = 10 - ((index - 1) % 5)
+        ranked_item["rationale"] = "Deterministic development ingest scoring."
+        ranked.append(ranked_item)
+    return ranked
+
+
 def fake_summarize_article(
     article_text: str,
     usage_by_model: dict,

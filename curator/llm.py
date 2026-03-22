@@ -4,7 +4,12 @@ import json
 
 from openai import OpenAI
 
-from .prompts import build_ranking_prompts, build_summary_prompts, format_links_for_llm
+from .prompts import (
+    build_ingest_scoring_prompts,
+    build_ranking_prompts,
+    build_summary_prompts,
+    format_links_for_llm,
+)
 
 
 def parse_index_list(text: str) -> list[int]:
@@ -131,6 +136,59 @@ def summarize_article_with_llm(
             stats["output"] += usage.completion_tokens or 0
             stats["total"] += usage.total_tokens or 0
     return response.choices[0].message.content.strip()
+
+
+def score_story_candidates(
+    items: list[dict],
+    usage_by_model: dict,
+    top_stories: int,
+    reasoning_model: str,
+    *,
+    persona_text: str = "",
+    client_factory=OpenAI,
+) -> list[dict]:
+    if not items:
+        return []
+
+    client = client_factory()
+    system_prompt, user_prompt = build_ingest_scoring_prompts(items, top_stories, persona_text)
+    response = client.chat.completions.create(
+        model=reasoning_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    usage = response.usage
+    if usage:
+        stats = usage_by_model.setdefault(
+            reasoning_model, {"input": 0, "output": 0, "total": 0}
+        )
+        stats["input"] += usage.prompt_tokens or 0
+        stats["output"] += usage.completion_tokens or 0
+        stats["total"] += usage.total_tokens or 0
+
+    selections = parse_selection_items(response.choices[0].message.content.strip())
+    if not selections:
+        return []
+
+    ranked: list[dict] = []
+    seen = set()
+    max_index = len(items)
+    for selection in selections:
+        idx = selection.get("index")
+        if isinstance(idx, (int, float)) and int(idx) == idx:
+            idx = int(idx)
+        if not isinstance(idx, int) or not (1 <= idx <= max_index) or idx in seen:
+            continue
+        item = dict(items[idx - 1])
+        item["score"] = selection.get("score", "")
+        item["rationale"] = selection.get("rationale", "")
+        ranked.append(item)
+        seen.add(idx)
+        if len(ranked) >= top_stories:
+            break
+    return ranked
 
 
 def extract_summary_json(summary: str) -> tuple[str, str]:

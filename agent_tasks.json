@@ -457,7 +457,7 @@
     {
       "id": "T19",
       "title": "Add a lightweight LLM scoring gate so only the top 20 articles are summarized per run",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T18"],
       "scope": [
         "Introduce a cheaper LLM scoring step over fetched article candidates",

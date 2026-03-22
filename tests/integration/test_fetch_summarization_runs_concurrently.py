@@ -14,6 +14,7 @@ def test_fetch_summarization_runs_concurrently(monkeypatch, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
             "additional_sources": {"enabled": True},
             "limits": {"max_article_chars": 120, "max_summary_workers": 2},
         },

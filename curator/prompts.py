@@ -23,6 +23,28 @@ def format_links_for_llm(items: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
+def format_ingest_candidates_for_llm(items: list[dict]) -> str:
+    lines = []
+    for idx, item in enumerate(items, start=1):
+        headline = item.get("anchor_text", "") or item.get("subject", "") or item.get("url", "")
+        source_name = item.get("source_name", "")
+        category = item.get("category", "")
+        context = item.get("context", "")
+        excerpt = item.get("article_excerpt", "")
+        lines.append(
+            "\n".join(
+                [
+                    f"[{idx}] {headline}".strip(),
+                    f"Source: {source_name}".strip(),
+                    f"Category: {category}".strip(),
+                    f"Context: {context}".strip(),
+                    f"Excerpt: {excerpt}".strip(),
+                ]
+            ).strip()
+        )
+    return "\n\n".join(lines)
+
+
 def build_ranking_prompts(items: list[dict], top_stories: int, persona_text: str = "") -> tuple[str, str]:
     system_prompt = (
         "You are a newsletter curator. Rank stories strictly by this priority order: "
@@ -73,5 +95,29 @@ def build_summary_prompts(article_text: str, persona_text: str = "") -> tuple[st
         "Keep the full body concise, but prioritize clarity in key takeaways.\n"
         "No extra text.\n\n"
         f"Article text:\n{article_text}"
+    )
+    return system_prompt, user_prompt
+
+
+def build_ingest_scoring_prompts(
+    items: list[dict],
+    top_stories: int,
+    persona_text: str = "",
+) -> tuple[str, str]:
+    system_prompt = (
+        "You are triaging fetched article candidates before expensive summarization. "
+        "Pick the highest-value stories using only the provided title, source, context, "
+        "category, and short article excerpt. Prefer concrete, strategic, technically meaningful, "
+        "or economically revealing stories. Penalize repetition, fluff, low-signal roundups, "
+        "and generic promo-style items."
+        f"{persona_clause(persona_text)}"
+    )
+    user_prompt = (
+        "Here are fetched article candidates. Select which ones deserve expensive summaries.\n"
+        f"Return ONLY a JSON array of up to {top_stories} objects in ranked order.\n"
+        "Each object must be: {\"index\": <int>, \"score\": <number>, \"rationale\": <string>}.\n"
+        "Score on a 1-10 scale based on likely value to the reader, using the persona if provided.\n"
+        "The \"index\" must refer to the numbered items below. No extra text.\n\n"
+        f"{format_ingest_candidates_for_llm(items)}"
     )
     return system_prompt, user_prompt

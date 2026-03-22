@@ -187,3 +187,11 @@ Add new entries below this line.
 - Outcome: The temporary 48-hour config file is gone, the default config remains `newer_than:1d` plus `additional_sources.hours = 24`, and the regression test locks that behavior in place.
 - Open risks: The fetch path still summarizes every ingested article; `T19` will add a lightweight LLM scoring gate so only the top 20 articles are summarized each run.
 - Next recommended task: `T19` Add a lightweight LLM scoring gate so only the top 20 articles are summarized per run.
+
+### 2026-03-21 - T19 added a lightweight scoring gate before expensive summaries
+- Context: Inserted a cheap batch LLM triage step into ingest so fetched article candidates are scored first and only the top 20 non-paywalled stories are sent to the expensive summary model.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/config.py`, `curator/prompts.py`, `curator/llm.py`, `curator/dev.py`, `curator/jobs.py`, `tests/integration/test_fetch_summarization_runs_concurrently.py`, `tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py`
+- Tests run: `uv run pytest tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py tests/integration/test_fetch_summarization_runs_concurrently.py tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py tests/integration/test_fetch_sources_job_writes_repository.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Ingest now uses the lightweight reasoning model to rank fetched article candidates, persists score-selection metadata on snapshots, summarizes at most 20 stories per run, and keeps on-demand preview fallback behavior for unsummarized stories.
+- Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but this requested task set is otherwise complete.
+- Next recommended task: none; `T18` and `T19` are complete.
