@@ -388,7 +388,7 @@
     {
       "id": "T16",
       "title": "Adopt a battle-tested URL extraction library for robust title and article metadata parsing",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T14"],
       "scope": [
         "Integrate Trafilatura as the primary extraction library for article title, metadata, and body parsing instead of relying only on custom heuristics",

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 import requests
+from trafilatura import extract
 
 
 PAYWALL_STRONG_MARKERS = {
@@ -25,6 +27,18 @@ PAYWALL_WEAK_MARKERS = {
     "join to read more": "join_to_read",
 }
 
+GENERIC_CTA_TITLES = {
+    "read more",
+    "continue reading",
+    "learn more",
+    "click here",
+    "view story",
+    "read the story",
+    "full story",
+    "details",
+    "watch now",
+}
+
 
 def normalize_whitespace(text: str) -> str:
     return " ".join(text.split())
@@ -35,6 +49,14 @@ def trim_context(text: str, max_len: int = 240) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 1].rstrip() + "…"
+
+
+def normalize_title_candidate(text: str) -> str:
+    return normalize_whitespace(text).strip(" \t\r\n-:|>.,!?").lower()
+
+
+def is_generic_title(text: str) -> bool:
+    return normalize_title_candidate(text) in GENERIC_CTA_TITLES
 
 
 def is_non_article_link(url: str, anchor_text: str, context: str) -> bool:
@@ -133,12 +155,72 @@ def extract_links_from_html(html: str) -> list[dict]:
     return links
 
 
-def fetch_article_text(
+def extract_article_details_from_html(
+    html: str,
+    *,
+    url: str = "",
+    max_article_chars: int = 6000,
+) -> dict[str, str]:
+    extracted = extract(
+        html,
+        url=url or None,
+        output_format="json",
+        with_metadata=True,
+        include_comments=False,
+        include_tables=False,
+    )
+    payload: dict[str, str] = {}
+    if extracted:
+        try:
+            payload = json.loads(extracted)
+        except json.JSONDecodeError:
+            payload = {}
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    title = normalize_whitespace(str(payload.get("title", "") or ""))
+    if not title:
+        for selector in [
+            ('meta[property="og:title"]', "content"),
+            ('meta[name="twitter:title"]', "content"),
+            ("title", None),
+        ]:
+            node = soup.select_one(selector[0])
+            if not node:
+                continue
+            if selector[1]:
+                title = normalize_whitespace(str(node.get(selector[1], "") or ""))
+            else:
+                title = normalize_whitespace(node.get_text(" ", strip=True))
+            if title:
+                break
+
+    article_text = normalize_whitespace(str(payload.get("text", "") or payload.get("raw_text", "") or ""))
+    if not article_text:
+        article = soup.find("article")
+        article_text = normalize_whitespace(
+            article.get_text(" ", strip=True) if article else soup.get_text(" ", strip=True)
+        )
+
+    excerpt = normalize_whitespace(str(payload.get("excerpt", "") or ""))
+    if not excerpt:
+        excerpt = trim_context(article_text)
+
+    return {
+        "article_text": article_text[:max_article_chars],
+        "document_title": title,
+        "document_excerpt": excerpt,
+    }
+
+
+def fetch_article_details(
     url: str,
     max_article_chars: int,
     timeout: int = 25,
     retries: int = 3,
-) -> str:
+) -> dict[str, str]:
     try:
         last_exc = None
         response = None
@@ -161,18 +243,30 @@ def fetch_article_text(
                     continue
                 raise last_exc
         if response is None:
-            return ""
-        soup = BeautifulSoup(response.text, "html.parser")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.decompose()
-
-        article = soup.find("article")
-        text = article.get_text(" ", strip=True) if article else soup.get_text(" ", strip=True)
-        text = normalize_whitespace(text)
-        return text[:max_article_chars]
+            return {"article_text": "", "document_title": "", "document_excerpt": ""}
+        return extract_article_details_from_html(
+            response.text,
+            url=url,
+            max_article_chars=max_article_chars,
+        )
     except requests.RequestException as exc:
         print(f"Failed to fetch article: {url} ({exc})")
-        return ""
+        return {"article_text": "", "document_title": "", "document_excerpt": ""}
+
+
+def fetch_article_text(
+    url: str,
+    max_article_chars: int,
+    timeout: int = 25,
+    retries: int = 3,
+) -> str:
+    details = fetch_article_details(
+        url,
+        max_article_chars=max_article_chars,
+        timeout=timeout,
+        retries=retries,
+    )
+    return details.get("article_text", "")
 
 
 def detect_paywalled_article(article_text: str, url: str = "") -> tuple[bool, str]:
@@ -208,3 +302,18 @@ def dedupe_links_by_url(items: list[dict]) -> list[dict]:
         seen.add(url)
         deduped.append(item)
     return deduped
+
+
+def enrich_story_with_article_metadata(story: dict, article_details: dict[str, str]) -> dict:
+    enriched = dict(story)
+    document_title = normalize_whitespace(str(article_details.get("document_title", "") or ""))
+    document_excerpt = normalize_whitespace(str(article_details.get("document_excerpt", "") or ""))
+    anchor_text = normalize_whitespace(str(enriched.get("anchor_text", "") or ""))
+
+    if document_title and (not anchor_text or is_generic_title(anchor_text)):
+        enriched["anchor_text"] = document_title
+    if document_excerpt and (
+        not str(enriched.get("context", "")).strip() or is_generic_title(anchor_text)
+    ):
+        enriched["context"] = trim_context(document_excerpt)
+    return enriched

@@ -163,3 +163,11 @@ Add new entries below this line.
 - Outcome: Fetch jobs now honor `limits.max_summary_workers`, summary generation runs concurrently up to the configured cap, repository writes remain ordered, and the new integration test proves the summary stage overlaps work.
 - Open risks: Title and document metadata extraction still rely on custom parsing in places; `T16` will switch the ingest path to a Trafilatura-backed extractor. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: `T16` Adopt a battle-tested URL extraction library for robust title and article metadata parsing.
+
+### 2026-03-22 - T16 adopted Trafilatura for ingest-time document metadata extraction
+- Context: Replaced the brittle default article fetch parser with a Trafilatura-backed extractor so ingest can capture document titles and body text, then use those titles to overwrite generic CTA anchors like `Read More`.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/content.py`, `curator/jobs.py`, `pyproject.toml`, `uv.lock`, `tests/integration/test_fetch_sources_job_writes_repository.py`, `tests/integration/test_title_extraction_avoids_generic_read_more_titles.py`
+- Tests run: `uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py tests/integration/test_fetch_summarization_runs_concurrently.py tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py tests/integration/test_admin_story_explorer_lists_repository_stories.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Default ingest now extracts article body and metadata via Trafilatura, generic newsletter CTA anchors are replaced with document titles when better metadata is available, and the story explorer regression test verifies the bad `Read More` titles are gone.
+- Open risks: The repository still carries a growing migration chain; `T17` will collapse schema bootstrap into a single rebuilt baseline. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: `T17` Collapse repository migrations into a rebuilt baseline schema.

@@ -62,7 +62,7 @@ def test_fetch_sources_job_writes_repository(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr(fetch_sources, "load_config", lambda: original_load_config(str(config_path)))
     monkeypatch.setattr("curator.jobs.collect_additional_source_links", fake_source_fetcher)
-    monkeypatch.setattr("curator.jobs.fetch_article_text", fake_article_fetcher)
+    monkeypatch.setattr("curator.jobs.fetch_article_details", fake_article_fetcher)
 
     config = original_load_config(str(config_path))
     first_result = run_fetch_sources_job(config)

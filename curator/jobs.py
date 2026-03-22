@@ -9,7 +9,12 @@ from threading import Lock
 from openai import OpenAI
 
 from .config import BASE_DIR
-from .content import detect_paywalled_article, extract_links_from_html, fetch_article_text
+from .content import (
+    detect_paywalled_article,
+    enrich_story_with_article_metadata,
+    extract_links_from_html,
+    fetch_article_details,
+)
 from .dev import fake_summarize_article
 from .gmail import (
     collect_live_gmail_links,
@@ -80,32 +85,49 @@ def _prepare_ingest_snapshot_candidates(
 ) -> list[dict]:
     prepared: list[dict] = []
     for story in stories:
-        story_id = repository.upsert_story(story, ingestion_run_id=run_id)
+        story_record = dict(story)
+        story_id = repository.upsert_story(story_record, ingestion_run_id=run_id)
         stats["stories_persisted"] += 1
 
-        article_text = str(story.get("article_text", "") or "").strip()
+        article_text = str(story_record.get("article_text", "") or "").strip()
+        article_details = {
+            "article_text": article_text,
+            "document_title": str(story_record.get("anchor_text", "") or "").strip(),
+            "document_excerpt": str(story_record.get("context", "") or "").strip(),
+        }
         if not article_text:
-            article_text = article_fetcher(
+            fetched = article_fetcher(
                 story.get("url", ""),
                 config["limits"]["max_article_chars"],
             )
+            if isinstance(fetched, dict):
+                article_details = {
+                    "article_text": str(fetched.get("article_text", "") or "").strip(),
+                    "document_title": str(fetched.get("document_title", "") or "").strip(),
+                    "document_excerpt": str(fetched.get("document_excerpt", "") or "").strip(),
+                }
+            else:
+                article_details["article_text"] = str(fetched or "").strip()
+            article_text = article_details["article_text"]
         if not article_text:
             stats["article_failures"] += 1
             failures.append(
                 {
-                    "url": story.get("url", ""),
-                    "source_name": story.get("source_name", ""),
+                    "url": story_record.get("url", ""),
+                    "source_name": story_record.get("source_name", ""),
                     "reason": "empty_article_text",
                 }
             )
             continue
 
+        story_record = enrich_story_with_article_metadata(story_record, article_details)
+        story_id = repository.upsert_story(story_record, ingestion_run_id=run_id)
         paywall_detected, paywall_reason = detect_paywalled_article(
-            article_text, story.get("url", "")
+            article_text, story_record.get("url", "")
         )
         prepared.append(
             {
-                "story": story,
+                "story": story_record,
                 "story_id": story_id,
                 "article_text": article_text,
                 "paywall_detected": paywall_detected,
@@ -221,7 +243,7 @@ def run_fetch_sources_job(
             source_fetcher = load_canned_source_links
         else:
             source_fetcher = collect_additional_source_links
-    article_fetcher = article_fetcher or fetch_article_text
+    article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
     run_id = repository.create_ingestion_run("additional_source", metadata={"job": "fetch_sources"})
     stats = {
@@ -314,7 +336,7 @@ def run_fetch_gmail_job(
     collect_gmail_links_fn=None,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
-    article_fetcher = article_fetcher or fetch_article_text
+    article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
     collect_gmail_links_fn = collect_gmail_links_fn or (
         lambda service, config: collect_live_gmail_links(
