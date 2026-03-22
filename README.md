@@ -60,54 +60,90 @@ First Gmail-authenticated run will open a browser for Google OAuth and create `s
 
 If you change Gmail scopes later, delete `secrets/token.json` and re-run to re-auth.
 
-## Deploy As Daily Cronjobs (Server)
-Use this when hosting the curator on a server. The intended production flow is two ingest jobs plus one delivery job.
+## Deploy On A Server
+Use this when hosting the curator on a server. The intended production flow is:
+- a long-running admin server for config and preview
+- daily `fetch_gmail.py`
+- daily `fetch_sources.py`
+- daily `deliver_digest.py`
 
-1) Prepare runtime once:
+### One-Time Bootstrap
+The repo includes a one-shot bootstrap script that generates:
+- a locked-down env file used by all jobs
+- wrapper scripts for the admin server and the three daily jobs
+- a `systemd --user` service for the admin server
+- a cron file for fetch and delivery scheduling
+
+Run once on the server:
 ```bash
 cd /root/newsletter_curator
 uv sync
+OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
+  --repo-dir /root/newsletter_curator \
+  --admin-host 0.0.0.0 \
+  --admin-port 8080 \
+  --admin-token 'choose-a-long-random-token' \
+  --install-systemd-user \
+  --install-crontab
 ```
 
-2) Ensure required runtime files/env are present:
-- `secrets/credentials.json`
-- `secrets/token.json` (generate once with an interactive run if needed)
-- `OPENAI_API_KEY` available to cron (via shell profile or explicit cron env line)
+What this writes by default:
+- `deploy/generated/newsletter-curator.env`
+- `deploy/generated/start_admin_server.sh`
+- `deploy/generated/run_fetch_gmail.sh`
+- `deploy/generated/run_fetch_sources.sh`
+- `deploy/generated/run_deliver_digest.sh`
+- `deploy/generated/newsletter_curator.cron`
+- `deploy/generated/newsletter-curator-admin.service`
 
-3) Test manual runs:
-```bash
-cd /root/newsletter_curator
-OPENAI_API_KEY='your_key' uv run python fetch_gmail.py
-OPENAI_API_KEY='your_key' uv run python fetch_sources.py
-OPENAI_API_KEY='your_key' uv run python deliver_digest.py
-```
-
-4) Create cron entries (example timings):
-```bash
-crontab -e
-```
-Add:
-```cron
-15 6 * * * cd /root/newsletter_curator && OPENAI_API_KEY='your_key' /root/.local/bin/uv run python fetch_gmail.py >> /root/newsletter_curator/cron.log 2>&1
-25 6 * * * cd /root/newsletter_curator && OPENAI_API_KEY='your_key' /root/.local/bin/uv run python fetch_sources.py >> /root/newsletter_curator/cron.log 2>&1
-0 7 * * * cd /root/newsletter_curator && OPENAI_API_KEY='your_key' /root/.local/bin/uv run python deliver_digest.py >> /root/newsletter_curator/cron.log 2>&1
-```
-
-5) Verify cron is installed:
-```bash
-crontab -l
-```
-
-6) Check logs after scheduled run:
-```bash
-tail -n 200 /root/newsletter_curator/cron.log
-```
+What the script installs when flags are passed:
+- `--install-systemd-user`: copies the generated admin service into `~/.config/systemd/user/`, reloads `systemd --user`, and enables it immediately
+- `--install-crontab`: installs the generated cron file as the current user’s crontab
 
 Notes:
-- Cron uses the server timezone. Set it explicitly on the server if needed.
-- Use absolute paths in cron commands.
-- If your API key rotates, update the cron entry or env source accordingly.
-- `deliver_digest.py` will fail fast if there is no delivery-ready repository data for any required source type.
+- The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
+- The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
+- The generated cron schedules default to:
+  - `15 6 * * *` fetch Gmail
+  - `25 6 * * *` fetch additional sources
+  - `0 7 * * *` deliver the digest
+- Override schedules with:
+  - `--fetch-gmail-schedule`
+  - `--fetch-sources-schedule`
+  - `--deliver-schedule`
+
+### Server Prerequisites
+Before running the bootstrap:
+- place Gmail OAuth credentials at `secrets/credentials.json`
+- create `secrets/token.json` once with an interactive Gmail-authenticated run if needed
+- ensure `uv` is installed and on `PATH`
+
+### Verification
+After bootstrap:
+```bash
+systemctl --user status newsletter-curator-admin
+crontab -l
+tail -n 200 /root/newsletter_curator/deploy/generated/cron.log
+```
+
+Open the admin UI:
+```text
+http://YOUR_SERVER:8080/?token=YOUR_ADMIN_TOKEN
+```
+
+### Dry-Run Asset Generation
+If you want to inspect the generated assets before installing anything:
+```bash
+cd /root/newsletter_curator
+OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
+  --repo-dir /root/newsletter_curator \
+  --output-dir /root/newsletter_curator/deploy/generated-preview \
+  --admin-host 0.0.0.0 \
+  --admin-port 8080 \
+  --admin-token 'choose-a-long-random-token'
+```
+
+This generates all deploy files without touching `systemd` or `crontab`.
 
 ## Web Config UI
 Run a local admin UI to edit `config.yaml`:

@@ -227,3 +227,11 @@ Add new entries below this line.
 - Outcome: The digest now surfaces source and date metadata on each card, highlights the why-this-matters section more clearly, adds a stronger hero and section hierarchy, and gives the preview page clearer status and story-count visibility while reusing the same improved HTML.
 - Open risks: The visual treatment now relies on additional CSS inside the email template, so very old email clients may collapse some of the richer spacing or pill styles. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: `T24` Add one-shot deployment instructions and server bootstrap script.
+
+### 2026-03-21 - T24 added one-shot deployment bootstrap assets
+- Context: Replaced the old manual cron-only deployment notes with a generated bootstrap that can produce and optionally install the admin server service, env file, runner scripts, and daily cron jobs in one pass.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `.gitignore`, `README.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run python scripts/bootstrap_server.py --help`; `uv run pytest tests/integration -q`
+- Outcome: The repo now includes a one-shot server bootstrap script, generated deployment assets for the admin server plus fetch and delivery jobs, and updated hosted-server instructions that match the script’s install and verification flow.
+- Open risks: The one-shot install path currently targets `systemd --user` plus user crontab; non-systemd hosts or operators who need system-wide services will still need a small adaptation. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: none; `T24` is complete.

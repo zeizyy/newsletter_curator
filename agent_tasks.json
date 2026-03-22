@@ -573,7 +573,7 @@
     {
       "id": "T24",
       "title": "Add one-shot deployment instructions and server bootstrap script",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T23"],
       "scope": [
         "Document how to deploy the curator on a server with the admin app and daily cron jobs",
