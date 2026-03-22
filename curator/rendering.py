@@ -2,15 +2,29 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import UTC, datetime
 
 from .config import DIGEST_TEMPLATE_PATH
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
     grouped = {}
-    for _, item, summary in summaries:
+    for ordinal, item, summary in summaries:
         category = item.get("category", "") or "Uncategorized"
-        grouped.setdefault(category, []).append(summary)
+        title, url, body = parse_summary_block(summary)
+        grouped.setdefault(category, []).append(
+            {
+                "ordinal": ordinal,
+                "summary_block": summary,
+                "title": title,
+                "url": url,
+                "body": body,
+                "source_name": str(item.get("source_name", "")).strip(),
+                "source_type": str(item.get("source_type", "")).strip(),
+                "published_at": str(item.get("published_at", "")).strip(),
+                "score": item.get("score", ""),
+            }
+        )
     return grouped
 
 
@@ -72,10 +86,19 @@ def render_summary_body_html(body: str) -> str:
             heading_text = (
                 markdown_heading.group(2) if markdown_heading else section_heading.group(1)
             )
+            heading_class = "summary-heading"
+            heading_style = (
+                "font-size:15px;font-weight:700;line-height:1.35;color:#152238;margin:14px 0 7px 0;"
+            )
+            if "why this matters" in heading_text.lower():
+                heading_class += " summary-heading-emphasis"
+                heading_style = (
+                    "font-size:12px;font-weight:800;line-height:1.35;color:#0c5f5b;margin:14px 0 7px 0;"
+                    "letter-spacing:0.08em;text-transform:uppercase;"
+                )
             blocks.append(
                 (
-                    '<div class="summary-heading" style="font-size:15px;font-weight:700;line-height:1.35;'
-                    'color:#152238;margin:12px 0 6px 0;">'
+                    f'<div class="{heading_class}" style="{heading_style}">'
                     f"{html.escape(heading_text)}"
                     "</div>"
                 )
@@ -94,33 +117,77 @@ def render_summary_body_html(body: str) -> str:
     return "".join(blocks) or "No summary."
 
 
+def format_story_date(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).strftime("%b %d")
+    except ValueError:
+        return cleaned[:10]
+
+
 def render_digest_html(grouped: dict[str, list[str]]) -> str:
+    total_story_count = sum(len(entries) for entries in grouped.values())
     category_sections = []
     for category, entries in grouped.items():
         cards = []
-        for summary_block in entries:
-            title, url, body = parse_summary_block(summary_block)
-            body_html = render_summary_body_html(body)
+        for entry in entries:
+            body_html = render_summary_body_html(entry["body"])
+            source_name = entry.get("source_name", "")
+            published_label = format_story_date(entry.get("published_at", ""))
+            meta_segments = []
+            if source_name:
+                meta_segments.append(
+                    '<span class="story-source-pill" style="display:inline-flex;align-items:center;gap:6px;'
+                    'background:#eef4fb;border:1px solid #d4e0ee;border-radius:999px;padding:4px 10px;'
+                    'font-size:12px;font-weight:700;color:#2c4f73;">'
+                    f"{html.escape(source_name)}"
+                    "</span>"
+                )
+            if published_label:
+                meta_segments.append(
+                    '<span class="story-date-pill" style="display:inline-flex;align-items:center;gap:6px;'
+                    'background:#f7efe0;border:1px solid #ead7b2;border-radius:999px;padding:4px 10px;'
+                    'font-size:12px;font-weight:700;color:#7a5a19;">'
+                    f"{html.escape(published_label)}"
+                    "</span>"
+                )
             link_html = (
-                f'<a href="{html.escape(url)}" class="story-link" style="color:#0b57d0;text-decoration:none;">Read article</a>'
-                if url
+                f'<a href="{html.escape(entry["url"])}" class="story-link" style="display:inline-flex;align-items:center;gap:8px;'
+                'color:#0b57d0;text-decoration:none;">Read article<span aria-hidden="true">→</span></a>'
+                if entry["url"]
                 else ""
             )
             cards.append(
                 (
-                    '<div class="story-card" style="background:#ffffff;border:1px solid #e6ecf5;border-radius:12px;'
-                    'padding:16px;margin:0 0 12px 0;">'
-                    f'<div class="story-title" style="font-size:20px;font-weight:700;line-height:1.35;color:#152238;margin:0 0 8px 0;">{html.escape(title)}</div>'
-                    f'<div class="story-body" style="font-size:14px;line-height:1.6;color:#25364d;margin:0 0 10px 0;">{body_html}</div>'
-                    f'<div class="story-cta" style="font-size:14px;font-weight:600;">{link_html}</div>'
+                    '<div class="story-card" style="background:#ffffff;border:1px solid #dce7f2;border-radius:18px;'
+                    'padding:20px 20px 18px 20px;margin:0 0 14px 0;box-shadow:0 10px 30px rgba(26,50,87,0.08);">'
+                    '<div class="story-card-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;'
+                    'margin:0 0 12px 0;flex-wrap:wrap;">'
+                    '<div class="story-meta-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+                    f'<div class="story-index" style="width:28px;height:28px;border-radius:999px;background:#12345b;color:#ffffff;'
+                    'display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">'
+                    f"{entry['ordinal']}</div>"
+                    f"{''.join(meta_segments)}"
+                    '</div>'
+                    '</div>'
+                    f'<div class="story-title" style="font-size:24px;font-weight:760;line-height:1.22;color:#152238;margin:0 0 10px 0;">{html.escape(entry["title"])}</div>'
+                    f'<div class="story-body" style="font-size:15px;line-height:1.72;color:#25364d;margin:0 0 14px 0;">{body_html}</div>'
+                    f'<div class="story-cta" style="font-size:14px;font-weight:700;">{link_html}</div>'
                     "</div>"
                 )
             )
         category_sections.append(
             (
-                '<div class="category-section" style="margin:0 0 20px 0;">'
-                f'<div class="category-title" style="font-size:22px;font-weight:700;line-height:1.3;color:#243b5a;'
-                f'margin:0 0 10px 0;">{html.escape(category)}</div>'
+                '<div class="category-section" style="margin:0 0 26px 0;">'
+                '<div class="category-kicker" style="font-size:11px;font-weight:800;letter-spacing:0.12em;'
+                'text-transform:uppercase;color:#6c84a5;margin:0 0 6px 0;">Section</div>'
+                f'<div class="category-title" style="font-size:26px;font-weight:760;line-height:1.18;color:#243b5a;'
+                f'margin:0 0 12px 0;">{html.escape(category)}</div>'
                 f"{''.join(cards)}"
                 "</div>"
             )
@@ -128,4 +195,7 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
 
     with DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
-    return template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
+    return (
+        template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
+        .replace("{{STORY_COUNT}}", str(total_story_count))
+    )

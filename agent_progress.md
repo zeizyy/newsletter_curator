@@ -219,3 +219,11 @@ Add new entries below this line.
 - Outcome: A completed digest is now persisted in SQLite with the rendered text/html and selected story metadata, `/preview` reuses the stored digest for the current day, and the email delivery path sends the stored digest when it already exists for that day.
 - Open risks: The daily digest key currently uses the UTC date with no configurable timezone override. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: `T23` Improve the newsletter UX across preview and delivered output.
+
+### 2026-03-21 - T23 upgraded the shared newsletter UX
+- Context: Improved the shared digest presentation rather than only the preview wrapper, so both the emailed newsletter and the preview frame now have stronger hierarchy, cleaner metadata treatment, and more readable summary sections.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/rendering.py`, `curator/pipeline.py`, `templates/digest.html`, `templates/digest_preview.html`, `tests/integration/test_newsletter_rendering_ux_improvements.py`
+- Tests run: `uv run pytest tests/integration/test_newsletter_rendering_ux_improvements.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py -q`; `uv run pytest tests/integration -q`
+- Outcome: The digest now surfaces source and date metadata on each card, highlights the why-this-matters section more clearly, adds a stronger hero and section hierarchy, and gives the preview page clearer status and story-count visibility while reusing the same improved HTML.
+- Open risks: The visual treatment now relies on additional CSS inside the email template, so very old email clients may collapse some of the richer spacing or pill styles. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: `T24` Add one-shot deployment instructions and server bootstrap script.

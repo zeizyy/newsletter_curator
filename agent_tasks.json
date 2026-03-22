@@ -550,7 +550,7 @@
     {
       "id": "T23",
       "title": "Improve the newsletter UX across preview and delivered output",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T22"],
       "scope": [
         "Refine newsletter information hierarchy, typography, spacing, and section treatment for both web preview and email HTML",
@@ -568,6 +568,29 @@
         "The newsletter preview and delivered HTML share the improved rendering treatment",
         "Story summaries and metadata are more readable and scannable",
         "The newsletter UX regression test passes"
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Add one-shot deployment instructions and server bootstrap script",
+      "status": "pending",
+      "depends_on": ["T23"],
+      "scope": [
+        "Document how to deploy the curator on a server with the admin app and daily cron jobs",
+        "Provide a bootstrap script that can be run once to install dependencies, write service or cron assets, and print next-step verification commands",
+        "Cover admin server startup plus scheduled fetch and delivery jobs with minimal manual follow-up"
+      ],
+      "artifacts": [
+        "server deployment guide",
+        "one-shot bootstrap or install script",
+        "verification instructions for admin server and daily cron execution"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The repo includes concrete deployment instructions for a hosted server",
+        "A one-shot script can generate or install the admin server and cron assets",
+        "The deployment bootstrap integration test passes"
       ]
     }
   ]

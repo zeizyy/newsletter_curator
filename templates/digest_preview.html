@@ -5,22 +5,44 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Newsletter Preview</title>
   <style>
-    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
-    .wrap { max-width: 1080px; margin: 0 auto; }
-    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
-    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-    .muted { font-size: 12px; color: #6b778c; }
-    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
-    .preview-frame { background: #ffffff; border: 1px solid #e6ecf5; border-radius: 12px; padding: 12px; }
-    pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    :root {
+      --ink: #152238;
+      --muted: #61748d;
+      --line: #d7e1ec;
+      --surface: #ffffff;
+      --surface-soft: #f4f8fb;
+      --accent: #0b57d0;
+      --accent-soft: #edf3ff;
+      --ok-bg: #e6f4ec;
+      --ok-ink: #17633a;
+      --navy: #0d1a2d;
+    }
+    body { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; margin: 0; background: linear-gradient(180deg, #0d1a2d 0, #0d1a2d 220px, #eef3f8 220px, #eef3f8 100%); color: var(--ink); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+    .hero { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-bottom:18px; color:#eff4ff; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 16px; box-shadow: 0 14px 36px rgba(18,38,68,0.08); }
+    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+    .muted { font-size: 12px; color: var(--muted); }
+    .button-link { display: inline-block; background: var(--accent-soft); color: var(--accent); border: 1px solid #cbd9f4; border-radius: 10px; padding: 10px 14px; font-size: 14px; text-decoration: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 700; }
+    .preview-frame { background: var(--surface-soft); border: 1px solid #dce6f1; border-radius: 18px; padding: 18px; overflow: hidden; }
+    .status-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+    .pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:800; letter-spacing:0.02em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .pill-ok { background: var(--ok-bg); color: var(--ok-ink); }
+    .pill-note { background: #edf3ff; color: #244978; }
+    .stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-top:14px; }
+    .stat { background: var(--surface-soft); border: 1px solid #e1e9f2; border-radius: 14px; padding: 12px 14px; }
+    .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight:700; }
+    .stat-value { margin-top: 6px; font-size: 24px; font-weight: 760; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+    <div class="hero">
       <div>
-        <h1 style="margin:0 0 6px 0;">Newsletter Preview</h1>
-        <div class="muted">Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code></div>
+        <div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;font-weight:800;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Local Preview</div>
+        <h1 style="margin:6px 0 8px 0;font-size:54px;line-height:0.96;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Newsletter Preview</h1>
+        <div style="font-size:14px;color:rgba(239,244,255,0.78);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Repository-backed digest rendering from <code>{{ config_path }}</code></div>
       </div>
       <div style="display:flex; gap:10px;">
         <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
@@ -34,11 +56,30 @@
 
     {% if preview %}
       <div class="card">
-        <div style="font-size:13px; color:#42526e; margin-bottom:6px;">Subject</div>
-        <div style="font-size:22px; font-weight:700; color:#152238;">{{ preview.subject }}</div>
+        <div style="font-size:13px; color:#42526e; margin-bottom:6px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">Subject</div>
+        <div style="font-size:22px; font-weight:700; color:#152238; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">{{ preview.subject }}</div>
         {% if result %}
-          <div class="muted" style="margin-top:8px;">
-            ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}
+          <div class="status-row">
+            <span class="pill {% if result.cached_newsletter %}pill-ok{% else %}pill-note{% endif %}">
+              {% if result.cached_newsletter %}Stored Daily Newsletter{% else %}Freshly Generated{% endif %}
+            </span>
+            {% if result.newsletter_date %}
+              <span class="pill pill-note">{{ result.newsletter_date }}</span>
+            {% endif %}
+          </div>
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-label">Ranked</div>
+              <div class="stat-value">{{ result.ranked_candidates }}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Selected</div>
+              <div class="stat-value">{{ result.selected }}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Accepted</div>
+              <div class="stat-value">{{ result.accepted_items }}</div>
+            </div>
           </div>
         {% endif %}
       </div>
