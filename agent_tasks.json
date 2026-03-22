@@ -476,6 +476,29 @@
         "At most 20 articles are summarized per ingest run",
         "The ingest score-gating integration test passes"
       ]
+    },
+    {
+      "id": "T20",
+      "title": "Persist only servable summarized articles in the repository",
+      "status": "completed",
+      "depends_on": ["T19"],
+      "scope": [
+        "Write only scored-and-summarized articles into the repository",
+        "Avoid persisting lower-ranked unsummarized candidates so the repository contains only servable content",
+        "Update ingest stats and tests to reflect summarized-only persistence"
+      ],
+      "artifacts": [
+        "servable-only ingest persistence path",
+        "updated repository write semantics",
+        "integration coverage for top-20-only persistence"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py",
+      "integration_test": "tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py",
+      "done_when": [
+        "Only articles with stored LLM summaries are written into the repository",
+        "Lower-ranked unsummarized candidates are not persisted as stories or snapshots",
+        "The summarized-only persistence integration test passes"
+      ]
     }
   ]
 }

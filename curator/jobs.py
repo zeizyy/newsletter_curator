@@ -156,8 +156,6 @@ def _prepare_ingest_snapshot_candidates(
     stories: list[dict],
     *,
     config: dict,
-    repository: SQLiteRepository,
-    run_id: int,
     article_fetcher,
     stats: dict,
     failures: list[dict],
@@ -165,9 +163,6 @@ def _prepare_ingest_snapshot_candidates(
     prepared: list[dict] = []
     for story in stories:
         story_record = dict(story)
-        story_id = repository.upsert_story(story_record, ingestion_run_id=run_id)
-        stats["stories_persisted"] += 1
-
         article_text = str(story_record.get("article_text", "") or "").strip()
         article_details = {
             "article_text": article_text,
@@ -200,14 +195,14 @@ def _prepare_ingest_snapshot_candidates(
             continue
 
         story_record = enrich_story_with_article_metadata(story_record, article_details)
-        story_id = repository.upsert_story(story_record, ingestion_run_id=run_id)
         paywall_detected, paywall_reason = detect_paywalled_article(
             article_text, story_record.get("url", "")
         )
+        if paywall_detected:
+            stats["paywall_stories"] += 1
         prepared.append(
             {
                 "story": story_record,
-                "story_id": story_id,
                 "article_text": article_text,
                 "paywall_detected": paywall_detected,
                 "paywall_reason": paywall_reason,
@@ -263,6 +258,7 @@ def _persist_ingest_snapshots(
     *,
     config: dict,
     repository: SQLiteRepository,
+    run_id: int,
     job_name: str,
     stats: dict,
     failures: list[dict],
@@ -272,6 +268,8 @@ def _persist_ingest_snapshots(
         paywall_detected = item["paywall_detected"]
         summary_selected = bool(item.get("summary_selected"))
         summary_body = str(item["summary_body"]).strip()
+        if paywall_detected or not summary_selected:
+            continue
         if summary_selected and not paywall_detected and (
             not summary_body or summary_body == "No article text available."
         ):
@@ -285,8 +283,10 @@ def _persist_ingest_snapshots(
             )
             continue
 
+        story_id = repository.upsert_story(story, ingestion_run_id=run_id)
+        stats["stories_persisted"] += 1
         repository.upsert_article_snapshot(
-            item["story_id"],
+            story_id,
             item["article_text"],
             metadata={
                 "job": job_name,
@@ -310,8 +310,6 @@ def _persist_ingest_snapshots(
                 else None
             ),
         )
-        if paywall_detected:
-            stats["paywall_stories"] += 1
         stats["snapshots_persisted"] += 1
 
 
@@ -369,8 +367,6 @@ def run_fetch_sources_job(
         prepared = _prepare_ingest_snapshot_candidates(
             stories,
             config=config,
-            repository=repository,
-            run_id=run_id,
             article_fetcher=article_fetcher,
             stats=stats,
             failures=failures,
@@ -392,6 +388,7 @@ def run_fetch_sources_job(
             prepared,
             config=config,
             repository=repository,
+            run_id=run_id,
             job_name="fetch_sources",
             stats=stats,
             failures=failures,
@@ -480,8 +477,6 @@ def run_fetch_gmail_job(
         prepared = _prepare_ingest_snapshot_candidates(
             stories,
             config=config,
-            repository=repository,
-            run_id=run_id,
             article_fetcher=article_fetcher,
             stats=stats,
             failures=failures,
@@ -503,6 +498,7 @@ def run_fetch_gmail_job(
             prepared,
             config=config,
             repository=repository,
+            run_id=run_id,
             job_name="fetch_gmail",
             stats=stats,
             failures=failures,

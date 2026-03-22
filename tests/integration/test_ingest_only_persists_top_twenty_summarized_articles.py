@@ -6,7 +6,7 @@ from tests.fakes import FakeArticleFetcher, FakeSourceFetcher
 from tests.helpers import write_temp_config
 
 
-def test_ingest_only_summarizes_top_twenty_scored_articles(tmp_path):
+def test_ingest_only_persists_top_twenty_summarized_articles(tmp_path):
     config_path = write_temp_config(
         tmp_path,
         overrides={
@@ -15,7 +15,7 @@ def test_ingest_only_summarizes_top_twenty_scored_articles(tmp_path):
             "additional_sources": {"enabled": True},
             "limits": {
                 "max_article_chars": 200,
-                "max_summary_workers": 4,
+                "max_summary_workers": 3,
                 "max_ingest_summaries": 20,
             },
         },
@@ -54,15 +54,13 @@ def test_ingest_only_summarizes_top_twenty_scored_articles(tmp_path):
     )
     repository = get_repository_from_config(config)
     stories = repository.list_stories(source_type="additional_source")
+    persisted_urls = {story["url"] for story in stories}
 
     assert result["status"] == "completed"
     assert result["stories_seen"] == 25
-    assert result["scored_candidates"] == 25
-    assert result["summary_candidates"] == 20
-    assert result["summary_workers"] == 4
     assert result["stories_persisted"] == 20
     assert result["snapshots_persisted"] == 20
     assert len(stories) == 20
+    assert "https://example.com/ai/story-21" not in persisted_urls
+    assert "https://example.com/ai/story-25" not in persisted_urls
     assert all(str(story.get("summary_body", "")).strip() for story in stories)
-    assert result["usage_by_model"][config["openai"]["reasoning_model"]]["total"] > 0
-    assert result["usage_by_model"][config["openai"]["summary_model"]]["total"] == 40

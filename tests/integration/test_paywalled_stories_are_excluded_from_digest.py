@@ -79,14 +79,12 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
     preview_result = main.preview_job(config)
 
-    paywalled_story = next(story for story in stories if story["source_name"] == "Locked Wire")
-
     assert fetch_result["status"] == "completed"
     assert fetch_result["paywall_stories"] == 1
-    assert paywalled_story["paywall_detected"] == 1
-    assert paywalled_story["paywall_reason"] == "subscribe_to_continue"
+    assert len(stories) == 1
     assert len(visible_stories) == 1
     assert visible_stories[0]["source_name"] == "Macro Wire"
+    assert all(story["source_name"] != "Locked Wire" for story in stories)
 
     assert preview_result["status"] == "completed"
     assert preview_result["accepted_items"] == 1

@@ -195,3 +195,11 @@ Add new entries below this line.
 - Outcome: Ingest now uses the lightweight reasoning model to rank fetched article candidates, persists score-selection metadata on snapshots, summarizes at most 20 stories per run, and keeps on-demand preview fallback behavior for unsummarized stories.
 - Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but this requested task set is otherwise complete.
 - Next recommended task: none; `T18` and `T19` are complete.
+
+### 2026-03-21 - T20 restricted repository writes to servable summarized articles only
+- Context: Tightened the T19 ingest contract so lower-ranked or paywalled candidates never land in SQLite; only stories that were selected for summarization and successfully summarized are persisted.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/jobs.py`, `tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py`, `tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py`, `tests/integration/test_paywalled_stories_are_excluded_from_digest.py`
+- Tests run: `uv run pytest tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py tests/integration/test_fetch_summarization_runs_concurrently.py tests/integration/test_fetch_sources_job_writes_repository.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Ingest now writes only servable summarized winners into the repository, repository counts reflect top-20-only persistence, and paywalled/unsummarized candidates remain completely absent from storage.
+- Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the requested repository-storage contract is now enforced.
+- Next recommended task: none; `T20` is complete.
