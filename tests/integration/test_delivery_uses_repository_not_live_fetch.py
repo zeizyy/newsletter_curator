@@ -96,5 +96,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     assert payload["to"] == "repository@example.com"
     assert "Rates reset changes software valuations" in payload["body"]
     assert "Open model pricing changed and" in payload["body"]
-    assert "Read article" in payload["html_body"]
+    assert "Read signal" in payload["html_body"]
+    assert "Mar 21, 7:30 AM UTC" in payload["html_body"]
+    assert "Market Tape" in payload["html_body"]
     assert len(fake_openai.calls) == 3

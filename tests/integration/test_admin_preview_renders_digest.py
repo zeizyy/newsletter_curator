@@ -81,6 +81,8 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     page = response.get_data(as_text=True)
     assert "Newsletter Preview" in page
     assert "Preview Digest" in page
+    assert "Market Tape Preview" in page
     assert "Rates reset changes software valuations" in page
     assert "Open model pricing changed" in page
-    assert "Read article" in page
+    assert "Read signal" in page
+    assert "Mar 21, 7:30 AM UTC" in page

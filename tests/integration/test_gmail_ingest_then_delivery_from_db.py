@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 from curator.jobs import get_repository_from_config, run_fetch_gmail_job
 from tests.fakes import FakeArticleFetcher, FakeGmailService, FakeOpenAI, make_gmail_message
@@ -9,6 +11,8 @@ from tests.helpers import write_temp_config
 
 def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
     main = importlib.import_module("main")
+    now_utc = datetime.now(UTC)
+    gmail_timestamp = now_utc - timedelta(hours=2)
 
     fixture_html = (repo_root / "tests" / "fixtures" / "newsletter_sample.html").read_text(
         encoding="utf-8"
@@ -19,7 +23,7 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
                 message_id="msg-1",
                 subject="Daily Macro Notes",
                 from_header="Macro Letter <macro@example.com>",
-                date_header="Sat, 21 Mar 2026 07:00:00 +0000",
+                date_header=format_datetime(gmail_timestamp),
                 html_body=fixture_html,
             )
         ]

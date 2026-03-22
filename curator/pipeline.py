@@ -14,7 +14,12 @@ from .gmail import (
     send_email,
 )
 from .llm import extract_summary_json, select_top_stories, summarize_article_with_llm
-from .rendering import group_summaries_by_category, parse_summary_block, render_digest_html
+from .rendering import (
+    build_render_groups,
+    group_summaries_by_category,
+    parse_summary_block,
+    render_digest_html,
+)
 from .sources import collect_additional_source_links
 
 
@@ -160,6 +165,7 @@ def run_job(
     select_top_stories_fn=select_top_stories,
     process_story_fn=process_story,
     group_summaries_by_category_fn=group_summaries_by_category,
+    build_render_groups_fn=build_render_groups,
     render_digest_html_fn=render_digest_html,
     send_email_fn=send_email,
 ) -> None:
@@ -382,7 +388,8 @@ def run_job(
                 f"{model_name}: input={stats['input']} output={stats['output']} total={stats['total']}"
             )
 
-    digest_html = render_digest_html_fn(grouped)
+    render_groups = build_render_groups_fn(summaries)
+    digest_html = render_digest_html_fn(render_groups)
     digest_subject = email_cfg["digest_subject"]
     accepted_story_payloads = []
     for _, item, summary_block in summaries:
@@ -395,6 +402,7 @@ def run_job(
                 "source_name": item.get("source_name", ""),
                 "category": item.get("category", ""),
                 "anchor_text": item.get("anchor_text", ""),
+                "published_at": item.get("published_at", ""),
             }
         )
     for recipient in email_cfg["digest_recipients"]:

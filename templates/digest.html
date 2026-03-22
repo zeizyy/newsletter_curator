@@ -4,48 +4,81 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="supported-color-schemes" content="light dark" />
   <style>
-    body { margin: 0; padding: 0; background: #f4f7fb; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; padding: 0; background: #eef4f3; color: #16222f; font-family: Arial, Helvetica, sans-serif; }
     .email-shell { max-width: 760px; margin: 0 auto; padding: 28px 16px; }
-    .footer { font-size: 12px; color: #73859f; margin-top: 8px; }
+    .email-frame { background: rgba(255,255,255,0.86); border: 1px solid rgba(19,91,72,0.18); border-radius: 30px; padding: 18px; box-shadow: 0 18px 44px rgba(17,27,45,0.12); }
+    .email-canvas { background: #ffffff; border: 1px solid rgba(19,91,72,0.18); border-radius: 24px; overflow: hidden; }
+    .hero { background: linear-gradient(135deg,#0e3f35,#0f8661); color: #f3fffb; padding: 28px 30px 24px; }
+    .hero-kicker { display: inline-block; margin-bottom: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.14); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+    .hero-title { margin: 0; max-width: 12ch; font-family: Trebuchet MS, Arial Narrow, Arial, sans-serif; font-size: 50px; line-height: 0.98; letter-spacing: -0.04em; }
+    .hero-copy { margin: 14px 0 0; max-width: 34rem; color: rgba(243,255,251,0.82); font-size: 16px; line-height: 1.6; }
+    .stories-wrap { padding: 18px; }
+    .footer { font-size: 12px; color: #6f7f87; margin-top: 10px; }
 
     @media (max-width: 600px) {
       .email-shell { padding: 16px 10px !important; }
-      .hero { padding: 16px 14px !important; border-radius: 12px !important; }
-      .hero-kicker { font-size: 12px !important; }
-      .hero-title { font-size: 26px !important; }
-      .category-title { font-size: 19px !important; }
-      .story-card { padding: 13px !important; border-radius: 10px !important; }
-      .story-title { font-size: 18px !important; }
-      .story-body,
-      .summary-paragraph,
-      .summary-list,
-      .summary-list-item { font-size: 14px !important; line-height: 1.5 !important; }
-      .summary-heading { font-size: 14px !important; }
-    }
-
-    @media (prefers-color-scheme: dark) {
-      body { background: #0b1220 !important; color: #d9e2f2 !important; }
-      .story-card { background: #141e2f !important; border-color: #2a3a54 !important; }
-      .story-title,
-      .category-title,
-      .summary-heading { color: #eff4ff !important; }
+      .email-frame { padding: 10px !important; border-radius: 22px !important; }
+      .hero { padding: 22px 20px 18px !important; }
+      .hero-title { font-size: 36px !important; }
+      .hero-copy { font-size: 15px !important; }
+      .stories-wrap { padding: 12px !important; }
+      .story-card { padding: 18px !important; border-radius: 18px !important; }
+      .story-title { font-size: 28px !important; max-width: none !important; }
       .story-body,
       .summary-paragraph,
       .summary-list,
       .summary-list-item,
-      .footer { color: #b6c4dd !important; }
-      .story-link { color: #8bb4ff !important; }
+      .story-time,
+      .story-source,
+      .story-chip { font-size: 13px !important; line-height: 1.55 !important; }
     }
+
+    @media (prefers-color-scheme: dark) {
+      body, .body-shell { background: #07110f !important; color: #edf7f4 !important; }
+      .email-frame { background: rgba(10,17,15,0.9) !important; border-color: rgba(73,134,112,0.26) !important; }
+      .email-canvas { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
+      .story-card { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
+      .story-title, .category-title, .summary-heading { color: #edf7f4 !important; }
+      .story-body, .summary-paragraph, .summary-list, .summary-list-item, .footer { color: #b2c7c0 !important; }
+      .story-time, .story-source { background: rgba(255,255,255,0.07) !important; color: #b2c7c0 !important; }
+      .story-chip { background: rgba(103,211,172,0.16) !important; color: #67d3ac !important; }
+      .story-link { color: #7be0bc !important; }
+    }
+
+    [data-ogsc] body,
+    [data-ogsc] .body-shell { background: #07110f !important; color: #edf7f4 !important; }
+    [data-ogsc] .email-frame { background: rgba(10,17,15,0.9) !important; border-color: rgba(73,134,112,0.26) !important; }
+    [data-ogsc] .email-canvas,
+    [data-ogsc] .story-card { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
+    [data-ogsc] .story-title,
+    [data-ogsc] .category-title,
+    [data-ogsc] .summary-heading { color: #edf7f4 !important; }
+    [data-ogsc] .story-body,
+    [data-ogsc] .summary-paragraph,
+    [data-ogsc] .summary-list,
+    [data-ogsc] .summary-list-item,
+    [data-ogsc] .footer { color: #b2c7c0 !important; }
+    [data-ogsc] .story-time,
+    [data-ogsc] .story-source { background: rgba(255,255,255,0.07) !important; color: #b2c7c0 !important; }
+    [data-ogsc] .story-chip { background: rgba(103,211,172,0.16) !important; color: #67d3ac !important; }
+    [data-ogsc] .story-link { color: #7be0bc !important; }
   </style>
 </head>
-<body style="margin:0;padding:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+<body class="body-shell" style="margin:0;padding:0;background:#eef4f3;color:#16222f;font-family:Arial,Helvetica,sans-serif;">
   <div class="email-shell" style="max-width:760px;margin:0 auto;padding:28px 16px;">
-    <div class="hero" style="background:linear-gradient(135deg,#0f2748,#1c4d8c);border-radius:14px;padding:20px 22px;color:#ffffff;margin:0 0 18px 0;">
-      <div class="hero-kicker" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.9;">Daily Briefing</div>
-      <div class="hero-title" style="font-size:32px;font-weight:750;line-height:1.2;margin:6px 0 0 0;">Newsletter Digest</div>
+    <div class="email-frame" style="background:rgba(255,255,255,0.86);border:1px solid rgba(19,91,72,0.18);border-radius:30px;padding:18px;box-shadow:0 18px 44px rgba(17,27,45,0.12);">
+      <div class="email-canvas" style="background:#ffffff;border:1px solid rgba(19,91,72,0.18);border-radius:24px;overflow:hidden;">
+        <div class="hero" style="background:linear-gradient(135deg,#0e3f35,#0f8661);color:#f3fffb;padding:28px 30px 24px;">
+          <div class="hero-kicker" style="display:inline-block;margin-bottom:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.14);font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Market Tape</div>
+          <div class="hero-title" style="margin:0;max-width:12ch;font-family:Trebuchet MS,Arial Narrow,Arial,sans-serif;font-size:50px;line-height:0.98;letter-spacing:-0.04em;">Value Capture Watch</div>
+          <div class="hero-copy" style="margin:14px 0 0;max-width:34rem;color:rgba(243,255,251,0.82);font-size:16px;line-height:1.6;">AI infra winners, platform direction, technical mechanism, adoption, economics, and signal-heavy strategy shifts.</div>
+        </div>
+        <div class="stories-wrap" style="padding:18px;">
+          {{CATEGORY_SECTIONS}}
+        </div>
+      </div>
     </div>
-    {{CATEGORY_SECTIONS}}
-    <div class="footer" style="font-size:12px;color:#73859f;margin-top:8px;">Generated by Newsletter Curator</div>
+    <div class="footer" style="font-size:12px;color:#6f7f87;margin-top:10px;">Generated by Newsletter Curator</div>
   </div>
 </body>
 </html>

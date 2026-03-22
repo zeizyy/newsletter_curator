@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 import html
 import re
+from email.utils import parsedate_to_datetime
 
 from .config import DIGEST_TEMPLATE_PATH
 
@@ -25,6 +27,51 @@ def parse_summary_block(summary_block: str) -> tuple[str, str, str]:
         title = title_line.split(":", 1)[1].strip() or title_line
     url = url_line.replace("URL:", "", 1).strip() if url_line.startswith("URL:") else ""
     return title, url, body
+
+
+def format_story_timestamp(published_at: str) -> str:
+    raw = str(published_at or "").strip()
+    if not raw:
+        return ""
+
+    parsed = None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            parsed = None
+
+    if parsed is None:
+        return raw
+
+    month = parsed.strftime("%b")
+    day = parsed.day
+    hour = parsed.strftime("%I").lstrip("0") or "12"
+    minute = parsed.strftime("%M")
+    meridiem = parsed.strftime("%p")
+    timezone = parsed.strftime("%Z")
+    suffix = f" {timezone}" if timezone else ""
+    return f"{month} {day}, {hour}:{minute} {meridiem}{suffix}"
+
+
+def build_render_groups(summaries: list[tuple[int, dict, str]]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for _, item, summary_block in summaries:
+        title, url, body = parse_summary_block(summary_block)
+        category = item.get("category", "") or "Uncategorized"
+        grouped.setdefault(category, []).append(
+            {
+                "title": title,
+                "url": url or item.get("url", ""),
+                "body": body,
+                "source_name": item.get("source_name", ""),
+                "published_at": item.get("published_at", ""),
+                "display_timestamp": format_story_timestamp(str(item.get("published_at", ""))),
+            }
+        )
+    return grouped
 
 
 def render_summary_body_html(body: str) -> str:
@@ -94,24 +141,43 @@ def render_summary_body_html(body: str) -> str:
     return "".join(blocks) or "No summary."
 
 
-def render_digest_html(grouped: dict[str, list[str]]) -> str:
+def render_digest_html(grouped: dict[str, list[dict]]) -> str:
     category_sections = []
     for category, entries in grouped.items():
         cards = []
-        for summary_block in entries:
-            title, url, body = parse_summary_block(summary_block)
+        for entry in entries:
+            title = str(entry.get("title", "")).strip() or "Untitled"
+            url = str(entry.get("url", "")).strip()
+            body = str(entry.get("body", "")).strip()
+            source_name = str(entry.get("source_name", "")).strip()
+            timestamp = str(entry.get("display_timestamp", "")).strip()
             body_html = render_summary_body_html(body)
             link_html = (
-                f'<a href="{html.escape(url)}" class="story-link" style="color:#0b57d0;text-decoration:none;">Read article</a>'
+                f'<a href="{html.escape(url)}" class="story-link" style="color:#7be0bc;text-decoration:none;">Read signal</a>'
                 if url
+                else ""
+            )
+            source_html = (
+                f'<span class="story-source" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(source_name)}</span>'
+                if source_name
+                else ""
+            )
+            time_html = (
+                f'<span class="story-time" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
+                if timestamp
                 else ""
             )
             cards.append(
                 (
-                    '<div class="story-card" style="background:#ffffff;border:1px solid #e6ecf5;border-radius:12px;'
-                    'padding:16px;margin:0 0 12px 0;">'
-                    f'<div class="story-title" style="font-size:20px;font-weight:700;line-height:1.35;color:#152238;margin:0 0 8px 0;">{html.escape(title)}</div>'
-                    f'<div class="story-body" style="font-size:14px;line-height:1.6;color:#25364d;margin:0 0 10px 0;">{body_html}</div>'
+                    '<div class="story-card" style="background:#ffffff;border:1px solid rgba(19,91,72,0.18);border-radius:22px;'
+                    'padding:22px;margin:0 0 14px 0;">'
+                    '<div class="story-meta" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px 0;">'
+                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#ddf3eb;color:#0c7a5b;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">{html.escape(category)}</span>'
+                    f"{time_html}"
+                    f"{source_html}"
+                    "</div>"
+                    f'<div class="story-title" style="font-size:32px;font-weight:700;line-height:1.08;letter-spacing:-0.03em;color:#16222f;margin:0;max-width:22ch;overflow-wrap:anywhere;">{html.escape(title)}</div>'
+                    f'<div class="story-body" style="font-size:15px;line-height:1.65;color:#223240;margin:16px 0 10px 0;max-width:38rem;">{body_html}</div>'
                     f'<div class="story-cta" style="font-size:14px;font-weight:600;">{link_html}</div>'
                     "</div>"
                 )
@@ -119,8 +185,9 @@ def render_digest_html(grouped: dict[str, list[str]]) -> str:
         category_sections.append(
             (
                 '<div class="category-section" style="margin:0 0 20px 0;">'
-                f'<div class="category-title" style="font-size:22px;font-weight:700;line-height:1.3;color:#243b5a;'
-                f'margin:0 0 10px 0;">{html.escape(category)}</div>'
+                f'<div class="category-title" style="font-size:15px;font-weight:700;line-height:1.3;color:#5b6a78;'
+                'letter-spacing:0.1em;text-transform:uppercase;'
+                f'margin:0 0 10px 2px;">{html.escape(category)}</div>'
                 f"{''.join(cards)}"
                 "</div>"
             )

@@ -3,23 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>Newsletter Preview</title>
   <style>
-    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
-    .wrap { max-width: 1080px; margin: 0 auto; }
-    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
-    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-    .muted { font-size: 12px; color: #6b778c; }
-    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
-    .preview-frame { background: #ffffff; border: 1px solid #e6ecf5; border-radius: 12px; padding: 12px; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: linear-gradient(180deg,#eef4f3,#f8fbfb); color: #16222f; }
+    .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 40px; }
+    .card { background: rgba(255,255,255,0.88); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 22px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(17,27,45,0.08); }
+    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+    .muted { font-size: 12px; color: #5b6a78; }
+    .button-link { display: inline-block; background: #ddf3eb; color: #0c7a5b; border: 1px solid rgba(12,122,91,0.18); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
+    .preview-frame { background: rgba(255,255,255,0.5); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 14px; }
+    .preview-label { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5b6a78; margin-bottom: 8px; }
     pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    h1 { margin: 0 0 6px 0; font-size: 44px; line-height: 1.02; letter-spacing: -0.04em; font-family: Trebuchet MS, Arial Narrow, Arial, sans-serif; }
+
+    @media (max-width: 680px) {
+      .wrap { padding: 16px 10px 24px; }
+      .card { padding: 18px; border-radius: 18px; }
+      .preview-frame { padding: 10px; border-radius: 18px; }
+      h1 { font-size: 34px; }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: linear-gradient(180deg,#07110f,#0b1815); color: #edf7f4; }
+      .card { background: rgba(12,20,18,0.96); border-color: rgba(73,134,112,0.26); }
+      .preview-frame { background: rgba(10,17,15,0.7); border-color: rgba(73,134,112,0.26); }
+      .muted, .preview-label { color: #b2c7c0; }
+      .button-link { background: rgba(103,211,172,0.16); color: #7be0bc; border-color: rgba(103,211,172,0.2); }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
       <div>
-        <h1 style="margin:0 0 6px 0;">Newsletter Preview</h1>
+        <div class="preview-label">Market Tape Preview</div>
+        <h1>Newsletter Preview</h1>
         <div class="muted">Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code></div>
       </div>
       <div style="display:flex; gap:10px;">
@@ -34,8 +54,8 @@
 
     {% if preview %}
       <div class="card">
-        <div style="font-size:13px; color:#42526e; margin-bottom:6px;">Subject</div>
-        <div style="font-size:22px; font-weight:700; color:#152238;">{{ preview.subject }}</div>
+        <div class="preview-label">Subject</div>
+        <div style="font-size:28px; font-weight:700; color:inherit; line-height:1.1;">{{ preview.subject }}</div>
         {% if result %}
           <div class="muted" style="margin-top:8px;">
             ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}
@@ -44,12 +64,12 @@
       </div>
 
       <div class="card">
-        <div style="font-size:16px; font-weight:700; margin-bottom:10px;">HTML Preview</div>
+        <div class="preview-label">HTML Preview</div>
         <div class="preview-frame">{{ preview.html_body | safe }}</div>
       </div>
 
       <div class="card">
-        <div style="font-size:16px; font-weight:700; margin-bottom:10px;">Plain Text</div>
+        <div class="preview-label">Plain Text</div>
         <pre>{{ preview.body }}</pre>
       </div>
     {% endif %}

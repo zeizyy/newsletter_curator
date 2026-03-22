@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import pytest
 
@@ -49,6 +51,10 @@ def build_admin_form(config: dict, enabled_source_ids: set[int]) -> dict[str, st
 def test_full_two_job_pipeline(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
+    now_utc = datetime.now(UTC)
+    gmail_timestamp = now_utc - timedelta(hours=2)
+    source_timestamp_a = now_utc - timedelta(hours=1, minutes=30)
+    source_timestamp_b = now_utc - timedelta(hours=1)
 
     gmail_html = """
     <html>
@@ -63,7 +69,7 @@ def test_full_two_job_pipeline(monkeypatch, tmp_path):
                 message_id="gmail-1",
                 subject="Infra Letter",
                 from_header="Infra Letter <infra@example.com>",
-                date_header="Sat, 21 Mar 2026 07:00:00 +0000",
+                date_header=format_datetime(gmail_timestamp),
                 html_body=gmail_html,
             )
         ]
@@ -78,7 +84,7 @@ def test_full_two_job_pipeline(monkeypatch, tmp_path):
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Repository context for rates reset.",
                 "category": "Markets / stocks / macro / economy",
-                "published_at": "2026-03-21T07:30:00+00:00",
+                "published_at": source_timestamp_a.isoformat(),
                 "summary": "Rates reset summary",
             },
             {
@@ -89,7 +95,7 @@ def test_full_two_job_pipeline(monkeypatch, tmp_path):
                 "anchor_text": "Open model pricing changed",
                 "context": "Repository context for pricing.",
                 "category": "AI & ML industry developments",
-                "published_at": "2026-03-21T06:00:00+00:00",
+                "published_at": source_timestamp_b.isoformat(),
                 "summary": "Pricing summary",
             },
         ]

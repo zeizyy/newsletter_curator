@@ -665,7 +665,7 @@
     {
       "id": "T28",
       "title": "Implement the chosen newsletter UX across preview and delivered email and add article timestamps",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T27"],
       "scope": [
         "Implement the selected high-fidelity theme in the shared digest rendering path",
