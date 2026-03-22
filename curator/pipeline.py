@@ -14,7 +14,7 @@ from .gmail import (
     send_email,
 )
 from .llm import extract_summary_json, select_top_stories, summarize_article_with_llm
-from .rendering import group_summaries_by_category, render_digest_html
+from .rendering import group_summaries_by_category, parse_summary_block, render_digest_html
 from .sources import collect_additional_source_links
 
 
@@ -383,11 +383,25 @@ def run_job(
             )
 
     digest_html = render_digest_html_fn(grouped)
+    digest_subject = email_cfg["digest_subject"]
+    accepted_story_payloads = []
+    for _, item, summary_block in summaries:
+        title, url, _ = parse_summary_block(summary_block)
+        accepted_story_payloads.append(
+            {
+                "title": title,
+                "url": url or item.get("url", ""),
+                "source_type": item.get("source_type", ""),
+                "source_name": item.get("source_name", ""),
+                "category": item.get("category", ""),
+                "anchor_text": item.get("anchor_text", ""),
+            }
+        )
     for recipient in email_cfg["digest_recipients"]:
         send_email_fn(
             service,
             to_address=recipient,
-            subject=email_cfg["digest_subject"],
+            subject=digest_subject,
             body=final_text,
             html_body=digest_html,
         )
@@ -397,7 +411,11 @@ def run_job(
         "ranked_candidates": len(ranked_candidates),
         "selected": len(selected),
         "accepted_items": len(accepted_items),
+        "accepted_story_items": accepted_story_payloads,
         "backfilled_count": backfilled_count,
         "skipped_count": skipped_count,
         "sent_recipients": len(email_cfg["digest_recipients"]),
+        "digest_subject": digest_subject,
+        "digest_body": final_text,
+        "digest_html": digest_html,
     }

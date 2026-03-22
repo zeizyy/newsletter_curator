@@ -211,3 +211,11 @@ Add new entries below this line.
 - Outcome: New configs now default both reasoning and summary to `gpt-5-mini`, legacy configs that still pin `gpt-4o-mini` for reasoning are upgraded automatically at load time, and the repo now records the exact per-1M token price delta for the switch.
 - Open risks: The pricing table is a dated snapshot and should be re-verified against OpenAI pricing before future model changes. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: none; `T21` is complete.
+
+### 2026-03-21 - T22 persisted the daily newsletter and reused it in preview and delivery
+- Context: Added a repository-backed daily newsletter artifact keyed by day, then switched preview and delivery to read through that stored version when it already exists instead of regenerating the digest each time.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/repository.py`, `curator/pipeline.py`, `curator/jobs.py`, `tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py`, `tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py`
+- Tests run: `uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_full_two_job_pipeline.py -q`; `uv run pytest tests/integration -q`
+- Outcome: A completed digest is now persisted in SQLite with the rendered text/html and selected story metadata, `/preview` reuses the stored digest for the current day, and the email delivery path sends the stored digest when it already exists for that day.
+- Open risks: The daily digest key currently uses the UTC date with no configurable timezone override. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: `T23` Improve the newsletter UX across preview and delivered output.

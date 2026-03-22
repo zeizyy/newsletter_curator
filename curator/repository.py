@@ -76,6 +76,18 @@ class SQLiteRepository:
             "sources": {"id", "source_type", "source_name", "created_at", "updated_at"},
             "ingestion_runs": {"id", "source_type", "status", "started_at", "finished_at", "metadata_json"},
             "delivery_runs": {"id", "status", "started_at", "finished_at", "metadata_json"},
+            "daily_newsletters": {
+                "id",
+                "newsletter_date",
+                "delivery_run_id",
+                "subject",
+                "body",
+                "html_body",
+                "selected_items_json",
+                "metadata_json",
+                "created_at",
+                "updated_at",
+            },
             "fetched_stories": {
                 "id",
                 "story_key",
@@ -125,6 +137,7 @@ class SQLiteRepository:
             "user_source_selections",
             "fetched_stories",
             "delivery_runs",
+            "daily_newsletters",
             "ingestion_runs",
             "sources",
         ]:
@@ -157,6 +170,19 @@ class SQLiteRepository:
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
                 metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_newsletters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                newsletter_date TEXT NOT NULL UNIQUE,
+                delivery_run_id INTEGER REFERENCES delivery_runs(id) ON DELETE SET NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                html_body TEXT NOT NULL,
+                selected_items_json TEXT NOT NULL DEFAULT '[]',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS fetched_stories (
@@ -306,6 +332,91 @@ class SQLiteRepository:
                 """
             ).fetchone()
         return self._run_row_to_dict(row)
+
+    def get_daily_newsletter(self, newsletter_date: str) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    newsletter_date,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM daily_newsletters
+                WHERE newsletter_date = ?
+                LIMIT 1
+                """,
+                (newsletter_date,),
+            ).fetchone()
+        if row is None:
+            return None
+        payload = dict(row)
+        payload["selected_items"] = json.loads(
+            str(payload.pop("selected_items_json", "") or "[]")
+        )
+        payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
+        return payload
+
+    def upsert_daily_newsletter(
+        self,
+        *,
+        newsletter_date: str,
+        subject: str,
+        body: str,
+        html_body: str,
+        selected_items: list[dict] | None = None,
+        metadata: dict | None = None,
+        delivery_run_id: int | None = None,
+    ) -> int:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO daily_newsletters (
+                    newsletter_date,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(newsletter_date)
+                DO UPDATE SET
+                    delivery_run_id = excluded.delivery_run_id,
+                    subject = excluded.subject,
+                    body = excluded.body,
+                    html_body = excluded.html_body,
+                    selected_items_json = excluded.selected_items_json,
+                    metadata_json = excluded.metadata_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    newsletter_date,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    json.dumps(selected_items or [], sort_keys=True),
+                    json.dumps(metadata or {}, sort_keys=True),
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                "SELECT id FROM daily_newsletters WHERE newsletter_date = ?",
+                (newsletter_date,),
+            ).fetchone()
+            return int(row["id"])
 
     def _run_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
         if row is None:
@@ -654,6 +765,7 @@ class SQLiteRepository:
             "sources",
             "ingestion_runs",
             "delivery_runs",
+            "daily_newsletters",
             "fetched_stories",
             "article_snapshots",
             "user_source_selections",

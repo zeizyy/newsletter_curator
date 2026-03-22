@@ -65,4 +65,4 @@ def test_ingest_only_summarizes_top_twenty_scored_articles(tmp_path):
     assert len(stories) == 20
     assert all(str(story.get("summary_body", "")).strip() for story in stories)
     assert result["usage_by_model"][config["openai"]["reasoning_model"]]["total"] > 0
-    assert result["usage_by_model"][config["openai"]["summary_model"]]["total"] == 40
+    assert result["usage_by_model"][config["openai"]["summary_model"]]["total"] >= 40

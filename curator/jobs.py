@@ -39,6 +39,10 @@ from .sources import (
 )
 
 
+def current_newsletter_date() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
 def get_repository_from_config(config: dict) -> SQLiteRepository:
     database_cfg = config.get("database", {})
     database_path = database_cfg.get("path", "data/newsletter_curator.sqlite3")
@@ -643,6 +647,7 @@ def run_delivery_job(
         raise RuntimeError(
             "No delivery-ready repository data is available for the required source types."
         )
+    newsletter_date = current_newsletter_date()
 
     collect_gmail_links_fn = collect_gmail_links_fn or (
         lambda cfg, svc: collect_repository_gmail_links(cfg, repository=repository)
@@ -662,9 +667,59 @@ def run_delivery_job(
     )
 
     run_id = repository.create_delivery_run(
-        metadata={"job": "deliver_digest", "readiness": readiness}
+        metadata={
+            "job": "deliver_digest",
+            "readiness": readiness,
+            "newsletter_date": newsletter_date,
+        }
     )
     try:
+        cached_newsletter = repository.get_daily_newsletter(newsletter_date)
+        if cached_newsletter is not None:
+            email_cfg = config["email"]
+            for recipient in email_cfg["digest_recipients"]:
+                send_email_fn(
+                    service,
+                    to_address=recipient,
+                    subject=cached_newsletter["subject"],
+                    body=cached_newsletter["body"],
+                    html_body=cached_newsletter["html_body"],
+                )
+            cached_result = {
+                "status": "completed",
+                "cached_newsletter": True,
+                "newsletter_date": newsletter_date,
+                "ranked_candidates": int(
+                    cached_newsletter["metadata"].get("ranked_candidates", 0) or 0
+                ),
+                "selected": int(cached_newsletter["metadata"].get("selected", 0) or 0),
+                "accepted_items": len(cached_newsletter.get("selected_items", [])),
+                "accepted_story_items": cached_newsletter.get("selected_items", []),
+                "backfilled_count": int(
+                    cached_newsletter["metadata"].get("backfilled_count", 0) or 0
+                ),
+                "skipped_count": int(
+                    cached_newsletter["metadata"].get("skipped_count", 0) or 0
+                ),
+                "sent_recipients": len(email_cfg["digest_recipients"]),
+                "digest_subject": cached_newsletter["subject"],
+                "digest_body": cached_newsletter["body"],
+                "digest_html": cached_newsletter["html_body"],
+            }
+            repository.complete_delivery_run(
+                run_id,
+                status="completed",
+                metadata={
+                    "job": "deliver_digest",
+                    "readiness": readiness,
+                    "newsletter_date": newsletter_date,
+                    "cached_newsletter": True,
+                    "daily_newsletter_id": cached_newsletter["id"],
+                    "pipeline_result": cached_result,
+                },
+            )
+            return {"run_id": run_id, **cached_result}
+
         pipeline_result = run_pipeline_job(
             config,
             service,
@@ -676,16 +731,46 @@ def run_delivery_job(
             render_digest_html_fn=render_digest_html_fn,
             send_email_fn=send_email_fn,
         )
+        daily_newsletter_id = None
+        if (
+            pipeline_result.get("status") == "completed"
+            and str(pipeline_result.get("digest_body", "")).strip()
+            and str(pipeline_result.get("digest_html", "")).strip()
+        ):
+            daily_newsletter_id = repository.upsert_daily_newsletter(
+                newsletter_date=newsletter_date,
+                delivery_run_id=run_id,
+                subject=str(pipeline_result.get("digest_subject", "")).strip(),
+                body=str(pipeline_result.get("digest_body", "")).strip(),
+                html_body=str(pipeline_result.get("digest_html", "")).strip(),
+                selected_items=list(pipeline_result.get("accepted_story_items", [])),
+                metadata={
+                    "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
+                    "selected": pipeline_result.get("selected", 0),
+                    "accepted_items": pipeline_result.get("accepted_items", 0),
+                    "backfilled_count": pipeline_result.get("backfilled_count", 0),
+                    "skipped_count": pipeline_result.get("skipped_count", 0),
+                },
+            )
         repository.complete_delivery_run(
             run_id,
             status="completed",
             metadata={
                 "job": "deliver_digest",
                 "readiness": readiness,
+                "newsletter_date": newsletter_date,
+                "cached_newsletter": False,
+                "daily_newsletter_id": daily_newsletter_id,
                 "pipeline_result": pipeline_result,
             },
         )
-        return {"run_id": run_id, "status": "completed", **pipeline_result}
+        return {
+            "run_id": run_id,
+            "newsletter_date": newsletter_date,
+            "cached_newsletter": False,
+            "status": "completed",
+            **pipeline_result,
+        }
     except Exception as exc:
         repository.complete_delivery_run(
             run_id,
@@ -693,6 +778,7 @@ def run_delivery_job(
             metadata={
                 "job": "deliver_digest",
                 "readiness": readiness,
+                "newsletter_date": newsletter_date,
                 "error": str(exc),
             },
         )

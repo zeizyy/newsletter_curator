@@ -522,6 +522,53 @@
         "Legacy configs pinned to the old default are upgraded automatically at load time",
         "Before-and-after token pricing is documented in the repo and the model-default regression test passes"
       ]
+    },
+    {
+      "id": "T22",
+      "title": "Persist the generated daily newsletter in the repository and reuse it for preview and delivery",
+      "status": "completed",
+      "depends_on": ["T21"],
+      "scope": [
+        "Add repository storage for generated daily newsletter artifacts, including the selected stories, rendered body, and metadata keyed by day",
+        "Write the generated newsletter into the repository when preview or delivery produces a digest for that day",
+        "Update /preview and the email delivery path to reuse the stored newsletter for the current day when it already exists instead of regenerating it"
+      ],
+      "artifacts": [
+        "repository schema and accessors for persisted daily newsletters",
+        "preview and delivery read-through cache behavior for generated digests",
+        "integration coverage for persisted newsletter reuse"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "A generated newsletter is persisted in the repository under a stable per-day key",
+        "/preview returns the stored daily newsletter when one already exists for the day",
+        "Email delivery reuses the stored daily newsletter for that day instead of regenerating it",
+        "The persisted-newsletter integration test passes"
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Improve the newsletter UX across preview and delivered output",
+      "status": "pending",
+      "depends_on": ["T22"],
+      "scope": [
+        "Refine newsletter information hierarchy, typography, spacing, and section treatment for both web preview and email HTML",
+        "Improve scannability of story summaries, source metadata, and why-this-matters blocks without changing the core content contract",
+        "Preserve compatibility with both local preview and email rendering"
+      ],
+      "artifacts": [
+        "updated digest template and rendering styles",
+        "preview UX improvements aligned with delivered email output",
+        "integration or snapshot coverage for the improved newsletter rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_ux_improvements.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_ux_improvements.py",
+      "done_when": [
+        "The newsletter preview and delivered HTML share the improved rendering treatment",
+        "Story summaries and metadata are more readable and scannable",
+        "The newsletter UX regression test passes"
+      ]
     }
   ]
 }
