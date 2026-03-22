@@ -895,7 +895,7 @@
     {
       "id": "T38",
       "title": "Harden paywall detection and exclude JavaScript-blocked placeholder content",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T13", "T16"],
       "scope": [
         "Catch stronger paywall and JavaScript-required placeholder patterns before summaries are generated",

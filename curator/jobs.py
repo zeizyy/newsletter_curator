@@ -206,7 +206,10 @@ def _prepare_ingest_snapshot_candidates(
 
         story_record = enrich_story_with_article_metadata(story_record, article_details)
         paywall_detected, paywall_reason = detect_paywalled_article(
-            article_text, story_record.get("url", "")
+            article_text,
+            story_record.get("url", ""),
+            document_title=article_details.get("document_title", ""),
+            document_excerpt=article_details.get("document_excerpt", ""),
         )
         if paywall_detected:
             stats["paywall_stories"] += 1

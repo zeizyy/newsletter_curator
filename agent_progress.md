@@ -355,3 +355,11 @@ Add new entries below this line.
 - Outcome: The admin app now exposes `/newsletters` and `/newsletters/<date>` for browsing persisted digests, delivery runs perform a newsletter-specific TTL cleanup using `database.newsletter_ttl_days`, and old cached newsletters cascade-delete their preview locks and telemetry rows cleanly under test.
 - Open risks: History retention currently keys off the newsletter date rather than a user-configurable timezone boundary, so the keep-window follows the same UTC newsletter-date model as the rest of the cached digest flow.
 - Next recommended task: `T38` Harden paywall detection and exclude JavaScript-blocked placeholder content.
+
+### 2026-03-22 - T38 hardened paywall detection for blocked-placeholder pages
+- Context: Strengthened the deterministic paywall filter so JavaScript-disabled and adblock-gated placeholder pages are treated as unservable content before scoring or summarization, not just traditional subscribe walls.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/content.py`, `curator/jobs.py`, `tests/integration/test_paywalled_stories_are_excluded_from_digest.py`
+- Tests run: `uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_gmail_ingest_then_delivery_from_db.py -q`
+- Outcome: Ingest now flags JavaScript-required and adblock-required placeholder pages using title, excerpt, and article-body heuristics, blocked pages are excluded from repository persistence alongside paywalled stories, and the regression test now covers both subscription walls and JS-blocked placeholders.
+- Open risks: The filter remains heuristic by design, so especially unusual blocked-page copy may still need additional markers later if a publisher changes its placeholder language significantly.
+- Next recommended task: `T39` Commit the supplied AI strategy persona as the checked-in default config.

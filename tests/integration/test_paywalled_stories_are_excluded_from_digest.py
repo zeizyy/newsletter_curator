@@ -54,6 +54,17 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
                 "context": "Subscriber analysis context",
                 "category": "Tech blogs",
             },
+            {
+                "subject": "[markets] JS blocked placeholder",
+                "from": "Blocked Wire",
+                "source_name": "Blocked Wire",
+                "source_type": "additional_source",
+                "date": "2026-03-21T05:00:00+00:00",
+                "url": "https://example.com/markets/js-blocked",
+                "anchor_text": "Markets deep dive",
+                "context": "Blocked placeholder context",
+                "category": "Markets / stocks / macro / economy",
+            },
         ]
     )
     article_fetcher = FakeArticleFetcher(
@@ -63,6 +74,10 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
             ),
             "https://example.com/media/subscriber-analysis": (
                 "Subscribe to continue reading. Already a subscriber? Sign in to continue reading."
+            ),
+            "https://example.com/markets/js-blocked": (
+                "Site content blocked due to JavaScript being disabled. "
+                "Please enable JavaScript to continue reading this page."
             ),
         }
     )
@@ -80,14 +95,16 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
     preview_result = main.preview_job(config)
 
     assert fetch_result["status"] == "completed"
-    assert fetch_result["paywall_stories"] == 1
+    assert fetch_result["paywall_stories"] == 2
     assert len(stories) == 1
     assert len(visible_stories) == 1
     assert visible_stories[0]["source_name"] == "Macro Wire"
     assert all(story["source_name"] != "Locked Wire" for story in stories)
+    assert all(story["source_name"] != "Blocked Wire" for story in stories)
 
     assert preview_result["status"] == "completed"
     assert preview_result["accepted_items"] == 1
     assert preview_result["preview"] is not None
     assert "Rates reset changes software valuations" in preview_result["preview"]["body"]
     assert "Subscriber-only analysis" not in preview_result["preview"]["body"]
+    assert "Markets deep dive" not in preview_result["preview"]["body"]

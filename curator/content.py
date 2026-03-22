@@ -27,6 +27,18 @@ PAYWALL_WEAK_MARKERS = {
     "join to read more": "join_to_read",
 }
 
+BLOCKED_PLACEHOLDER_STRONG_MARKERS = {
+    "site content blocked due to javascript being disabled": "javascript_disabled_placeholder",
+    "page failed to load javascript is disabled": "javascript_disabled_placeholder",
+    "page failed to load - javascript is disabled": "javascript_disabled_placeholder",
+    "page failed to load — javascript is disabled": "javascript_disabled_placeholder",
+    "please enable javascript to continue": "javascript_required_placeholder",
+    "javascript is disabled or blocked": "javascript_required_placeholder",
+    "ad blocker detected": "adblock_detected_placeholder",
+    "disable your ad blocker": "adblock_required_placeholder",
+    "turn off your ad blocker": "adblock_required_placeholder",
+}
+
 GENERIC_CTA_TITLES = {
     "read more",
     "continue reading",
@@ -269,14 +281,48 @@ def fetch_article_text(
     return details.get("article_text", "")
 
 
-def detect_paywalled_article(article_text: str, url: str = "") -> tuple[bool, str]:
-    text = normalize_whitespace(article_text).lower()
+def detect_paywalled_article(
+    article_text: str,
+    url: str = "",
+    *,
+    document_title: str = "",
+    document_excerpt: str = "",
+) -> tuple[bool, str]:
+    article_text_normalized = normalize_whitespace(article_text)
+    text = article_text_normalized.lower()
     if not text:
         return False, ""
+
+    combined_text = normalize_whitespace(
+        " ".join(
+            part
+            for part in [document_title, document_excerpt, article_text_normalized]
+            if str(part or "").strip()
+        )
+    ).lower()
 
     for marker, reason in PAYWALL_STRONG_MARKERS.items():
         if marker in text and len(text) <= 2500:
             return True, reason
+
+    for marker, reason in BLOCKED_PLACEHOLDER_STRONG_MARKERS.items():
+        if marker in combined_text and len(article_text_normalized) <= 3000:
+            return True, reason
+
+    if (
+        "javascript" in combined_text
+        and ("disabled" in combined_text or "blocked" in combined_text)
+        and ("enable" in combined_text or "required" in combined_text)
+        and len(article_text_normalized) <= 3000
+    ):
+        return True, "javascript_required_placeholder"
+
+    if (
+        "ad blocker" in combined_text
+        and ("disable" in combined_text or "turn off" in combined_text or "detected" in combined_text)
+        and len(article_text_normalized) <= 3000
+    ):
+        return True, "adblock_required_placeholder"
 
     weak_hits = [reason for marker, reason in PAYWALL_WEAK_MARKERS.items() if marker in text]
     parsed = urlparse(url)
