@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
@@ -67,6 +68,131 @@ def summarize_for_ingest(
     return summary_raw, headline, body
 
 
+def _prepare_ingest_snapshot_candidates(
+    stories: list[dict],
+    *,
+    config: dict,
+    repository: SQLiteRepository,
+    run_id: int,
+    article_fetcher,
+    stats: dict,
+    failures: list[dict],
+) -> list[dict]:
+    prepared: list[dict] = []
+    for story in stories:
+        story_id = repository.upsert_story(story, ingestion_run_id=run_id)
+        stats["stories_persisted"] += 1
+
+        article_text = str(story.get("article_text", "") or "").strip()
+        if not article_text:
+            article_text = article_fetcher(
+                story.get("url", ""),
+                config["limits"]["max_article_chars"],
+            )
+        if not article_text:
+            stats["article_failures"] += 1
+            failures.append(
+                {
+                    "url": story.get("url", ""),
+                    "source_name": story.get("source_name", ""),
+                    "reason": "empty_article_text",
+                }
+            )
+            continue
+
+        paywall_detected, paywall_reason = detect_paywalled_article(
+            article_text, story.get("url", "")
+        )
+        prepared.append(
+            {
+                "story": story,
+                "story_id": story_id,
+                "article_text": article_text,
+                "paywall_detected": paywall_detected,
+                "paywall_reason": paywall_reason,
+                "summary_raw": "",
+                "summary_headline": "",
+                "summary_body": "",
+            }
+        )
+    return prepared
+
+
+def _run_parallel_ingest_summaries(
+    prepared: list[dict],
+    *,
+    config: dict,
+    usage_by_model: dict,
+    lock: Lock,
+) -> int:
+    summarizable = [item for item in prepared if not item["paywall_detected"]]
+    configured_workers = max(1, int(config.get("limits", {}).get("max_summary_workers", 1) or 1))
+    worker_count = min(configured_workers, len(summarizable)) if summarizable else 0
+    if worker_count == 0:
+        return 0
+
+    def summarize(item: dict) -> tuple[str, str, str]:
+        return summarize_for_ingest(
+            config,
+            item["article_text"],
+            usage_by_model,
+            lock,
+        )
+
+    if worker_count == 1:
+        results = [summarize(item) for item in summarizable]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(executor.map(summarize, summarizable))
+
+    for item, (summary_raw, summary_headline, summary_body) in zip(summarizable, results, strict=True):
+        item["summary_raw"] = summary_raw
+        item["summary_headline"] = summary_headline
+        item["summary_body"] = summary_body
+    return worker_count
+
+
+def _persist_ingest_snapshots(
+    prepared: list[dict],
+    *,
+    config: dict,
+    repository: SQLiteRepository,
+    job_name: str,
+    stats: dict,
+    failures: list[dict],
+) -> None:
+    for item in prepared:
+        story = item["story"]
+        paywall_detected = item["paywall_detected"]
+        summary_body = str(item["summary_body"]).strip()
+        if not paywall_detected and (not summary_body or summary_body == "No article text available."):
+            stats["summary_failures"] += 1
+            failures.append(
+                {
+                    "url": story.get("url", ""),
+                    "source_name": story.get("source_name", ""),
+                    "reason": "empty_summary",
+                }
+            )
+            continue
+
+        repository.upsert_article_snapshot(
+            item["story_id"],
+            item["article_text"],
+            metadata={"job": job_name},
+            paywall_detected=paywall_detected,
+            paywall_reason=item["paywall_reason"],
+            summary_raw=item["summary_raw"],
+            summary_headline=item["summary_headline"],
+            summary_body=item["summary_body"],
+            summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
+            summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
+        )
+        if paywall_detected:
+            stats["paywall_stories"] += 1
+        stats["snapshots_persisted"] += 1
+
+
 def run_repository_ttl_cleanup(
     config: dict,
     repository: SQLiteRepository,
@@ -107,6 +233,7 @@ def run_fetch_sources_job(
         "article_failures": 0,
         "paywall_stories": 0,
         "summary_failures": 0,
+        "summary_workers": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -115,65 +242,29 @@ def run_fetch_sources_job(
     try:
         stories = source_fetcher(config)
         stats["stories_seen"] = len(stories)
-        for story in stories:
-            story_id = repository.upsert_story(story, ingestion_run_id=run_id)
-            stats["stories_persisted"] += 1
-
-            article_text = str(story.get("article_text", "") or "").strip()
-            if not article_text:
-                article_text = article_fetcher(
-                    story.get("url", ""),
-                    config["limits"]["max_article_chars"],
-                )
-            if not article_text:
-                stats["article_failures"] += 1
-                failures.append(
-                    {
-                        "url": story.get("url", ""),
-                        "source_name": story.get("source_name", ""),
-                        "reason": "empty_article_text",
-                    }
-                )
-                continue
-
-            paywall_detected, paywall_reason = detect_paywalled_article(
-                article_text, story.get("url", "")
-            )
-            summary_raw = ""
-            summary_headline = ""
-            summary_body = ""
-            if not paywall_detected:
-                summary_raw, summary_headline, summary_body = summarize_for_ingest(
-                    config,
-                    article_text,
-                    usage_by_model,
-                    lock,
-                )
-                if not summary_body.strip() or summary_body.strip() == "No article text available.":
-                    stats["summary_failures"] += 1
-                    failures.append(
-                        {
-                            "url": story.get("url", ""),
-                            "source_name": story.get("source_name", ""),
-                            "reason": "empty_summary",
-                        }
-                    )
-                    continue
-            repository.upsert_article_snapshot(
-                story_id,
-                article_text,
-                metadata={"job": "fetch_sources"},
-                paywall_detected=paywall_detected,
-                paywall_reason=paywall_reason,
-                summary_raw=summary_raw,
-                summary_headline=summary_headline,
-                summary_body=summary_body,
-                summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
-                summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
-            )
-            if paywall_detected:
-                stats["paywall_stories"] += 1
-            stats["snapshots_persisted"] += 1
+        prepared = _prepare_ingest_snapshot_candidates(
+            stories,
+            config=config,
+            repository=repository,
+            run_id=run_id,
+            article_fetcher=article_fetcher,
+            stats=stats,
+            failures=failures,
+        )
+        stats["summary_workers"] = _run_parallel_ingest_summaries(
+            prepared,
+            config=config,
+            usage_by_model=usage_by_model,
+            lock=lock,
+        )
+        _persist_ingest_snapshots(
+            prepared,
+            config=config,
+            repository=repository,
+            job_name="fetch_sources",
+            stats=stats,
+            failures=failures,
+        )
 
         final_status = "completed"
         return_payload = {
@@ -205,6 +296,7 @@ def run_fetch_sources_job(
                 "article_failures": stats["article_failures"],
                 "paywall_stories": stats["paywall_stories"],
                 "summary_failures": stats["summary_failures"],
+                "summary_workers": stats["summary_workers"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },
@@ -241,6 +333,7 @@ def run_fetch_gmail_job(
         "article_failures": 0,
         "paywall_stories": 0,
         "summary_failures": 0,
+        "summary_workers": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -249,65 +342,29 @@ def run_fetch_gmail_job(
     try:
         stories = collect_gmail_links_fn(service, config)
         stats["stories_seen"] = len(stories)
-        for story in stories:
-            story_id = repository.upsert_story(story, ingestion_run_id=run_id)
-            stats["stories_persisted"] += 1
-
-            article_text = str(story.get("article_text", "") or "").strip()
-            if not article_text:
-                article_text = article_fetcher(
-                    story.get("url", ""),
-                    config["limits"]["max_article_chars"],
-                )
-            if not article_text:
-                stats["article_failures"] += 1
-                failures.append(
-                    {
-                        "url": story.get("url", ""),
-                        "source_name": story.get("source_name", ""),
-                        "reason": "empty_article_text",
-                    }
-                )
-                continue
-
-            paywall_detected, paywall_reason = detect_paywalled_article(
-                article_text, story.get("url", "")
-            )
-            summary_raw = ""
-            summary_headline = ""
-            summary_body = ""
-            if not paywall_detected:
-                summary_raw, summary_headline, summary_body = summarize_for_ingest(
-                    config,
-                    article_text,
-                    usage_by_model,
-                    lock,
-                )
-                if not summary_body.strip() or summary_body.strip() == "No article text available.":
-                    stats["summary_failures"] += 1
-                    failures.append(
-                        {
-                            "url": story.get("url", ""),
-                            "source_name": story.get("source_name", ""),
-                            "reason": "empty_summary",
-                        }
-                    )
-                    continue
-            repository.upsert_article_snapshot(
-                story_id,
-                article_text,
-                metadata={"job": "fetch_gmail"},
-                paywall_detected=paywall_detected,
-                paywall_reason=paywall_reason,
-                summary_raw=summary_raw,
-                summary_headline=summary_headline,
-                summary_body=summary_body,
-                summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
-                summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
-            )
-            if paywall_detected:
-                stats["paywall_stories"] += 1
-            stats["snapshots_persisted"] += 1
+        prepared = _prepare_ingest_snapshot_candidates(
+            stories,
+            config=config,
+            repository=repository,
+            run_id=run_id,
+            article_fetcher=article_fetcher,
+            stats=stats,
+            failures=failures,
+        )
+        stats["summary_workers"] = _run_parallel_ingest_summaries(
+            prepared,
+            config=config,
+            usage_by_model=usage_by_model,
+            lock=lock,
+        )
+        _persist_ingest_snapshots(
+            prepared,
+            config=config,
+            repository=repository,
+            job_name="fetch_gmail",
+            stats=stats,
+            failures=failures,
+        )
 
         final_status = "completed"
         return_payload = {
@@ -339,6 +396,7 @@ def run_fetch_gmail_job(
                 "article_failures": stats["article_failures"],
                 "paywall_stories": stats["paywall_stories"],
                 "summary_failures": stats["summary_failures"],
+                "summary_workers": stats["summary_workers"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },

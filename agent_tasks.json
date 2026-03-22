@@ -366,7 +366,7 @@
     {
       "id": "T15",
       "title": "Parallelize centralized summarization during fetch",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T14"],
       "scope": [
         "Run centralized per-article summary generation concurrently",
@@ -387,25 +387,49 @@
     },
     {
       "id": "T16",
-      "title": "Harden title extraction for story explorer and digest robustness",
+      "title": "Adopt a battle-tested URL extraction library for robust title and article metadata parsing",
       "status": "pending",
       "depends_on": ["T14"],
       "scope": [
-        "Improve title extraction so generic anchors like Read More do not become the story title",
-        "Use surrounding context or article metadata more robustly",
-        "Keep story explorer and digest displays readable"
+        "Integrate Trafilatura as the primary extraction library for article title, metadata, and body parsing instead of relying only on custom heuristics",
+        "Prevent generic anchors like Read More from becoming the story title by preferring extracted document metadata",
+        "Keep story explorer and digest displays readable while retaining safe fallbacks when extraction fails"
       ],
       "artifacts": [
-        "link extraction heuristics",
+        "Trafilatura-backed extraction adapter",
         "repository title normalization if needed",
-        "integration coverage for broken title cases"
+        "integration coverage for broken title cases and metadata fallback"
       ],
       "test_command": "uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
       "integration_test": "tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
       "done_when": [
-        "Generic CTA anchors are not used as primary story titles",
-        "Story explorer displays more reliable titles for newsletter-derived links",
+        "Trafilatura is used as the primary URL metadata and body extractor in the ingest path",
+        "Generic CTA anchors are not used as primary story titles when better document metadata is available",
+        "Story explorer and digest displays use more reliable titles for newsletter-derived links",
         "The title extraction integration test passes"
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Collapse repository migrations into a rebuilt baseline schema",
+      "status": "pending",
+      "depends_on": ["T15", "T16"],
+      "scope": [
+        "Replace incremental schema migrations with a single current-schema creation path",
+        "Recreate repository tables in one pass for this pre-production project state",
+        "Keep integration tests aligned with the new baseline schema setup"
+      ],
+      "artifacts": [
+        "baseline schema initializer",
+        "removed legacy migration chain",
+        "integration coverage for repository initialization after schema reset"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py",
+      "integration_test": "tests/integration/test_repository_schema_bootstrap_after_reset.py",
+      "done_when": [
+        "Repository initialization recreates the current schema without applying a long migration chain",
+        "Legacy migration steps are removed or collapsed into a single baseline schema definition",
+        "The schema bootstrap integration test passes"
       ]
     }
   ]

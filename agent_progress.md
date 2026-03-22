@@ -155,3 +155,11 @@ Add new entries below this line.
 - Outcome: Central fetch now stores summary snapshots and summary metadata in SQLite, preview/delivery reuse stored summaries instead of calling the summary model when available, and the integration suite passes after updating offline fetch-path expectations.
 - Open risks: Summarization during ingest is still sequential; `T15` will add bounded concurrency to reduce fetch latency. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: `T15` Parallelize centralized summarization during fetch.
+
+### 2026-03-22 - T15 parallelized centralized summarization during fetch
+- Context: Split the ingest path into preparation, bounded concurrent summarization, and serial persistence so summary-model calls can overlap without making SQLite writes concurrent.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/jobs.py`, `tests/integration/test_fetch_summarization_runs_concurrently.py`
+- Tests run: `uv run pytest tests/integration/test_fetch_summarization_runs_concurrently.py tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py tests/integration/test_fetch_sources_job_writes_repository.py tests/integration/test_gmail_ingest_then_delivery_from_db.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Fetch jobs now honor `limits.max_summary_workers`, summary generation runs concurrently up to the configured cap, repository writes remain ordered, and the new integration test proves the summary stage overlaps work.
+- Open risks: Title and document metadata extraction still rely on custom parsing in places; `T16` will switch the ingest path to a Trafilatura-backed extractor. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: `T16` Adopt a battle-tested URL extraction library for robust title and article metadata parsing.
