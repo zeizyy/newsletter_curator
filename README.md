@@ -1,9 +1,10 @@
 # Newsletter Curator
 
-Personal newsletter curator with a repository-first architecture: Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a separate delivery job ranks, summarizes, and emails the digest from stored snapshots.
+Personal newsletter curator with a repository-first architecture: Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
 
 ## Features
-- Separate ingest jobs for Gmail newsletters and additional publisher feeds
+- Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
+- Single daily orchestrator for production cron scheduling
 - Local SQLite repository for normalized stories, article snapshots, and run history
 - Admin UI for source selection and persona text
 - Repo-only delivery job with no live Gmail reads or live article fetches at send time
@@ -13,11 +14,12 @@ Personal newsletter curator with a repository-first architecture: Gmail newslett
 - Deterministic canned-data mode for local development and integration testing
 
 ## Pipeline Design
-1) `fetch_gmail.py` reads Gmail newsletters, extracts candidate links, fetches article text, and writes stories plus snapshots into the repository.
-2) `fetch_sources.py` reads additional publisher feeds, fetches article text, and writes stories plus snapshots into the same repository.
-3) `deliver_digest.py` reads only repository-backed stories within the configured freshness windows.
-4) Delivery merges Gmail + additional-source candidates, dedupes by URL, ranks with `openai.reasoning_model`, applies source quotas, summarizes stored article text with `openai.summary_model`, and emails the digest.
-5) Delivery records run metadata and warns when one source type is stale or has a failed latest ingest, but can still proceed if another source type has fresh repository data.
+1) `daily_pipeline.py` is the production entrypoint. It runs Gmail ingest, source ingest, then digest delivery in sequence.
+2) `fetch_gmail.py` and `fetch_sources.py` remain available as manual debug or backfill entrypoints.
+3) `deliver_digest.py` remains available as a manual send or cache-regeneration entrypoint.
+4) Delivery reads only repository-backed stories within the configured freshness windows.
+5) Delivery merges Gmail + additional-source candidates, dedupes by URL, ranks with `openai.reasoning_model`, applies source quotas, summarizes stored article text with `openai.summary_model`, and emails the digest.
+6) Delivery records run metadata and warns when one source type is stale or has a failed latest ingest, but can still proceed if another source type has fresh repository data.
 
 Runtime output includes:
 - repository readiness by source type
@@ -46,7 +48,13 @@ export OPENAI_API_KEY="your_key_here"
 4) Review and edit `config.yaml`.
 
 ## Run
-In production, run the jobs separately:
+Production default:
+
+```bash
+uv run python daily_pipeline.py
+```
+
+Manual debug entrypoints:
 
 ```bash
 uv run python fetch_gmail.py
@@ -54,7 +62,7 @@ uv run python fetch_sources.py
 uv run python deliver_digest.py
 ```
 
-`main.py` is kept as a compatibility wrapper for the delivery job.
+`main.py` is kept as a compatibility wrapper for the delivery path.
 
 First Gmail-authenticated run will open a browser for Google OAuth and create `secrets/token.json`.
 
@@ -63,16 +71,14 @@ If you change Gmail scopes later, delete `secrets/token.json` and re-run to re-a
 ## Deploy On A Server
 Use this when hosting the curator on a server. The intended production flow is:
 - a long-running admin server for config and preview
-- daily `fetch_gmail.py`
-- daily `fetch_sources.py`
-- daily `deliver_digest.py`
+- one daily `daily_pipeline.py` cron run
 
 ### One-Time Bootstrap
 The repo includes a one-shot bootstrap script that generates:
 - a locked-down env file used by all jobs
-- wrapper scripts for the admin server and the three daily jobs
+- wrapper scripts for the admin server, the single daily job, and the manual debug jobs
 - a `systemd --user` service for the admin server
-- a cron file for fetch and delivery scheduling
+- a cron file for the single daily orchestrator schedule
 
 Run once on the server:
 ```bash
@@ -90,6 +96,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
 What this writes by default:
 - `deploy/generated/newsletter-curator.env`
 - `deploy/generated/start_admin_server.sh`
+- `deploy/generated/run_daily_pipeline.sh`
 - `deploy/generated/run_fetch_gmail.sh`
 - `deploy/generated/run_fetch_sources.sh`
 - `deploy/generated/run_deliver_digest.sh`
@@ -103,16 +110,12 @@ What the script installs when flags are passed:
 Notes:
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
-- The generated cron schedules default to:
-  - `15 16 * * *` fetch Gmail
-  - `25 16 * * *` fetch additional sources
-  - `0 17 * * *` deliver the digest
+- The generated cron schedule defaults to:
+  - `15 16 * * *` run `daily_pipeline.py`
 - The generated cron file sets `CRON_TZ=America/Los_Angeles`, so those times run in Pacific time even if the server itself is on UTC.
 - Override schedules with:
   - `--cron-timezone`
-  - `--fetch-gmail-schedule`
-  - `--fetch-sources-schedule`
-  - `--deliver-schedule`
+  - `--daily-schedule`
 
 ### Server Prerequisites
 Before running the bootstrap:

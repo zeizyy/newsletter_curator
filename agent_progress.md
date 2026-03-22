@@ -275,3 +275,11 @@ Add new entries below this line.
 - Outcome: The shared digest HTML now uses the selected Option E visual language, timestamps render on story cards for repository-backed stories, preview styling aligns with the chosen theme, and the digest carries dark-mode hooks for Chrome-style preview plus email dark-mode selectors including `prefers-color-scheme` and `[data-ogsc]`.
 - Open risks: Dark-mode handling in Gmail remains a best-effort compatibility layer rather than a perfectly controllable rendering surface, so real client screenshots should still be verified later. The stale SVG mockups are still present in `docs/theme-mockups/`.
 - Next recommended task: `T29` Consolidate fetch and delivery into a single daily orchestrator and update bootstrap scheduling.
+
+### 2026-03-22 - T29 consolidated scheduled fetch and delivery behind one daily orchestrator
+- Context: Replaced the three-cron production schedule with one daily orchestrator while preserving the individual fetch and delivery entrypoints for manual debugging and backfills.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/jobs.py`, `daily_pipeline.py`, `scripts/bootstrap_server.py`, `README.md`, `tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run pytest tests/integration -q`
+- Outcome: The repo now has a single `daily_pipeline.py` production entrypoint, bootstrap-generated cron assets schedule only `run_daily_pipeline.sh`, and the orchestrator records stage-level results for Gmail ingest, source ingest, and delivery while keeping the old scripts available for operators.
+- Open risks: The orchestrator currently attempts delivery even if one fetch stage fails, which is resilient but should be monitored in production logs to ensure partial-failure behavior matches operator expectations.
+- Next recommended task: `T30` Add newsletter open and click telemetry foundations.

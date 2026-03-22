@@ -43,6 +43,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
 
     env_file = output_dir / "newsletter-curator.env"
     admin_script = output_dir / "start_admin_server.sh"
+    daily_script = output_dir / "run_daily_pipeline.sh"
     fetch_gmail_script = output_dir / "run_fetch_gmail.sh"
     fetch_sources_script = output_dir / "run_fetch_sources.sh"
     deliver_script = output_dir / "run_deliver_digest.sh"
@@ -52,6 +53,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     for path in [
         env_file,
         admin_script,
+        daily_script,
         fetch_gmail_script,
         fetch_sources_script,
         deliver_script,
@@ -75,11 +77,10 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     cron_text = cron_file.read_text(encoding="utf-8")
     assert "CRON_TZ=America/Los_Angeles" in cron_text
     assert "15 16 * * *" in cron_text
-    assert "25 16 * * *" in cron_text
-    assert "0 17 * * *" in cron_text
-    assert str(fetch_gmail_script) in cron_text
-    assert str(fetch_sources_script) in cron_text
-    assert str(deliver_script) in cron_text
+    assert str(daily_script) in cron_text
+    assert str(fetch_gmail_script) not in cron_text
+    assert str(fetch_sources_script) not in cron_text
+    assert str(deliver_script) not in cron_text
 
     service_text = service_file.read_text(encoding="utf-8")
     assert f"WorkingDirectory={repo_dir}" in service_text

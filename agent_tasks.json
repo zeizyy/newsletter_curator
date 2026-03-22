@@ -688,7 +688,7 @@
     {
       "id": "T29",
       "title": "Consolidate fetch and delivery into a single daily orchestrator and update bootstrap scheduling",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T25"],
       "scope": [
         "Add one daily entrypoint that runs Gmail ingest, source ingest, and digest delivery sequentially with clear logging and failure status",

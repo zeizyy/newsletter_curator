@@ -549,6 +549,89 @@ def run_fetch_gmail_job(
     return return_payload
 
 
+def run_daily_orchestrator_job(
+    config: dict,
+    service,
+    *,
+    repository: SQLiteRepository | None = None,
+    source_fetcher=None,
+    article_fetcher=None,
+    collect_gmail_links_fn=None,
+    delivery_runner_fn=None,
+) -> dict:
+    repository = repository or get_repository_from_config(config)
+    article_fetcher = article_fetcher or fetch_article_details
+    delivery_runner_fn = delivery_runner_fn or (
+        lambda cfg, svc: run_delivery_job(cfg, svc, repository=repository)
+    )
+
+    stages: dict[str, dict] = {}
+    stage_order = ["fetch_gmail", "fetch_sources", "deliver_digest"]
+    failures: list[dict] = []
+
+    def record_failure(stage_name: str, exc: Exception) -> None:
+        stages[stage_name] = {
+            "status": "failed",
+            "error": str(exc),
+        }
+        failures.append({"stage": stage_name, "error": str(exc)})
+
+    try:
+        stages["fetch_gmail"] = run_fetch_gmail_job(
+            config,
+            service,
+            repository=repository,
+            article_fetcher=article_fetcher,
+            collect_gmail_links_fn=collect_gmail_links_fn,
+        )
+    except Exception as exc:
+        record_failure("fetch_gmail", exc)
+
+    try:
+        stages["fetch_sources"] = run_fetch_sources_job(
+            config,
+            repository=repository,
+            source_fetcher=source_fetcher,
+            article_fetcher=article_fetcher,
+        )
+    except Exception as exc:
+        record_failure("fetch_sources", exc)
+
+    try:
+        stages["deliver_digest"] = delivery_runner_fn(config, service)
+    except Exception as exc:
+        record_failure("deliver_digest", exc)
+
+    completed_stages = [
+        stage_name
+        for stage_name in stage_order
+        if stages.get(stage_name, {}).get("status") == "completed"
+    ]
+    failed_stages = [
+        stage_name
+        for stage_name in stage_order
+        if stages.get(stage_name, {}).get("status") == "failed"
+    ]
+
+    if not failed_stages:
+        status = "completed"
+    elif stages.get("deliver_digest", {}).get("status") == "completed":
+        status = "partial_failure"
+    else:
+        status = "failed"
+
+    result = {
+        "status": status,
+        "stage_order": stage_order,
+        "completed_stages": completed_stages,
+        "failed_stages": failed_stages,
+        "stages": stages,
+        "failures": failures,
+    }
+    print(json.dumps({"event": "daily_orchestrator", "result": result}, sort_keys=True))
+    return result
+
+
 def _required_delivery_source_types(config: dict) -> list[str]:
     source_types: list[str] = []
     quotas = config.get("limits", {}).get("source_quotas", {})

@@ -22,9 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--admin-token", default=os.getenv("CURATOR_ADMIN_TOKEN", ""))
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--cron-timezone", default="America/Los_Angeles")
-    parser.add_argument("--fetch-gmail-schedule", default="15 16 * * *")
-    parser.add_argument("--fetch-sources-schedule", default="25 16 * * *")
-    parser.add_argument("--deliver-schedule", default="0 17 * * *")
+    parser.add_argument("--daily-schedule", default="15 16 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
@@ -83,13 +81,9 @@ def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoi
 def build_cron_file(
     *,
     cron_timezone: str,
-    fetch_gmail_schedule: str,
-    fetch_sources_schedule: str,
-    deliver_schedule: str,
+    daily_schedule: str,
     log_file: Path,
-    fetch_gmail_script: Path,
-    fetch_sources_script: Path,
-    deliver_script: Path,
+    daily_script: Path,
 ) -> str:
     return "\n".join(
         [
@@ -97,9 +91,7 @@ def build_cron_file(
             f"PATH={os.getenv('PATH', '/usr/local/bin:/usr/bin:/bin')}",
             f"CRON_TZ={cron_timezone}",
             "",
-            f"{fetch_gmail_schedule} {quote(fetch_gmail_script)} >> {quote(log_file)} 2>&1",
-            f"{fetch_sources_schedule} {quote(fetch_sources_script)} >> {quote(log_file)} 2>&1",
-            f"{deliver_schedule} {quote(deliver_script)} >> {quote(log_file)} 2>&1",
+            f"{daily_schedule} {quote(daily_script)} >> {quote(log_file)} 2>&1",
             "",
         ]
     )
@@ -162,6 +154,7 @@ def main() -> None:
 
     env_file = output_dir / "newsletter-curator.env"
     admin_script = output_dir / "start_admin_server.sh"
+    daily_script = output_dir / "run_daily_pipeline.sh"
     fetch_gmail_script = output_dir / "run_fetch_gmail.sh"
     fetch_sources_script = output_dir / "run_fetch_sources.sh"
     deliver_script = output_dir / "run_deliver_digest.sh"
@@ -187,6 +180,16 @@ def main() -> None:
             env_file=env_file,
             uv_bin=args.uv_bin,
             entrypoint="admin_app.py",
+        ),
+        mode=0o700,
+    )
+    write_file(
+        daily_script,
+        build_runner_script(
+            repo_dir=repo_dir,
+            env_file=env_file,
+            uv_bin=args.uv_bin,
+            entrypoint="daily_pipeline.py",
         ),
         mode=0o700,
     )
@@ -224,13 +227,9 @@ def main() -> None:
         cron_file,
         build_cron_file(
             cron_timezone=args.cron_timezone,
-            fetch_gmail_schedule=args.fetch_gmail_schedule,
-            fetch_sources_schedule=args.fetch_sources_schedule,
-            deliver_schedule=args.deliver_schedule,
+            daily_schedule=args.daily_schedule,
             log_file=log_file,
-            fetch_gmail_script=fetch_gmail_script,
-            fetch_sources_script=fetch_sources_script,
-            deliver_script=deliver_script,
+            daily_script=daily_script,
         ),
         mode=0o600,
     )
@@ -253,6 +252,7 @@ def main() -> None:
     for path in [
         env_file,
         admin_script,
+        daily_script,
         fetch_gmail_script,
         fetch_sources_script,
         deliver_script,
