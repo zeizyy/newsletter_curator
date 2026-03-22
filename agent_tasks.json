@@ -826,7 +826,7 @@
     {
       "id": "T35",
       "title": "Refine preview and newsletter chrome with immediate generation feedback and updated CTA copy",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T28", "T33"],
       "scope": [
         "Change the hero copy back to Newsletter Digest with the requested subtitle and selected-story count",

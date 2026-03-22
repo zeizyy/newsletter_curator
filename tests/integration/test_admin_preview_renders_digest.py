@@ -76,6 +76,13 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
 
     client = admin_app.app.test_client()
     response = client.get("/preview")
+    assert response.status_code == 202
+    assert "generation has started" in response.get_data(as_text=True).lower()
+
+    for _ in range(20):
+        response = client.get("/preview")
+        if response.status_code == 200:
+            break
 
     assert response.status_code == 200
     page = response.get_data(as_text=True)
@@ -84,5 +91,6 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Market Tape Preview" in page
     assert "Rates reset changes software valuations" in page
     assert "Open model pricing changed" in page
-    assert "Read signal" in page
+    assert "Read original" in page
+    assert 'target="_blank"' in page
     assert "Mar 21, 7:30 AM UTC" in page

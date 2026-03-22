@@ -2,6 +2,7 @@ import datetime as dt
 import base64
 import os
 from pathlib import Path
+import threading
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
@@ -44,6 +45,38 @@ def build_preview_payload(newsletter: dict | None) -> dict | None:
         "body": str(newsletter.get("body", "") or ""),
         "html_body": strip_tracking_pixel(html_body) if html_body else "",
     }
+
+
+def start_preview_generation(config: dict, newsletter_date: str, generation_token: str) -> None:
+    def runner() -> None:
+        repository = load_repository(config)
+        if repository is None:
+            return
+        try:
+            result = preview_job(config)
+            preview = result.get("preview")
+            if preview is None:
+                repository.complete_preview_generation(
+                    newsletter_date,
+                    generation_token,
+                    status="failed",
+                    last_error="Preview generation completed but did not produce a digest.",
+                )
+                return
+            repository.complete_preview_generation(
+                newsletter_date,
+                generation_token,
+                status="completed",
+            )
+        except Exception as exc:
+            repository.complete_preview_generation(
+                newsletter_date,
+                generation_token,
+                status="failed",
+                last_error=str(exc),
+            )
+
+    threading.Thread(target=runner, daemon=True).start()
 
 
 def get_provided_admin_token() -> str:
@@ -302,6 +335,7 @@ def preview_newsletter():
     status_code = 200
     generation_in_progress = False
     generation_state = None
+    generation_started = False
 
     newsletter_date = current_newsletter_date()
     cached_newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
@@ -327,37 +361,12 @@ def preview_newsletter():
             status_code = 202
         else:
             generation_token = str(lock_state.get("generation_token", ""))
-            try:
-                result = preview_job(merged)
-                preview = result.get("preview")
-                if preview is None:
-                    error = "Preview generation completed but did not produce a digest."
-                    status_code = 500
-                    if repository and generation_token:
-                        repository.complete_preview_generation(
-                            newsletter_date,
-                            generation_token,
-                            status="failed",
-                            last_error=error,
-                        )
-                elif preview.get("html_body"):
-                    preview = {**preview, "html_body": strip_tracking_pixel(preview["html_body"])}
-                if preview is not None and repository and generation_token:
-                    repository.complete_preview_generation(
-                        newsletter_date,
-                        generation_token,
-                        status="completed",
-                    )
-            except Exception as exc:
-                error = str(exc)
-                status_code = 500
-                if repository and generation_token:
-                    repository.complete_preview_generation(
-                        newsletter_date,
-                        generation_token,
-                        status="failed",
-                        last_error=error,
-                    )
+            if repository and generation_token:
+                start_preview_generation(merged, newsletter_date, generation_token)
+            generation_in_progress = True
+            generation_state = lock_state
+            generation_started = True
+            status_code = 202
 
     if generation_in_progress and repository:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
@@ -373,6 +382,7 @@ def preview_newsletter():
             }
             generation_in_progress = False
             generation_state = None
+            generation_started = False
             status_code = 200
 
     response = make_response(
@@ -385,6 +395,7 @@ def preview_newsletter():
             token=token_from_request,
             generation_in_progress=generation_in_progress,
             generation_state=generation_state,
+            generation_started=generation_started,
         ),
         status_code,
     )

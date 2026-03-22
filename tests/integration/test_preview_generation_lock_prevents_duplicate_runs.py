@@ -69,10 +69,13 @@ def test_preview_generation_lock_prevents_duplicate_runs(monkeypatch, tmp_path):
     thread.join(timeout=5)
     assert not thread.is_alive(), "first preview request did not finish"
 
-    assert first_response["status_code"] == 200
-    assert "Newsletter Preview" in str(first_response["body"])
+    assert first_response["status_code"] == 202
+    assert "generation has started" in str(first_response["body"]).lower()
     assert call_count["value"] == 1
 
-    generation = repository.get_preview_generation(current_newsletter_date())
+    for _ in range(20):
+        generation = repository.get_preview_generation(current_newsletter_date())
+        if generation is not None and generation["status"] == "completed":
+            break
     assert generation is not None
     assert generation["status"] == "completed"

@@ -143,7 +143,9 @@ def render_summary_body_html(body: str) -> str:
 
 def render_digest_html(grouped: dict[str, list[dict]]) -> str:
     category_sections = []
+    total_entries = 0
     for category, entries in grouped.items():
+        total_entries += len(entries)
         cards = []
         for entry in entries:
             title = str(entry.get("title", "")).strip() or "Untitled"
@@ -153,7 +155,7 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
             timestamp = str(entry.get("display_timestamp", "")).strip()
             body_html = render_summary_body_html(body)
             link_html = (
-                f'<a href="{html.escape(url)}" class="story-link" style="color:#7be0bc;text-decoration:none;">Read signal</a>'
+                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#7be0bc;text-decoration:none;">Read original</a>'
                 if url
                 else ""
             )
@@ -195,4 +197,5 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
 
     with DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
-    return template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
+    rendered = template_html.replace("{{CATEGORY_SECTIONS}}", "".join(category_sections))
+    return rendered.replace("{{HERO_COUNT}}", str(total_entries))

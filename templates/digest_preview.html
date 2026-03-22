@@ -59,7 +59,11 @@
 
     {% if generation_in_progress %}
       <div class="banner-info">
-        Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
+        {% if generation_started %}
+          Newsletter generation has started. This page will refresh automatically in a few seconds while the digest is being built.
+        {% else %}
+          Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
+        {% endif %}
         {% if generation_state and generation_state.started_at %}
           <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
         {% endif %}

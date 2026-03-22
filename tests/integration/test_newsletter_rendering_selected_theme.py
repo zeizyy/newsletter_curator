@@ -7,7 +7,7 @@ from tests.fakes import FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
-def test_selected_theme_renders_market_tape_with_timestamps_and_dark_mode(monkeypatch, tmp_path):
+def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode(monkeypatch, tmp_path):
     main = importlib.import_module("main")
 
     config_path = write_temp_config(
@@ -86,8 +86,11 @@ def test_selected_theme_renders_market_tape_with_timestamps_and_dark_mode(monkey
     assert result["status"] == "completed"
     assert result["preview"] is not None
     html = result["preview"]["html_body"]
-    assert "Value Capture Watch" in html
-    assert "Read signal" in html
+    assert "Newsletter Digest" in html
+    assert "The highest-signal stories for today, pre-ranked and condensed for fast scanning." in html
+    assert "2 stories selected" in html
+    assert "Read original" in html
+    assert 'target="_blank"' in html
     assert "Mar 21, 7:30 AM UTC" in html
     assert "Financial Times" not in html
     assert "@media (prefers-color-scheme: dark)" in html
