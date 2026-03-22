@@ -799,6 +799,121 @@
         "Only one preview generation runs for a given day at a time",
         "The preview-lock integration test passes"
       ]
+    },
+    {
+      "id": "T34",
+      "title": "Make the server bootstrap idempotent and resilient to service updates and logout",
+      "status": "completed",
+      "depends_on": ["T24", "T25"],
+      "scope": [
+        "Make rerunning the bootstrap safe when generated scripts or unit files change",
+        "Ensure the installed admin service restarts cleanly to pick up updated wrapper scripts and env changes",
+        "Add an explicit lingering option or equivalent guidance so the admin service can survive SSH logout"
+      ],
+      "artifacts": [
+        "updated bootstrap_server.py install behavior",
+        "deployment bootstrap regression coverage",
+        "README deployment notes if behavior changes"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The bootstrap can be rerun safely without manual cleanup",
+        "Service updates are picked up on rerun",
+        "The deployment bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T35",
+      "title": "Refine preview and newsletter chrome with immediate generation feedback and updated CTA copy",
+      "status": "pending",
+      "depends_on": ["T28", "T33"],
+      "scope": [
+        "Change the hero copy back to Newsletter Digest with the requested subtitle and selected-story count",
+        "Make the first /preview visit show generation feedback immediately rather than appearing stalled",
+        "Rename the story CTA to Read original and open links in a new tab by default on web surfaces"
+      ],
+      "artifacts": [
+        "digest and preview template updates",
+        "rendering helpers for selected-story count and CTA behavior",
+        "integration coverage for preview and newsletter chrome"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "The newsletter hero matches the requested copy and shows story count",
+        "Preview shows immediate generation feedback on first load",
+        "Story CTAs say Read original and open in a new tab on web preview"
+      ]
+    },
+    {
+      "id": "T36",
+      "title": "Render story timestamps in local time with Pacific fallback",
+      "status": "pending",
+      "depends_on": ["T28"],
+      "scope": [
+        "Format newsletter timestamps in the viewer's local timezone where possible",
+        "Use Pacific time as the default fallback for server-rendered or email surfaces",
+        "Keep timestamp rendering consistent across preview, delivered HTML, and history views"
+      ],
+      "artifacts": [
+        "timestamp formatting helpers",
+        "template updates for timezone-aware display",
+        "integration coverage for timestamp rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "Timestamps are no longer hard-coded to UTC in the newsletter",
+        "Pacific fallback is applied when client-local rendering is unavailable",
+        "The timestamp rendering regression test passes"
+      ]
+    },
+    {
+      "id": "T37",
+      "title": "Add a newsletter history view and apply retention to generated newsletters",
+      "status": "pending",
+      "depends_on": ["T22", "T12"],
+      "scope": [
+        "Add an admin entry point to browse previously generated newsletters",
+        "Apply TTL cleanup to stored daily newsletters and related telemetry",
+        "Keep history browsing lightweight and repository-backed"
+      ],
+      "artifacts": [
+        "newsletter history admin route and template",
+        "repository retention logic for daily newsletters",
+        "integration coverage for history listing and TTL cleanup"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_history_view_and_ttl.py",
+      "integration_test": "tests/integration/test_newsletter_history_view_and_ttl.py",
+      "done_when": [
+        "Admins can browse previously generated newsletters",
+        "Generated newsletters do not accumulate indefinitely",
+        "The history and TTL integration test passes"
+      ]
+    },
+    {
+      "id": "T38",
+      "title": "Harden paywall detection and exclude JavaScript-blocked placeholder content",
+      "status": "pending",
+      "depends_on": ["T13", "T16"],
+      "scope": [
+        "Catch stronger paywall and JavaScript-required placeholder patterns before summaries are generated",
+        "Exclude those blocked pages from repository persistence and newsletter selection",
+        "Keep the detection token-efficient and deterministic"
+      ],
+      "artifacts": [
+        "improved paywall detection heuristics",
+        "integration coverage for blocked-placeholder exclusion",
+        "tests that prove those stories do not reach the newsletter"
+      ],
+      "test_command": "uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "done_when": [
+        "JavaScript-blocked placeholder pages are treated as unservable content",
+        "Those stories do not get summarized or delivered",
+        "The paywall/placeholder exclusion test passes"
+      ]
     }
   ]
 }

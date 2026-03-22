@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import shlex
 import shutil
@@ -28,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
     parser.add_argument("--install-systemd-user", action="store_true")
+    parser.add_argument("--enable-linger", action="store_true")
+    parser.add_argument("--linger-user", default=os.getenv("USER") or getpass.getuser())
     return parser.parse_args()
 
 
@@ -135,7 +138,12 @@ def install_systemd_user_service(service_file: Path, service_name: str) -> None:
     target_path = target_dir / f"{service_name}.service"
     write_file(target_path, service_file.read_text(encoding="utf-8"))
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
-    subprocess.run(["systemctl", "--user", "enable", "--now", service_name], check=True)
+    subprocess.run(["systemctl", "--user", "enable", service_name], check=True)
+    subprocess.run(["systemctl", "--user", "restart", service_name], check=True)
+
+
+def enable_user_linger(user_name: str) -> None:
+    subprocess.run(["loginctl", "enable-linger", user_name], check=True)
 
 
 def install_crontab(cron_file: Path) -> None:
@@ -251,6 +259,8 @@ def main() -> None:
         install_crontab(cron_file)
     if args.install_systemd_user:
         install_systemd_user_service(service_file, args.service_name)
+    if args.enable_linger:
+        enable_user_linger(args.linger_user)
 
     print("Generated deployment assets:")
     for path in [

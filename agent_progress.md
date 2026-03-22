@@ -315,3 +315,19 @@ Add new entries below this line.
 - Outcome: `/preview` now returns `202` with an in-progress banner and auto-refresh when a generation is already running, only one generation can own a given newsletter date at a time, and completed cached newsletters still render immediately on later requests.
 - Open risks: A crashed process can leave a running preview marker behind until the 15-minute stale-lock timeout passes, which is intentional to avoid duplicate work but may delay retries briefly after hard failures.
 - Next recommended task: none; `T33` is complete.
+
+### 2026-03-22 - Planned next-wave tasks T34 through T38
+- Context: Captured the next server/bootstrap and newsletter polish wave in the harness before implementation, covering idempotent deployment, preview/header refinements, timezone handling, newsletter history retention, and stronger paywall filtering.
+- Files changed: `agent_tasks.json`
+- Tests run: none; planning-only harness update
+- Outcome: Added pending tasks `T34` through `T38` so the next sessions can stay bounded instead of mixing bootstrap behavior, rendering changes, timestamp handling, history browsing, and paywall detection in one rollout.
+- Open risks: The UI and paywall fixes remain pending, so current preview/newsletter behavior still reflects the pre-T35/T36/T37/T38 state.
+- Next recommended task: `T34` Make the server bootstrap idempotent and resilient to service updates and logout.
+
+### 2026-03-22 - T34 made the server bootstrap rerunnable and linger-aware
+- Context: Tightened the deployment bootstrap so rerunning it cleanly reapplies generated assets, restarts the admin service to pick up script/env changes, and can optionally enable lingering for user services that must survive SSH logout.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run python scripts/bootstrap_server.py --help`; `uv run pytest tests/integration -q`
+- Outcome: The bootstrap now supports `--enable-linger`, uses an idempotent service install path that reloads, enables, and restarts the user service on rerun, and has regression coverage for both the generated assets and the install helper behavior.
+- Open risks: Enabling linger still depends on `loginctl` permissions on the host; some servers will require root or sudo for that one-time step.
+- Next recommended task: `T35` Refine preview and newsletter chrome with immediate generation feedback and updated CTA copy.

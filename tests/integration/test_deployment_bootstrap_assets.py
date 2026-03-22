@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts import bootstrap_server
+
 
 def test_deployment_bootstrap_assets(tmp_path, repo_root):
     output_dir = tmp_path / "deploy-generated"
@@ -91,3 +93,40 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"ExecStart={admin_script}" in service_text
 
     assert "Generated deployment assets:" in result.stdout
+
+
+def test_install_systemd_user_service_is_rerunnable(monkeypatch, tmp_path):
+    fake_home = tmp_path / "home"
+    fake_home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, check):
+        calls.append(list(cmd))
+
+    monkeypatch.setattr(bootstrap_server.subprocess, "run", fake_run)
+
+    service_file = tmp_path / "newsletter-curator-admin.service"
+    service_file.write_text("[Unit]\nDescription=test\n", encoding="utf-8")
+
+    bootstrap_server.install_systemd_user_service(service_file, "newsletter-curator-admin")
+
+    installed_file = fake_home / ".config" / "systemd" / "user" / "newsletter-curator-admin.service"
+    assert installed_file.exists()
+    assert calls == [
+        ["systemctl", "--user", "daemon-reload"],
+        ["systemctl", "--user", "enable", "newsletter-curator-admin"],
+        ["systemctl", "--user", "restart", "newsletter-curator-admin"],
+    ]
+
+
+def test_enable_user_linger_runs_loginctl(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, check):
+        calls.append(list(cmd))
+
+    monkeypatch.setattr(bootstrap_server.subprocess, "run", fake_run)
+    bootstrap_server.enable_user_linger("deploy-user")
+    assert calls == [["loginctl", "enable-linger", "deploy-user"]]

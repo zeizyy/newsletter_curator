@@ -90,6 +90,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --admin-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
+  --enable-linger \
   --install-systemd-user \
   --install-crontab
 ```
@@ -106,7 +107,9 @@ What this writes by default:
 
 What the script installs when flags are passed:
 - `--install-systemd-user`: copies the generated admin service into `~/.config/systemd/user/`, reloads `systemd --user`, and enables it immediately
+- rerunning the bootstrap is safe: it regenerates assets, reloads the user unit, and restarts the admin service so wrapper/env updates are picked up
 - `--install-crontab`: installs the generated cron file as the current user’s crontab
+- `--enable-linger`: runs `loginctl enable-linger $USER` so the `systemd --user` admin service survives SSH logout
 
 Notes:
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
