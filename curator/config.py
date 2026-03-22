@@ -12,7 +12,11 @@ DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest.html"
 DEFAULT_CONFIG = {
     "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
     "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
-    "database": {"path": "data/newsletter_curator.sqlite3", "ttl_days": 7},
+    "database": {
+        "path": "data/newsletter_curator.sqlite3",
+        "ttl_days": 7,
+        "newsletter_ttl_days": 7,
+    },
     "development": {
         "use_canned_sources": False,
         "canned_sources_file": "tests/fixtures/canned_sources.json",

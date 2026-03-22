@@ -457,6 +457,35 @@ class SQLiteRepository:
         payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
         return payload
 
+    def list_daily_newsletters(self, *, limit: int = 30) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    newsletter_date,
+                    delivery_run_id,
+                    subject,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM daily_newsletters
+                ORDER BY newsletter_date DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        newsletters: list[dict] = []
+        for row in rows:
+            payload = dict(row)
+            selected_items = json.loads(str(payload.pop("selected_items_json", "") or "[]"))
+            payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
+            payload["selected_items_count"] = len(selected_items)
+            newsletters.append(payload)
+        return newsletters
+
     def get_preview_generation(self, newsletter_date: str) -> dict | None:
         with self.connect() as connection:
             row = connection.execute(
@@ -630,6 +659,94 @@ class SQLiteRepository:
                 (newsletter_date,),
             ).fetchone()
             return int(row["id"])
+
+    def delete_daily_newsletters_older_than(self, cutoff_newsletter_date: str) -> dict[str, int]:
+        with self.connect() as connection:
+            newsletter_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM daily_newsletters
+                WHERE newsletter_date < ?
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            newsletters_deleted = int(newsletter_row["count"])
+
+            preview_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM preview_generations
+                WHERE newsletter_date < ?
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            preview_generations_deleted = int(preview_row["count"])
+
+            telemetry_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM newsletter_telemetry
+                WHERE daily_newsletter_id IN (
+                    SELECT id FROM daily_newsletters WHERE newsletter_date < ?
+                )
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            telemetry_deleted = int(telemetry_row["count"])
+
+            tracked_links_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM tracked_links
+                WHERE daily_newsletter_id IN (
+                    SELECT id FROM daily_newsletters WHERE newsletter_date < ?
+                )
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            tracked_links_deleted = int(tracked_links_row["count"])
+
+            open_events_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM newsletter_open_events
+                WHERE daily_newsletter_id IN (
+                    SELECT id FROM daily_newsletters WHERE newsletter_date < ?
+                )
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            open_events_deleted = int(open_events_row["count"])
+
+            click_events_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM newsletter_click_events
+                WHERE daily_newsletter_id IN (
+                    SELECT id FROM daily_newsletters WHERE newsletter_date < ?
+                )
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            click_events_deleted = int(click_events_row["count"])
+
+            connection.execute(
+                "DELETE FROM preview_generations WHERE newsletter_date < ?",
+                (cutoff_newsletter_date,),
+            )
+            connection.execute(
+                "DELETE FROM daily_newsletters WHERE newsletter_date < ?",
+                (cutoff_newsletter_date,),
+            )
+
+        return {
+            "newsletters_deleted": newsletters_deleted,
+            "preview_generations_deleted": preview_generations_deleted,
+            "telemetry_deleted": telemetry_deleted,
+            "tracked_links_deleted": tracked_links_deleted,
+            "open_events_deleted": open_events_deleted,
+            "click_events_deleted": click_events_deleted,
+        }
 
     def _run_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
         if row is None:

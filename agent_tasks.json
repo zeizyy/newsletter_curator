@@ -872,7 +872,7 @@
     {
       "id": "T37",
       "title": "Add a newsletter history view and apply retention to generated newsletters",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T22", "T12"],
       "scope": [
         "Add an admin entry point to browse previously generated newsletters",

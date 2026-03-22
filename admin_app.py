@@ -487,6 +487,60 @@ def story_explorer():
     return response
 
 
+@app.route("/newsletters", methods=["GET"])
+def newsletter_history():
+    provided_token = require_admin_token()
+    token_from_request = resolve_request_token(provided_token)
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    newsletters = repository.list_daily_newsletters(limit=30) if repository else []
+    response = make_response(
+        render_template(
+            "newsletter_history.html",
+            config_path=CONFIG_PATH,
+            newsletters=newsletters,
+            token=token_from_request,
+        )
+    )
+    if token_from_request:
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            token_from_request,
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
+
+
+@app.route("/newsletters/<newsletter_date>", methods=["GET"])
+def newsletter_history_detail(newsletter_date: str):
+    provided_token = require_admin_token()
+    token_from_request = resolve_request_token(provided_token)
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
+    if newsletter is None:
+        abort(404)
+
+    response = make_response(
+        render_template(
+            "newsletter_history_detail.html",
+            config_path=CONFIG_PATH,
+            newsletter=newsletter,
+            preview=build_preview_payload(newsletter),
+            token=token_from_request,
+        )
+    )
+    if token_from_request:
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            token_from_request,
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
+
+
 @app.route("/analytics", methods=["GET"])
 def analytics_dashboard():
     provided_token = require_admin_token()

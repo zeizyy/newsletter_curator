@@ -347,3 +347,11 @@ Add new entries below this line.
 - Outcome: Story timestamps now render as Pacific-time fallback text in the shared newsletter HTML, preview pages expose canonical UTC ISO timestamps for client-side conversion, and the preview page upgrades those timestamps to the viewer's local timezone via browser JavaScript while preserving Pacific fallback for email and other non-JS surfaces. Added pending `T39` to commit the supplied AI strategy persona as the checked-in default config.
 - Open risks: Delivered email clients cannot be upgraded to recipient-local time reliably, so email surfaces intentionally remain on the Pacific fallback rather than attempting client-local conversion.
 - Next recommended task: `T37` Add a newsletter history view and apply retention to generated newsletters.
+
+### 2026-03-22 - T37 added newsletter history browsing and retention
+- Context: Added a lightweight admin browser for stored daily newsletters and extended retention cleanup so cached digests, preview locks, and telemetry rows age out instead of accumulating forever.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/config.py`, `curator/jobs.py`, `curator/repository.py`, `templates/admin_config.html`, `templates/analytics.html`, `templates/digest_preview.html`, `templates/story_explorer.html`, `templates/newsletter_history.html`, `templates/newsletter_history_detail.html`, `tests/integration/test_newsletter_history_view_and_ttl.py`
+- Tests run: `uv run pytest tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_admin_newsletter_analytics_page.py -q`
+- Outcome: The admin app now exposes `/newsletters` and `/newsletters/<date>` for browsing persisted digests, delivery runs perform a newsletter-specific TTL cleanup using `database.newsletter_ttl_days`, and old cached newsletters cascade-delete their preview locks and telemetry rows cleanly under test.
+- Open risks: History retention currently keys off the newsletter date rather than a user-configurable timezone boundary, so the keep-window follows the same UTC newsletter-date model as the rest of the cached digest flow.
+- Next recommended task: `T38` Harden paywall detection and exclude JavaScript-blocked placeholder content.

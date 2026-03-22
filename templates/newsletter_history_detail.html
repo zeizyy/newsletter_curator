@@ -5,16 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
   <meta name="supported-color-schemes" content="light dark" />
-  {% if generation_in_progress %}
-  <meta http-equiv="refresh" content="4" />
-  {% endif %}
-  <title>Newsletter Preview</title>
+  <title>Stored Newsletter</title>
   <style>
     body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: linear-gradient(180deg,#eef4f3,#f8fbfb); color: #16222f; }
     .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 40px; }
     .card { background: rgba(255,255,255,0.88); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 22px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(17,27,45,0.08); }
-    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-    .banner-info { background: #eef5ff; border: 1px solid #c6dafd; color: #174ea6; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
     .muted { font-size: 12px; color: #5b6a78; }
     .button-link { display: inline-block; background: #ddf3eb; color: #0c7a5b; border: 1px solid rgba(12,122,91,0.18); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
     .preview-frame { background: rgba(255,255,255,0.5); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 14px; }
@@ -42,56 +37,34 @@
   <div class="wrap">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
       <div>
-        <div class="preview-label">Market Tape Preview</div>
-        <h1>Newsletter Preview</h1>
-        <div class="muted">Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code></div>
+        <div class="preview-label">Stored Newsletter</div>
+        <h1>{{ newsletter.newsletter_date }}</h1>
+        <div class="muted">Loaded from persisted newsletter history for <code>{{ config_path }}</code></div>
       </div>
-      <div style="display:flex; gap:10px;">
-        <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Past Newsletters</a>
-        <a class="button-link" href="{{ url_for('analytics_dashboard', token=token or None) }}">View Analytics</a>
-        <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Back To History</a>
+        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
         <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
       </div>
     </div>
 
-    {% if error %}
-      <div class="banner-err">{{ error }}</div>
-    {% endif %}
-
-    {% if generation_in_progress %}
-      <div class="banner-info">
-        {% if generation_started %}
-          Newsletter generation has started. This page will refresh automatically in a few seconds while the digest is being built.
-        {% else %}
-          Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
-        {% endif %}
-        {% if generation_state and generation_state.started_at %}
-          <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
-        {% endif %}
+    <div class="card">
+      <div class="preview-label">Subject</div>
+      <div style="font-size:28px; font-weight:700; color:inherit; line-height:1.1;">{{ preview.subject }}</div>
+      <div class="muted" style="margin-top:8px;">
+        created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}
       </div>
-    {% endif %}
+    </div>
 
-    {% if preview %}
-      <div class="card">
-        <div class="preview-label">Subject</div>
-        <div style="font-size:28px; font-weight:700; color:inherit; line-height:1.1;">{{ preview.subject }}</div>
-        {% if result %}
-          <div class="muted" style="margin-top:8px;">
-            ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}
-          </div>
-        {% endif %}
-      </div>
+    <div class="card">
+      <div class="preview-label">HTML Preview</div>
+      <div class="preview-frame">{{ preview.html_body | safe }}</div>
+    </div>
 
-      <div class="card">
-        <div class="preview-label">HTML Preview</div>
-        <div class="preview-frame">{{ preview.html_body | safe }}</div>
-      </div>
-
-      <div class="card">
-        <div class="preview-label">Plain Text</div>
-        <pre>{{ preview.body }}</pre>
-      </div>
-    {% endif %}
+    <div class="card">
+      <div class="preview-label">Plain Text</div>
+      <pre>{{ preview.body }}</pre>
+    </div>
   </div>
   <script>
   (function () {

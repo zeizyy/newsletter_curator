@@ -338,6 +338,21 @@ def run_repository_ttl_cleanup(
     return {"ttl_days": ttl_days, "cutoff": cutoff, **cleanup_result}
 
 
+def run_newsletter_ttl_cleanup(config: dict, repository: SQLiteRepository) -> dict[str, int | str]:
+    database_cfg = config.get("database", {})
+    ttl_days = int(database_cfg.get("newsletter_ttl_days", database_cfg.get("ttl_days", 7)))
+    keep_days = max(ttl_days, 1)
+    cutoff_newsletter_date = (
+        datetime.now(UTC).date() - timedelta(days=max(keep_days - 1, 0))
+    ).isoformat()
+    cleanup_result = repository.delete_daily_newsletters_older_than(cutoff_newsletter_date)
+    return {
+        "ttl_days": keep_days,
+        "cutoff_newsletter_date": cutoff_newsletter_date,
+        **cleanup_result,
+    }
+
+
 def run_fetch_sources_job(
     config: dict,
     *,
@@ -726,6 +741,7 @@ def run_delivery_job(
     telemetry_enabled: bool = True,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
+    newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
     print(
         json.dumps(
@@ -814,6 +830,7 @@ def run_delivery_job(
         metadata={
             "job": "deliver_digest",
             "readiness": readiness,
+            "newsletter_ttl_cleanup": newsletter_cleanup,
             "newsletter_date": newsletter_date,
         }
     )
@@ -854,6 +871,7 @@ def run_delivery_job(
                 metadata={
                     "job": "deliver_digest",
                     "readiness": readiness,
+                    "newsletter_ttl_cleanup": newsletter_cleanup,
                     "newsletter_date": newsletter_date,
                     "cached_newsletter": True,
                     "daily_newsletter_id": cached_newsletter["id"],
@@ -892,6 +910,7 @@ def run_delivery_job(
                     "accepted_items": pipeline_result.get("accepted_items", 0),
                     "backfilled_count": pipeline_result.get("backfilled_count", 0),
                     "skipped_count": pipeline_result.get("skipped_count", 0),
+                    "newsletter_ttl_cleanup": newsletter_cleanup,
                 },
             )
             pipeline_result["sent_recipients"] = send_digest(
@@ -907,6 +926,7 @@ def run_delivery_job(
             metadata={
                 "job": "deliver_digest",
                 "readiness": readiness,
+                "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
                 "cached_newsletter": False,
                 "daily_newsletter_id": daily_newsletter_id,
@@ -927,6 +947,7 @@ def run_delivery_job(
             metadata={
                 "job": "deliver_digest",
                 "readiness": readiness,
+                "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
                 "error": str(exc),
             },
