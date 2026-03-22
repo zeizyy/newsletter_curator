@@ -17,6 +17,7 @@ def test_fetch_sources_job_writes_repository(monkeypatch, tmp_path, capsys):
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "additional_sources": {"enabled": True},
+            "development": {"fake_inference": True},
             "limits": {"max_article_chars": 120},
         },
     )
@@ -82,6 +83,11 @@ def test_fetch_sources_job_writes_repository(monkeypatch, tmp_path, capsys):
     assert stories[1]["source_name"] == "AI Wire"
     assert stories[0]["article_text"]
     assert stories[1]["article_text"]
+    assert stories[0]["summary_headline"]
+    assert stories[0]["summary_body"]
+    assert stories[1]["summary_headline"]
+    assert stories[1]["summary_body"]
+    assert first_result["usage_by_model"][config["openai"]["summary_model"]]["total"] > 0
 
     fetch_sources.main()
     captured = capsys.readouterr()

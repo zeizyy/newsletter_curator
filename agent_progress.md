@@ -147,3 +147,11 @@ Add new entries below this line.
 - Outcome: Ingest now marks likely paywalled snapshots without LLM calls, paywall state is persisted in the repository, and paywalled stories are excluded from preview and delivery while remaining visible to operators in the story explorer.
 - Open risks: Third-party `httplib2` deprecation warnings still appear during test startup, but the requested feature wave is otherwise complete.
 - Next recommended task: none; all tasks in `agent_tasks.json` are complete.
+
+### 2026-03-22 - T14 moved per-article summarization into centralized fetch
+- Context: Shifted summary generation from preview/delivery into the centralized Gmail and source ingest jobs so repository snapshots carry persona-aware summary content.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/gmail.py`, `curator/jobs.py`, `curator/pipeline.py`, `curator/repository.py`, `curator/sources.py`, `tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py`, `tests/integration/test_fetch_sources_job_writes_repository.py`, `tests/integration/test_full_two_job_pipeline.py`, `tests/integration/test_gmail_ingest_then_delivery_from_db.py`, `tests/integration/test_legacy_equivalent_delivery.py`, `tests/integration/test_paywalled_stories_are_excluded_from_digest.py`, `tests/integration/test_repository_upsert_and_dedupe.py`, `tests/integration/test_smoke_offline_pipeline.py`
+- Tests run: `uv run pytest tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py`; `uv run pytest tests/integration -q`
+- Outcome: Central fetch now stores summary snapshots and summary metadata in SQLite, preview/delivery reuse stored summaries instead of calling the summary model when available, and the integration suite passes after updating offline fetch-path expectations.
+- Open risks: Summarization during ingest is still sequential; `T15` will add bounded concurrency to reduce fetch latency. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: `T15` Parallelize centralized summarization during fetch.

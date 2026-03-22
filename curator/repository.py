@@ -66,7 +66,7 @@ class SQLiteRepository:
             row["version"]
             for row in connection.execute("SELECT version FROM schema_migrations").fetchall()
         }
-        migrations = {1: self._migration_v1, 2: self._migration_v2}
+        migrations = {1: self._migration_v1, 2: self._migration_v2, 3: self._migration_v3}
         for version, migration in migrations.items():
             if version in applied_versions:
                 continue
@@ -153,6 +153,23 @@ class SQLiteRepository:
         )
         connection.execute(
             "ALTER TABLE article_snapshots ADD COLUMN paywall_reason TEXT NOT NULL DEFAULT ''"
+        )
+
+    def _migration_v3(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "ALTER TABLE article_snapshots ADD COLUMN summary_raw TEXT NOT NULL DEFAULT ''"
+        )
+        connection.execute(
+            "ALTER TABLE article_snapshots ADD COLUMN summary_headline TEXT NOT NULL DEFAULT ''"
+        )
+        connection.execute(
+            "ALTER TABLE article_snapshots ADD COLUMN summary_body TEXT NOT NULL DEFAULT ''"
+        )
+        connection.execute(
+            "ALTER TABLE article_snapshots ADD COLUMN summary_model TEXT NOT NULL DEFAULT ''"
+        )
+        connection.execute(
+            "ALTER TABLE article_snapshots ADD COLUMN summarized_at TEXT"
         )
 
     def create_ingestion_run(self, source_type: str, metadata: dict | None = None) -> int:
@@ -361,6 +378,11 @@ class SQLiteRepository:
         *,
         paywall_detected: bool = False,
         paywall_reason: str = "",
+        summary_raw: str = "",
+        summary_headline: str = "",
+        summary_body: str = "",
+        summary_model: str = "",
+        summarized_at: str | None = None,
     ) -> int:
         now = utc_now()
         payload = json.dumps(metadata or {}, sort_keys=True)
@@ -375,9 +397,14 @@ class SQLiteRepository:
                     fetched_at,
                     metadata_json,
                     paywall_detected,
-                    paywall_reason
+                    paywall_reason,
+                    summary_raw,
+                    summary_headline,
+                    summary_body,
+                    summary_model,
+                    summarized_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(story_id)
                 DO UPDATE SET
                     article_text = excluded.article_text,
@@ -385,7 +412,12 @@ class SQLiteRepository:
                     fetched_at = excluded.fetched_at,
                     metadata_json = excluded.metadata_json,
                     paywall_detected = excluded.paywall_detected,
-                    paywall_reason = excluded.paywall_reason
+                    paywall_reason = excluded.paywall_reason,
+                    summary_raw = excluded.summary_raw,
+                    summary_headline = excluded.summary_headline,
+                    summary_body = excluded.summary_body,
+                    summary_model = excluded.summary_model,
+                    summarized_at = excluded.summarized_at
                 """,
                 (
                     story_id,
@@ -395,6 +427,11 @@ class SQLiteRepository:
                     payload,
                     int(paywall_detected),
                     paywall_reason,
+                    summary_raw,
+                    summary_headline,
+                    summary_body,
+                    summary_model,
+                    summarized_at,
                 ),
             )
             row = connection.execute(
@@ -503,7 +540,12 @@ class SQLiteRepository:
                 snap.content_hash,
                 snap.fetched_at AS article_fetched_at,
                 snap.paywall_detected,
-                snap.paywall_reason
+                snap.paywall_reason,
+                snap.summary_raw,
+                snap.summary_headline,
+                snap.summary_body,
+                snap.summary_model,
+                snap.summarized_at
             FROM fetched_stories fs
             LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
             {where_clause}

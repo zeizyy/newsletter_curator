@@ -28,6 +28,18 @@ def process_story(
     article_fetcher=fetch_article_text,
     summarize_article_with_llm_fn=summarize_article_with_llm,
 ) -> str | None:
+    stored_headline = str(item.get("summary_headline", "")).strip()
+    stored_body = str(item.get("summary_body", "")).strip()
+    if stored_body:
+        headline = stored_headline or str(item.get("anchor_text", "")).strip() or "Untitled"
+        return "\n\n".join(
+            [
+                f"Story: {headline}",
+                f"URL: {item.get('url', '')}",
+                stored_body,
+            ]
+        )
+
     article_text = str(item.get("article_text", "") or "").strip()
     if not article_text:
         article_text = article_fetcher(item.get("url", ""), max_article_chars)

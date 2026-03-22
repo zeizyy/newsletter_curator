@@ -64,6 +64,7 @@ def test_legacy_equivalent_delivery(monkeypatch, repo_root, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
             "email": {
                 "digest_recipients": ["entrypoint@example.com"],
                 "digest_subject": "Legacy Equivalent Digest",
@@ -115,4 +116,4 @@ def test_legacy_equivalent_delivery(monkeypatch, repo_root, tmp_path):
     assert len(sent_messages) == 1
     assert source_fetcher.calls == 1
     assert len(article_fetcher.calls) == 3
-    assert len(fake_openai.calls) == 5
+    assert len(fake_openai.calls) == 0

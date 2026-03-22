@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-21",
+  "updated_at": "2026-03-22",
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -338,6 +338,74 @@
         "Likely paywalled stories are identified without LLM inference",
         "Paywalled stories do not appear in the newsletter or preview",
         "The paywall filtering integration test passes"
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Move per-article summarization into the centralized fetch pipeline",
+      "status": "completed",
+      "depends_on": ["T13"],
+      "scope": [
+        "Generate persona-aware per-article summaries during centralized fetch",
+        "Persist summary snapshots in the repository",
+        "Make preview and delivery reuse stored summaries instead of calling the summary LLM"
+      ],
+      "artifacts": [
+        "repository summary snapshot fields",
+        "fetch job summary generation",
+        "preview and delivery reuse of stored summaries"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py",
+      "integration_test": "tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py",
+      "done_when": [
+        "Per-article summaries are generated during centralized fetch",
+        "Preview and delivery no longer need summary-model calls when summaries are stored",
+        "The integration test passes"
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Parallelize centralized summarization during fetch",
+      "status": "pending",
+      "depends_on": ["T14"],
+      "scope": [
+        "Run centralized per-article summary generation concurrently",
+        "Respect configured concurrency limits",
+        "Preserve deterministic behavior in tests"
+      ],
+      "artifacts": [
+        "fetch job concurrency logic",
+        "tests for concurrent summary generation"
+      ],
+      "test_command": "uv run pytest tests/integration/test_fetch_summarization_runs_concurrently.py",
+      "integration_test": "tests/integration/test_fetch_summarization_runs_concurrently.py",
+      "done_when": [
+        "Centralized summarization can run concurrently",
+        "Concurrency is bounded by config",
+        "The concurrency integration test passes"
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Harden title extraction for story explorer and digest robustness",
+      "status": "pending",
+      "depends_on": ["T14"],
+      "scope": [
+        "Improve title extraction so generic anchors like Read More do not become the story title",
+        "Use surrounding context or article metadata more robustly",
+        "Keep story explorer and digest displays readable"
+      ],
+      "artifacts": [
+        "link extraction heuristics",
+        "repository title normalization if needed",
+        "integration coverage for broken title cases"
+      ],
+      "test_command": "uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
+      "integration_test": "tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
+      "done_when": [
+        "Generic CTA anchors are not used as primary story titles",
+        "Story explorer displays more reliable titles for newsletter-derived links",
+        "The title extraction integration test passes"
       ]
     }
   ]

@@ -14,6 +14,7 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3"), "ttl_days": 7},
+            "development": {"fake_inference": True},
             "email": {
                 "digest_recipients": ["paywall@example.com"],
                 "digest_subject": "Paywall Digest",

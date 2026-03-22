@@ -3,16 +3,20 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Lock
+
+from openai import OpenAI
 
 from .config import BASE_DIR
 from .content import detect_paywalled_article, extract_links_from_html, fetch_article_text
+from .dev import fake_summarize_article
 from .gmail import (
     collect_live_gmail_links,
     collect_repository_gmail_links,
     gmail_query_cutoff,
     send_email,
 )
-from .llm import select_top_stories
+from .llm import extract_summary_json, select_top_stories, summarize_article_with_llm
 from .pipeline import process_story, run_job as run_pipeline_job
 from .rendering import group_summaries_by_category, render_digest_html
 from .repository import SQLiteRepository
@@ -31,6 +35,36 @@ def get_repository_from_config(config: dict) -> SQLiteRepository:
     repository = SQLiteRepository(Path(database_path))
     repository.initialize()
     return repository
+
+
+def summarize_for_ingest(
+    config: dict,
+    article_text: str,
+    usage_by_model: dict,
+    lock: Lock,
+) -> tuple[str, str, str]:
+    persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    development_cfg = config.get("development", {})
+    summary_model = config["openai"]["summary_model"]
+    if development_cfg.get("fake_inference", False):
+        summary_raw = fake_summarize_article(
+            article_text,
+            usage_by_model,
+            lock,
+            summary_model,
+            persona_text=persona_text,
+        )
+    else:
+        summary_raw = summarize_article_with_llm(
+            article_text,
+            usage_by_model,
+            lock,
+            summary_model,
+            persona_text=persona_text,
+            client_factory=OpenAI,
+        )
+    headline, body = extract_summary_json(summary_raw)
+    return summary_raw, headline, body
 
 
 def run_repository_ttl_cleanup(
@@ -72,8 +106,11 @@ def run_fetch_sources_job(
         "snapshots_persisted": 0,
         "article_failures": 0,
         "paywall_stories": 0,
+        "summary_failures": 0,
     }
     failures: list[dict] = []
+    usage_by_model: dict = {}
+    lock = Lock()
 
     try:
         stories = source_fetcher(config)
@@ -102,23 +139,58 @@ def run_fetch_sources_job(
             paywall_detected, paywall_reason = detect_paywalled_article(
                 article_text, story.get("url", "")
             )
+            summary_raw = ""
+            summary_headline = ""
+            summary_body = ""
+            if not paywall_detected:
+                summary_raw, summary_headline, summary_body = summarize_for_ingest(
+                    config,
+                    article_text,
+                    usage_by_model,
+                    lock,
+                )
+                if not summary_body.strip() or summary_body.strip() == "No article text available.":
+                    stats["summary_failures"] += 1
+                    failures.append(
+                        {
+                            "url": story.get("url", ""),
+                            "source_name": story.get("source_name", ""),
+                            "reason": "empty_summary",
+                        }
+                    )
+                    continue
             repository.upsert_article_snapshot(
                 story_id,
                 article_text,
                 metadata={"job": "fetch_sources"},
                 paywall_detected=paywall_detected,
                 paywall_reason=paywall_reason,
+                summary_raw=summary_raw,
+                summary_headline=summary_headline,
+                summary_body=summary_body,
+                summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
+                summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
             )
             if paywall_detected:
                 stats["paywall_stories"] += 1
             stats["snapshots_persisted"] += 1
 
         final_status = "completed"
-        return_payload = {**stats, "status": final_status, "failures": failures}
+        return_payload = {
+            **stats,
+            "status": final_status,
+            "failures": failures,
+            "usage_by_model": usage_by_model,
+        }
     except Exception as exc:
         failures.append({"reason": str(exc)})
         final_status = "failed"
-        return_payload = {**stats, "status": final_status, "failures": failures}
+        return_payload = {
+            **stats,
+            "status": final_status,
+            "failures": failures,
+            "usage_by_model": usage_by_model,
+        }
         raise
     finally:
         repository.complete_ingestion_run(
@@ -132,6 +204,8 @@ def run_fetch_sources_job(
                 "snapshots_persisted": stats["snapshots_persisted"],
                 "article_failures": stats["article_failures"],
                 "paywall_stories": stats["paywall_stories"],
+                "summary_failures": stats["summary_failures"],
+                "usage_by_model": usage_by_model,
                 "failures": failures,
             },
         )
@@ -166,8 +240,11 @@ def run_fetch_gmail_job(
         "snapshots_persisted": 0,
         "article_failures": 0,
         "paywall_stories": 0,
+        "summary_failures": 0,
     }
     failures: list[dict] = []
+    usage_by_model: dict = {}
+    lock = Lock()
 
     try:
         stories = collect_gmail_links_fn(service, config)
@@ -196,23 +273,58 @@ def run_fetch_gmail_job(
             paywall_detected, paywall_reason = detect_paywalled_article(
                 article_text, story.get("url", "")
             )
+            summary_raw = ""
+            summary_headline = ""
+            summary_body = ""
+            if not paywall_detected:
+                summary_raw, summary_headline, summary_body = summarize_for_ingest(
+                    config,
+                    article_text,
+                    usage_by_model,
+                    lock,
+                )
+                if not summary_body.strip() or summary_body.strip() == "No article text available.":
+                    stats["summary_failures"] += 1
+                    failures.append(
+                        {
+                            "url": story.get("url", ""),
+                            "source_name": story.get("source_name", ""),
+                            "reason": "empty_summary",
+                        }
+                    )
+                    continue
             repository.upsert_article_snapshot(
                 story_id,
                 article_text,
                 metadata={"job": "fetch_gmail"},
                 paywall_detected=paywall_detected,
                 paywall_reason=paywall_reason,
+                summary_raw=summary_raw,
+                summary_headline=summary_headline,
+                summary_body=summary_body,
+                summary_model=config["openai"]["summary_model"] if not paywall_detected else "",
+                summarized_at=datetime.now(UTC).isoformat() if not paywall_detected else None,
             )
             if paywall_detected:
                 stats["paywall_stories"] += 1
             stats["snapshots_persisted"] += 1
 
         final_status = "completed"
-        return_payload = {**stats, "status": final_status, "failures": failures}
+        return_payload = {
+            **stats,
+            "status": final_status,
+            "failures": failures,
+            "usage_by_model": usage_by_model,
+        }
     except Exception as exc:
         failures.append({"reason": str(exc)})
         final_status = "failed"
-        return_payload = {**stats, "status": final_status, "failures": failures}
+        return_payload = {
+            **stats,
+            "status": final_status,
+            "failures": failures,
+            "usage_by_model": usage_by_model,
+        }
         raise
     finally:
         repository.complete_ingestion_run(
@@ -226,6 +338,8 @@ def run_fetch_gmail_job(
                 "snapshots_persisted": stats["snapshots_persisted"],
                 "article_failures": stats["article_failures"],
                 "paywall_stories": stats["paywall_stories"],
+                "summary_failures": stats["summary_failures"],
+                "usage_by_model": usage_by_model,
                 "failures": failures,
             },
         )

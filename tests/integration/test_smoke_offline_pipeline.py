@@ -65,6 +65,7 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
             "email": {
                 "digest_recipients": ["integration@example.com"],
                 "digest_subject": "Offline Smoke Digest",
@@ -112,4 +113,4 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
     assert "Read article" in payload["html_body"]
     assert source_fetcher.calls == 1
     assert len(article_fetcher.calls) == 3
-    assert len(fake_openai.calls) == 5
+    assert len(fake_openai.calls) == 0

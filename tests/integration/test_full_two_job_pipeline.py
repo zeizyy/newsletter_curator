@@ -113,6 +113,7 @@ def test_full_two_job_pipeline(monkeypatch, tmp_path):
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "additional_sources": {"enabled": True, "hours": 48},
+            "development": {"fake_inference": True},
             "email": {
                 "digest_recipients": ["pipeline@example.com"],
                 "digest_subject": "Two Job Digest",

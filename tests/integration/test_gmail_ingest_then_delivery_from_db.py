@@ -40,6 +40,7 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "additional_sources": {"enabled": False},
+            "development": {"fake_inference": True},
             "email": {
                 "digest_recipients": ["gmail-db@example.com"],
                 "digest_subject": "Gmail DB Digest",
