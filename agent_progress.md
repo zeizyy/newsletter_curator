@@ -363,3 +363,11 @@ Add new entries below this line.
 - Outcome: Ingest now flags JavaScript-required and adblock-required placeholder pages using title, excerpt, and article-body heuristics, blocked pages are excluded from repository persistence alongside paywalled stories, and the regression test now covers both subscription walls and JS-blocked placeholders.
 - Open risks: The filter remains heuristic by design, so especially unusual blocked-page copy may still need additional markers later if a publisher changes its placeholder language significantly.
 - Next recommended task: `T39` Commit the supplied AI strategy persona as the checked-in default config.
+
+### 2026-03-22 - T39 committed the supplied AI strategy persona as the repo default
+- Context: Checked the supplied reader profile into the repo's default config so new environments start with the intended ranking and summary bias instead of a blank persona.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `config.yaml`, `tests/integration/test_default_config_includes_repo_persona.py`
+- Tests run: `uv run pytest tests/integration/test_default_config_includes_repo_persona.py tests/integration/test_persona_influences_ranking_scoring_and_summary.py tests/integration/test_persona_changes_ranking_and_summary.py -q`
+- Outcome: The checked-in `config.yaml` now includes the supplied AI strategy persona as the default `persona.text`, and a regression test locks in the committed persona wording so fresh deployments inherit the same profile.
+- Open risks: The committed persona is intentionally opinionated; operators who want a neutral or different reader profile should override `persona.text` in their own deployed config.
+- Next recommended task: none; `T34` through `T39` are complete.
