@@ -205,12 +205,17 @@ def _prepare_ingest_snapshot_candidates(
             continue
 
         story_record = enrich_story_with_article_metadata(story_record, article_details)
-        paywall_detected, paywall_reason = detect_paywalled_article(
-            article_text,
-            story_record.get("url", ""),
-            document_title=article_details.get("document_title", ""),
-            document_excerpt=article_details.get("document_excerpt", ""),
-        )
+        access_signals = article_details.get("access_signals", {}) or {}
+        if "access_blocked" in article_details:
+            paywall_detected = bool(article_details.get("access_blocked"))
+            paywall_reason = str(article_details.get("access_reason", "") or "")
+        else:
+            paywall_detected, paywall_reason = detect_paywalled_article(
+                article_text,
+                story_record.get("url", ""),
+                document_title=article_details.get("document_title", ""),
+                document_excerpt=article_details.get("document_excerpt", ""),
+            )
         if paywall_detected:
             stats["paywall_stories"] += 1
         prepared.append(
@@ -219,6 +224,7 @@ def _prepare_ingest_snapshot_candidates(
                 "article_text": article_text,
                 "paywall_detected": paywall_detected,
                 "paywall_reason": paywall_reason,
+                "access_signals": access_signals,
                 "summary_raw": "",
                 "summary_headline": "",
                 "summary_body": "",
@@ -306,6 +312,7 @@ def _persist_ingest_snapshots(
                 "summary_selected": summary_selected,
                 "ingest_score": item.get("ingest_score", ""),
                 "ingest_rationale": item.get("ingest_rationale", ""),
+                "access_signals": item.get("access_signals", {}),
             },
             paywall_detected=paywall_detected,
             paywall_reason=item["paywall_reason"],

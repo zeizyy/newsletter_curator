@@ -960,6 +960,29 @@
         "Cached daily newsletters can be rerendered in the email-safe mode without reranking",
         "The admin preview integration test passes for both modes"
       ]
+    },
+    {
+      "id": "T41",
+      "title": "Implement a structured multi-signal access classifier and evaluate it on the live repository corpus",
+      "status": "completed",
+      "depends_on": ["T38"],
+      "scope": [
+        "Add standards-based paywall detection from structured data when present",
+        "Combine DOM, placeholder, and text signals into a deterministic access classifier",
+        "Evaluate the new classifier against the currently stored repository stories and tune out false positives on that live corpus"
+      ],
+      "artifacts": [
+        "content classifier helpers",
+        "ingest wiring for classifier signals",
+        "integration coverage for structured-data paywalls"
+      ],
+      "test_command": "uv run pytest tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py",
+      "done_when": [
+        "Structured-data paywalls are blocked without relying on raw phrase matching alone",
+        "Blocked-placeholder and paywall signals are persisted through ingest",
+        "The current live repository corpus evaluates with zero false positives and zero observed false negatives"
+      ]
     }
   ]
 }

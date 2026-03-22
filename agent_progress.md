@@ -379,3 +379,11 @@ Add new entries below this line.
 - Outcome: The admin preview now exposes toggle buttons for the existing Market Tape preview and a new email-safe preview, cached newsletters persist `render_groups` metadata so the alternate template can be rerendered without another ranking run, and the email-safe path uses a conservative table-based HTML shell for closer Gmail behavior.
 - Open risks: Delivery still sends the existing primary digest HTML; this task only adds preview visibility for the email-safe variant so the actual send template can be switched deliberately in a later rollout.
 - Next recommended task: none; `T40` is complete.
+
+### 2026-03-22 - T41 added a structured multi-signal access classifier and live-corpus evaluation
+- Context: Replaced the purely phrase-based access check with a deterministic classifier that can use structured paywall metadata, DOM/access tokens, and blocked-placeholder signals, then measured it against the currently stored repository stories.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/content.py`, `curator/jobs.py`, `tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py`
+- Tests run: `uv run pytest tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py tests/integration/test_paywalled_stories_are_excluded_from_digest.py tests/integration/test_fetch_sources_job_writes_repository.py -q`; `uv run pytest tests/integration -q`; `uv run python` live-corpus evaluation against the current repository
+- Outcome: The classifier now blocks structured-data paywalls and continues to catch JavaScript-disabled/adblock placeholders, ingest persists classifier signals into snapshot metadata, and the current live repository corpus of 16 stored stories evaluated with zero false positives and zero observed false negatives. The live corpus currently contains only servable persisted stories, so the zero false-negative figure reflects that no blocked examples remained in the DB after ingest filtering.
+- Open risks: The live DB evaluation is only as strong as the current stored corpus; if future publishers change markup or blocker copy, additional structured or domain-specific signals may still need to be added.
+- Next recommended task: none; `T41` is complete.

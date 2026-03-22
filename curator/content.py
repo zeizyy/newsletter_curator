@@ -39,6 +39,30 @@ BLOCKED_PLACEHOLDER_STRONG_MARKERS = {
     "turn off your ad blocker": "adblock_required_placeholder",
 }
 
+PAYWALL_DOM_TOKENS = {
+    "paywall",
+    "gateway",
+    "subscriber-only",
+    "subscriber_only",
+    "subscription",
+    "subscribe",
+    "premium",
+    "metered",
+    "meter",
+    "regwall",
+    "registration-wall",
+}
+
+BLOCKED_DOM_TOKENS = {
+    "js-required",
+    "javascript-required",
+    "enable-javascript",
+    "enable_javascript",
+    "adblock",
+    "ad-block",
+    "paywall-modal",
+}
+
 GENERIC_CTA_TITLES = {
     "read more",
     "continue reading",
@@ -220,10 +244,21 @@ def extract_article_details_from_html(
     if not excerpt:
         excerpt = trim_context(article_text)
 
+    access = classify_article_access(
+        article_text=article_text[:max_article_chars],
+        url=url,
+        document_title=title,
+        document_excerpt=excerpt,
+        raw_html=html,
+    )
+
     return {
         "article_text": article_text[:max_article_chars],
         "document_title": title,
         "document_excerpt": excerpt,
+        "access_blocked": access["blocked"],
+        "access_reason": access["reason"],
+        "access_signals": access["signals"],
     }
 
 
@@ -287,12 +322,73 @@ def detect_paywalled_article(
     *,
     document_title: str = "",
     document_excerpt: str = "",
+    raw_html: str = "",
 ) -> tuple[bool, str]:
+    access = classify_article_access(
+        article_text,
+        url,
+        document_title=document_title,
+        document_excerpt=document_excerpt,
+        raw_html=raw_html,
+    )
+    return bool(access["blocked"]), str(access["reason"])
+
+
+def _parse_json_ld_objects(raw_html: str) -> list[dict]:
+    soup = BeautifulSoup(raw_html, "html.parser")
+    objects: list[dict] = []
+    for node in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        raw = node.string or node.get_text(" ", strip=True) or ""
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        stack = [payload]
+        while stack:
+            current = stack.pop()
+            if isinstance(current, dict):
+                objects.append(current)
+                graph = current.get("@graph")
+                if isinstance(graph, list):
+                    stack.extend(graph)
+                elif isinstance(graph, dict):
+                    stack.append(graph)
+                for value in current.values():
+                    if isinstance(value, list):
+                        stack.extend(v for v in value if isinstance(v, (dict, list)))
+                    elif isinstance(value, dict):
+                        stack.append(value)
+            elif isinstance(current, list):
+                stack.extend(item for item in current if isinstance(item, (dict, list)))
+    return objects
+
+
+def _node_token_blob(node) -> str:
+    if node is None:
+        return ""
+    tokens: list[str] = []
+    for attr_name in ("class", "id", "data-testid", "data-name", "aria-label"):
+        value = node.get(attr_name)
+        if isinstance(value, list):
+            tokens.extend(str(part) for part in value if str(part).strip())
+        elif value:
+            tokens.append(str(value))
+    return " ".join(tokens).lower()
+
+
+def classify_article_access(
+    article_text: str,
+    url: str = "",
+    *,
+    document_title: str = "",
+    document_excerpt: str = "",
+    raw_html: str = "",
+) -> dict:
     article_text_normalized = normalize_whitespace(article_text)
     text = article_text_normalized.lower()
-    if not text:
-        return False, ""
-
     combined_text = normalize_whitespace(
         " ".join(
             part
@@ -300,42 +396,101 @@ def detect_paywalled_article(
             if str(part or "").strip()
         )
     ).lower()
+    signals: dict[str, object] = {
+        "word_count": len(article_text_normalized.split()),
+        "has_structured_paywall": False,
+        "structured_selector_hit": False,
+        "dom_paywall_token_hit": False,
+        "dom_blocked_token_hit": False,
+        "strong_text_markers": [],
+        "weak_text_markers": [],
+        "blocked_text_markers": [],
+    }
 
-    for marker, reason in PAYWALL_STRONG_MARKERS.items():
-        if marker in text and len(text) <= 2500:
-            return True, reason
+    soup = BeautifulSoup(raw_html, "html.parser") if raw_html else None
+    if raw_html:
+        for obj in _parse_json_ld_objects(raw_html):
+            free_value = obj.get("isAccessibleForFree")
+            if isinstance(free_value, str):
+                free_value = free_value.lower() == "true"
+            if free_value is False:
+                signals["has_structured_paywall"] = True
+                has_part = obj.get("hasPart")
+                parts = has_part if isinstance(has_part, list) else [has_part]
+                for part in parts:
+                    if not isinstance(part, dict):
+                        continue
+                    part_free = part.get("isAccessibleForFree")
+                    if isinstance(part_free, str):
+                        part_free = part_free.lower() == "true"
+                    selector = str(part.get("cssSelector", "") or "").strip()
+                    if part_free is False and selector and soup is not None:
+                        try:
+                            if soup.select(selector):
+                                signals["structured_selector_hit"] = True
+                        except Exception:
+                            pass
+                return {"blocked": True, "reason": "structured_data_paywall", "signals": signals}
 
-    for marker, reason in BLOCKED_PLACEHOLDER_STRONG_MARKERS.items():
-        if marker in combined_text and len(article_text_normalized) <= 3000:
-            return True, reason
+    if soup is not None:
+        token_hits = 0
+        blocked_hits = 0
+        for node in soup.find_all(True):
+            blob = _node_token_blob(node)
+            if not blob:
+                continue
+            if any(token in blob for token in PAYWALL_DOM_TOKENS):
+                token_hits += 1
+            if any(token in blob for token in BLOCKED_DOM_TOKENS):
+                blocked_hits += 1
+        signals["dom_paywall_token_hit"] = token_hits > 0
+        signals["dom_blocked_token_hit"] = blocked_hits > 0
+
+    strong_hits = [reason for marker, reason in PAYWALL_STRONG_MARKERS.items() if marker in text]
+    blocked_hits = [
+        reason for marker, reason in BLOCKED_PLACEHOLDER_STRONG_MARKERS.items() if marker in combined_text
+    ]
+    weak_hits = [reason for marker, reason in PAYWALL_WEAK_MARKERS.items() if marker in text]
+    signals["strong_text_markers"] = strong_hits
+    signals["weak_text_markers"] = weak_hits
+    signals["blocked_text_markers"] = blocked_hits
+
+    if strong_hits and len(text) <= 2500:
+        return {"blocked": True, "reason": strong_hits[0], "signals": signals}
+
+    if blocked_hits and len(article_text_normalized) <= 3000:
+        return {"blocked": True, "reason": blocked_hits[0], "signals": signals}
 
     if (
-        "javascript" in combined_text
-        and ("disabled" in combined_text or "blocked" in combined_text)
+        ("javascript" in combined_text and ("disabled" in combined_text or "blocked" in combined_text))
         and ("enable" in combined_text or "required" in combined_text)
         and len(article_text_normalized) <= 3000
     ):
-        return True, "javascript_required_placeholder"
+        return {"blocked": True, "reason": "javascript_required_placeholder", "signals": signals}
 
     if (
         "ad blocker" in combined_text
         and ("disable" in combined_text or "turn off" in combined_text or "detected" in combined_text)
         and len(article_text_normalized) <= 3000
     ):
-        return True, "adblock_required_placeholder"
+        return {"blocked": True, "reason": "adblock_required_placeholder", "signals": signals}
 
-    weak_hits = [reason for marker, reason in PAYWALL_WEAK_MARKERS.items() if marker in text]
     parsed = urlparse(url)
     paywallish_path = any(
         token in parsed.path.lower()
-        for token in ["/subscribe", "/subscription", "/member", "/login", "/signin"]
+        for token in ["/subscribe", "/subscription", "/member", "/login", "/signin", "/premium"]
     )
-    if len(weak_hits) >= 2 and len(text) <= 1500:
-        return True, weak_hits[0]
-    if weak_hits and paywallish_path and len(text) <= 1800:
-        return True, weak_hits[0]
 
-    return False, ""
+    if len(weak_hits) >= 2 and len(text) <= 1500:
+        return {"blocked": True, "reason": weak_hits[0], "signals": signals}
+    if weak_hits and paywallish_path and len(text) <= 1800:
+        return {"blocked": True, "reason": weak_hits[0], "signals": signals}
+    if signals["dom_paywall_token_hit"] and weak_hits and len(text) <= 2200:
+        return {"blocked": True, "reason": "dom_paywall_overlay", "signals": signals}
+    if signals["dom_blocked_token_hit"] and len(article_text_normalized) <= 3000:
+        return {"blocked": True, "reason": "dom_blocked_placeholder", "signals": signals}
+
+    return {"blocked": False, "reason": "", "signals": signals}
 
 
 def dedupe_links_by_url(items: list[dict]) -> list[dict]:
