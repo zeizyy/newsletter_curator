@@ -6,7 +6,7 @@ from tests.fakes import FakeArticleFetcher, FakeSourceFetcher
 from tests.helpers import write_temp_config
 
 
-def test_ingest_only_persists_top_twenty_summarized_articles(tmp_path):
+def test_ingest_persists_all_candidates_but_only_top_twenty_are_summarized(tmp_path):
     config_path = write_temp_config(
         tmp_path,
         overrides={
@@ -55,12 +55,17 @@ def test_ingest_only_persists_top_twenty_summarized_articles(tmp_path):
     repository = get_repository_from_config(config)
     stories = repository.list_stories(source_type="additional_source")
     persisted_urls = {story["url"] for story in stories}
+    summarized_urls = {
+        story["url"] for story in stories if str(story.get("summary_body", "")).strip()
+    }
 
     assert result["status"] == "completed"
     assert result["stories_seen"] == 25
-    assert result["stories_persisted"] == 20
-    assert result["snapshots_persisted"] == 20
-    assert len(stories) == 20
-    assert "https://example.com/ai/story-21" not in persisted_urls
-    assert "https://example.com/ai/story-25" not in persisted_urls
-    assert all(str(story.get("summary_body", "")).strip() for story in stories)
+    assert result["stories_persisted"] == 25
+    assert result["snapshots_persisted"] == 25
+    assert len(stories) == 25
+    assert "https://example.com/ai/story-21" in persisted_urls
+    assert "https://example.com/ai/story-25" in persisted_urls
+    assert len(summarized_urls) == 20
+    assert "https://example.com/ai/story-21" not in summarized_urls
+    assert "https://example.com/ai/story-25" not in summarized_urls

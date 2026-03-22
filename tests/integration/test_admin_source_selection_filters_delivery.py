@@ -81,6 +81,10 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     repository.upsert_article_snapshot(
         int(macro_story["id"]),
         "Rates reset changes software valuations and reprices growth.",
+        summary_headline="Rates reset changes software valuations",
+        summary_body="Rates reset changes software valuations and reprices growth names.",
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T07:35:00+00:00",
     )
     repository.upsert_story(
         {
@@ -100,6 +104,10 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     repository.upsert_article_snapshot(
         int(ai_story["id"]),
         "Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        summary_headline="Open model pricing changed",
+        summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T06:05:00+00:00",
     )
     sources = repository.list_sources_with_selection()
     source_id_by_name = {row["source_name"]: row["id"] for row in sources}

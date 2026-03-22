@@ -60,9 +60,9 @@ def test_ingest_only_summarizes_top_twenty_scored_articles(tmp_path):
     assert result["scored_candidates"] == 25
     assert result["summary_candidates"] == 20
     assert result["summary_workers"] == 4
-    assert result["stories_persisted"] == 20
-    assert result["snapshots_persisted"] == 20
-    assert len(stories) == 20
-    assert all(str(story.get("summary_body", "")).strip() for story in stories)
+    assert result["stories_persisted"] == 25
+    assert result["snapshots_persisted"] == 25
+    assert len(stories) == 25
+    assert sum(1 for story in stories if str(story.get("summary_body", "")).strip()) == 20
     assert result["usage_by_model"][config["openai"]["reasoning_model"]]["total"] > 0
     assert result["usage_by_model"][config["openai"]["summary_model"]]["total"] >= 40

@@ -136,6 +136,7 @@ def collect_repository_source_links(
         source_type="additional_source",
         published_after=cutoff.isoformat(),
         include_paywalled=False,
+        require_summary=True,
     )
     enabled_map = {
         (row["source_type"], row["source_name"]): row["enabled"]

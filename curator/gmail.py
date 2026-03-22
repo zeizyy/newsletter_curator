@@ -206,6 +206,7 @@ def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
         source_type="gmail",
         published_after=cutoff,
         include_paywalled=False,
+        require_summary=True,
     )
     links = []
     for story in stories:

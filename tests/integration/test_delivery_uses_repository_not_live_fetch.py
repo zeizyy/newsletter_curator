@@ -48,6 +48,10 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
             ingestion_run_id=ingestion_run_id,
         ),
         "Rates reset changes software valuations and reprices growth.",
+        summary_headline="Rates reset changes software valuations",
+        summary_body="Rates reset changes software valuations and reprices growth names.",
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T07:35:00+00:00",
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -65,6 +69,10 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
             ingestion_run_id=ingestion_run_id,
         ),
         "Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        summary_headline="Open model pricing changed",
+        summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T06:05:00+00:00",
     )
 
     service = FakeGmailService(messages=[])
@@ -100,4 +108,4 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     assert 'target="_blank"' in payload["html_body"]
     assert "Mar 21, 12:30 AM PT" in payload["html_body"]
     assert "Newsletter Digest" in payload["html_body"]
-    assert len(fake_openai.calls) == 3
+    assert len(fake_openai.calls) == 1

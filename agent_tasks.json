@@ -983,6 +983,121 @@
         "Blocked-placeholder and paywall signals are persisted through ingest",
         "The current live repository corpus evaluates with zero false positives and zero observed false negatives"
       ]
+    },
+    {
+      "id": "T42",
+      "title": "Persist all fetched candidates for classifier evaluation while keeping delivery servable-only",
+      "status": "completed",
+      "depends_on": ["T41"],
+      "scope": [
+        "Store blocked, unsummarized, and summarized fetched candidates in the repository so the evaluation loop can inspect the full live corpus",
+        "Keep preview, readiness checks, and delivery restricted to summarized servable stories",
+        "Add integration coverage proving raw persistence expanded while user-visible delivery behavior did not"
+      ],
+      "artifacts": [
+        "repository query contract for servable-only reads",
+        "ingest persistence updates for all fetched candidates",
+        "integration coverage for full-corpus persistence"
+      ],
+      "test_command": "uv run pytest tests/integration -q",
+      "integration_test": "tests/integration/test_ingest_persists_all_candidates_for_evaluation.py",
+      "done_when": [
+        "Blocked and unsummarized stories are retained in the repository for evaluation",
+        "Delivery-facing repository readers explicitly request summarized servable items only",
+        "The full integration suite passes under the new persistence contract"
+      ]
+    },
+    {
+      "id": "T43",
+      "title": "Persist explicit servability status, blocked reasons, detector version, and classifier signals",
+      "status": "pending",
+      "depends_on": ["T42"],
+      "scope": [
+        "Add first-class servability metadata for every fetched candidate",
+        "Persist the classifier version and structured signal payload needed for later replay and error analysis",
+        "Expose that metadata to evaluation and admin-review surfaces without changing delivery behavior"
+      ],
+      "artifacts": [
+        "repository schema updates for servability metadata",
+        "classifier metadata persistence wiring",
+        "integration coverage for metadata reads and writes"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_persists_servability_metadata.py",
+      "integration_test": "tests/integration/test_ingest_persists_servability_metadata.py",
+      "done_when": [
+        "Each fetched candidate records whether it is servable, blocked, or ambiguous",
+        "Blocked reason, detector version, and signal payload are queryable from the repository",
+        "The servability metadata integration test passes"
+      ]
+    },
+    {
+      "id": "T44",
+      "title": "Add an agent-driven evaluation script that labels the live repository corpus",
+      "status": "pending",
+      "depends_on": ["T43"],
+      "scope": [
+        "Read recent repository candidates and have the agent evaluate whether each story should be servable or blocked",
+        "Write the agent's evaluation results back to the repository with provenance",
+        "Keep the evaluator bounded and rerunnable on the live server"
+      ],
+      "artifacts": [
+        "evaluation script or entrypoint",
+        "repository tables or fields for agent labels",
+        "integration coverage for evaluation writeback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_agent_evaluation_writes_labels.py",
+      "integration_test": "tests/integration/test_agent_evaluation_writes_labels.py",
+      "done_when": [
+        "The agent can evaluate repository stories and persist its labels",
+        "Evaluation output includes enough provenance to compare runs later",
+        "The evaluation writeback integration test passes"
+      ]
+    },
+    {
+      "id": "T45",
+      "title": "Compute confusion-matrix metrics from agent labels and expose periodic evaluation results",
+      "status": "pending",
+      "depends_on": ["T44"],
+      "scope": [
+        "Compute false positives, false negatives, and uncertain counts from classifier decisions versus agent labels",
+        "Persist periodic evaluation runs for later comparison",
+        "Expose the metrics in a lightweight admin or report surface"
+      ],
+      "artifacts": [
+        "evaluation metrics repository helpers",
+        "periodic evaluation reporting entrypoint",
+        "integration coverage for confusion-matrix calculations"
+      ],
+      "test_command": "uv run pytest tests/integration/test_classifier_evaluation_metrics.py",
+      "integration_test": "tests/integration/test_classifier_evaluation_metrics.py",
+      "done_when": [
+        "False-positive and false-negative counts are computed from persisted labels",
+        "Evaluation runs can be compared over time",
+        "The evaluation-metrics integration test passes"
+      ]
+    },
+    {
+      "id": "T46",
+      "title": "Version the classifier and add a replay loop for iterative tuning against the labeled corpus",
+      "status": "pending",
+      "depends_on": ["T45"],
+      "scope": [
+        "Version classifier decisions so changes can be compared against prior behavior",
+        "Replay the labeled corpus through the current classifier to identify regressions before rollout",
+        "Support an iterative tune-rerun loop driven by the agent on the live server"
+      ],
+      "artifacts": [
+        "classifier versioning helpers",
+        "replay or diff entrypoint",
+        "integration coverage for replay comparisons"
+      ],
+      "test_command": "uv run pytest tests/integration/test_classifier_replay_loop.py",
+      "integration_test": "tests/integration/test_classifier_replay_loop.py",
+      "done_when": [
+        "Classifier output is versioned and replayable against prior labels",
+        "The agent can compare old and new classifier behavior before rollout",
+        "The replay-loop integration test passes"
+      ]
     }
   ]
 }

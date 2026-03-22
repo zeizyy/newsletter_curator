@@ -287,8 +287,6 @@ def _persist_ingest_snapshots(
         paywall_detected = item["paywall_detected"]
         summary_selected = bool(item.get("summary_selected"))
         summary_body = str(item["summary_body"]).strip()
-        if paywall_detected or not summary_selected:
-            continue
         if summary_selected and not paywall_detected and (
             not summary_body or summary_body == "No article text available."
         ):
@@ -300,7 +298,7 @@ def _persist_ingest_snapshots(
                     "reason": "empty_summary",
                 }
             )
-            continue
+            summary_body = ""
 
         story_id = repository.upsert_story(story, ingestion_run_id=run_id)
         stats["stories_persisted"] += 1
@@ -318,15 +316,15 @@ def _persist_ingest_snapshots(
             paywall_reason=item["paywall_reason"],
             summary_raw=item["summary_raw"],
             summary_headline=item["summary_headline"],
-            summary_body=item["summary_body"],
+            summary_body=summary_body,
             summary_model=(
                 config["openai"]["summary_model"]
-                if (summary_selected and not paywall_detected)
+                if (summary_selected and not paywall_detected and summary_body)
                 else ""
             ),
             summarized_at=(
                 datetime.now(UTC).isoformat()
-                if (summary_selected and not paywall_detected)
+                if (summary_selected and not paywall_detected and summary_body)
                 else None
             ),
         )
@@ -695,6 +693,7 @@ def assess_delivery_readiness(config: dict, repository: SQLiteRepository) -> dic
             source_type=source_type,
             published_after=cutoff,
             include_paywalled=False,
+            require_summary=True,
         )
         latest_run = repository.get_latest_ingestion_run(source_type)
         latest_completed_run = repository.get_latest_ingestion_run(source_type, status="completed")

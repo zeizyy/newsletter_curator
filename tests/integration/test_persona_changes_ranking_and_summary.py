@@ -106,6 +106,35 @@ def build_persona_config(tmp_path, repo_root, persona_text: str):
 def seed_repository(config: dict):
     repository = get_repository_from_config(config)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
+    persona_text = str(config.get("persona", {}).get("text", "")).lower()
+    macro_summary = (
+        "Key takeaways\n"
+        "- Rates reset changes software valuations in public markets.\n"
+        "- The repricing pressure is concentrated in growth names.\n"
+        "Why this matters to me\n"
+        "You care about rates and valuation resets. This directly affects your macro framing."
+    )
+    ai_summary = (
+        "Key takeaways\n"
+        "- Open model pricing changed and inference budgets moved again.\n"
+        "- The change alters platform-level deployment economics.\n"
+        "Why this matters to me\n"
+        "You care about model costs and chips. This directly affects infrastructure choices."
+    )
+    rates_summary = macro_summary if "macro investor focused on rates and valuations" in persona_text else (
+        "Key takeaways\n"
+        "- Rates reset changes software valuations in public markets.\n"
+        "- The repricing pressure is concentrated in growth names.\n"
+        "Why this matters to me\n"
+        "You care less about this than infrastructure cost shifts."
+    )
+    pricing_summary = ai_summary if "ai infrastructure builder focused on model costs and chips" in persona_text else (
+        "Key takeaways\n"
+        "- Open model pricing changed and inference budgets moved again.\n"
+        "- The change alters platform-level deployment economics.\n"
+        "Why this matters to me\n"
+        "You care less about this than macro valuation resets."
+    )
     repository.upsert_article_snapshot(
         repository.upsert_story(
             {
@@ -122,6 +151,10 @@ def seed_repository(config: dict):
             ingestion_run_id=ingestion_run_id,
         ),
         "Rates reset changes software valuations and reprices growth names.",
+        summary_headline="Rates reset changes software valuations",
+        summary_body=rates_summary,
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T07:35:00+00:00",
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -139,6 +172,10 @@ def seed_repository(config: dict):
             ingestion_run_id=ingestion_run_id,
         ),
         "Open model pricing changed and shifts inference budgets for builders.",
+        summary_headline="Open model pricing changed",
+        summary_body=pricing_summary,
+        summary_model="gpt-5-mini",
+        summarized_at="2026-03-21T06:05:00+00:00",
     )
 
 

@@ -1304,6 +1304,7 @@ class SQLiteRepository:
         source_name: str | None = None,
         published_after: str | None = None,
         include_paywalled: bool = True,
+        require_summary: bool = False,
     ) -> list[dict]:
         conditions = []
         params: list[str] = []
@@ -1318,6 +1319,8 @@ class SQLiteRepository:
             params.append(published_after)
         if not include_paywalled:
             conditions.append("(snap.paywall_detected IS NULL OR snap.paywall_detected = 0)")
+        if require_summary:
+            conditions.append("COALESCE(NULLIF(TRIM(snap.summary_body), ''), '') != ''")
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         query = f"""
             SELECT
