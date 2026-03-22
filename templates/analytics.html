@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Newsletter Analytics</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 12px; padding: 18px; margin-bottom: 14px; box-shadow: 0 8px 22px rgba(15, 35, 95, 0.04); }
+    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
+    .muted { font-size: 12px; color: #6b778c; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .stat { background: #f8fbff; border: 1px solid #e3ebf8; border-radius: 12px; padding: 14px; }
+    .stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b778c; margin-bottom: 8px; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #10233c; line-height: 1.05; }
+    .stat-sub { font-size: 12px; color: #5d6d85; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e6ecf5; text-align: left; vertical-align: top; font-size: 14px; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b778c; }
+    .pill { display: inline-block; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: #edf3ff; color: #0b57d0; }
+    .warning { background: #fff8e8; border: 1px solid #ffe0a1; color: #7c5a08; border-radius: 10px; padding: 12px 14px; }
+    .title-link { color: #0b57d0; text-decoration: none; }
+    @media (max-width: 860px) {
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      td { padding: 8px 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+      <div>
+        <h1 style="margin:0 0 6px 0;">Newsletter Analytics</h1>
+        <div class="muted">Telemetry aggregated from persisted newsletters in <code>{{ config_path }}</code></div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Newsletter</a>
+        <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
+        <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
+      </div>
+    </div>
+
+    <div class="card warning">
+      Tracked opens are approximate. Image proxying, privacy protection, and client-side prefetching can inflate or suppress open counts. Clicks are the more reliable signal.
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+        <h2 style="margin:0;">Trailing Windows</h2>
+        <div class="muted">CTR uses unique clicks divided by unique opens.</div>
+      </div>
+      <div class="stat-grid">
+        {% for window in window_stats %}
+        <div class="stat">
+          <div class="stat-label">{{ window.days }} Day Window</div>
+          <div class="stat-value">{{ window.newsletters }}</div>
+          <div class="stat-sub">newsletters since {{ window.since_date }}</div>
+          <div class="stat-sub">{{ window.total_opens }} opens · {{ window.unique_opens }} unique opens</div>
+          <div class="stat-sub">{{ window.total_clicks }} clicks · {{ window.unique_clicks }} unique clicks</div>
+          <div class="stat-sub">CTR: {{ "%.1f"|format(window.click_through_rate) if window.click_through_rate is not none else "n/a" }}%</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+        <h2 style="margin:0;">Recent Newsletters</h2>
+        <div class="muted">{{ recent_newsletters|length }} stored newsletters</div>
+      </div>
+      {% if recent_newsletters %}
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Subject</th>
+            <th>Stories</th>
+            <th>Opens</th>
+            <th>Clicks</th>
+            <th>CTR</th>
+            <th>Top Story</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for newsletter in recent_newsletters %}
+          <tr>
+            <td>
+              <div style="font-weight:700;">{{ newsletter.newsletter_date }}</div>
+              <div class="muted">{{ newsletter.created_at }}</div>
+            </td>
+            <td>{{ newsletter.subject }}</td>
+            <td><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td>
+              <div>{{ newsletter.total_opens }} opens</div>
+              <div class="muted">{{ newsletter.unique_opens }} unique</div>
+            </td>
+            <td>
+              <div>{{ newsletter.total_clicks }} clicks</div>
+              <div class="muted">{{ newsletter.unique_clicks }} unique</div>
+            </td>
+            <td>{{ "%.1f"|format(newsletter.click_through_rate) if newsletter.click_through_rate is not none else "n/a" }}%</td>
+            <td>
+              {% if newsletter.top_story_url %}
+                <a class="title-link" href="{{ newsletter.top_story_url }}" target="_blank" rel="noreferrer">{{ newsletter.top_story_title or newsletter.top_story_url }}</a>
+                <div class="muted">{{ newsletter.top_story_clicks or 0 }} clicks</div>
+              {% else %}
+                <span class="muted">No click data yet</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="muted">No persisted newsletters have telemetry yet.</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;">
+        <h2 style="margin:0;">Top Clicked Stories</h2>
+        <div class="muted">Trailing 30 days</div>
+      </div>
+      {% if top_clicked_stories %}
+      <table>
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Clicks</th>
+            <th>Unique Clicks</th>
+            <th>Newsletters</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for story in top_clicked_stories %}
+          <tr>
+            <td><a class="title-link" href="{{ story.target_url }}" target="_blank" rel="noreferrer">{{ story.story_title or story.target_url }}</a></td>
+            <td>{{ story.total_clicks }}</td>
+            <td>{{ story.unique_clicks }}</td>
+            <td>{{ story.newsletters_clicked }}</td>
+            <td>{{ story.last_newsletter_date }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="muted">No tracked clicks yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

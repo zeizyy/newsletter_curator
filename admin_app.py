@@ -400,6 +400,37 @@ def story_explorer():
     return response
 
 
+@app.route("/analytics", methods=["GET"])
+def analytics_dashboard():
+    provided_token = require_admin_token()
+    token_from_request = resolve_request_token(provided_token)
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    recent_newsletters = repository.list_newsletter_analytics(limit=14) if repository else []
+    window_stats = repository.get_newsletter_aggregate_stats() if repository else []
+    top_clicked_stories = (
+        repository.list_top_clicked_stories(trailing_days=30, limit=10) if repository else []
+    )
+    response = make_response(
+        render_template(
+            "analytics.html",
+            config_path=CONFIG_PATH,
+            recent_newsletters=recent_newsletters,
+            window_stats=window_stats,
+            top_clicked_stories=top_clicked_stories,
+            token=token_from_request,
+        )
+    )
+    if token_from_request:
+        response.set_cookie(
+            ADMIN_TOKEN_COOKIE,
+            token_from_request,
+            httponly=True,
+            samesite="Lax",
+        )
+    return response
+
+
 if __name__ == "__main__":
     host = os.getenv("CURATOR_ADMIN_HOST", "127.0.0.1")
     port = int(os.getenv("CURATOR_ADMIN_PORT", "8080"))

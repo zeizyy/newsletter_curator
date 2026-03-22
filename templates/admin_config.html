@@ -205,6 +205,7 @@
       <div class="actions">
         <div class="muted">On save, a timestamped backup of config is created.</div>
         <div style="display:flex; gap:10px;">
+          <a class="button-link" href="{{ url_for('analytics_dashboard', token=token or None) }}">View Analytics</a>
           <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
           <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Newsletter</a>
           <button type="submit">Save Config</button>

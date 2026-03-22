@@ -734,7 +734,7 @@
     {
       "id": "T31",
       "title": "Add an admin analytics page for aggregated newsletter open and click stats",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T30"],
       "scope": [
         "Add an admin page that shows aggregate newsletter opens, unique opens, clicks, click-through rates, and top-clicked stories",
