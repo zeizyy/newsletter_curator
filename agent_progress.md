@@ -251,3 +251,19 @@ Add new entries below this line.
 - Outcome: The newsletter and preview are back on the prior rendering treatment, and the shared preview/delivery paths still work with persisted daily newsletters.
 - Open risks: The original rendering is plainer and less informative than the reverted redesign, but it is the requested baseline. Third-party `httplib2` deprecation warnings still appear during test startup.
 - Next recommended task: none; `T26` is complete.
+
+### 2026-03-22 - Planned next-wave tasks T27 through T32
+- Context: Captured the next feature wave in the harness before implementation starts, with explicit acceptance criteria for newsletter UX quality, job orchestration, telemetry, analytics, and persona behavior hardening.
+- Files changed: `agent_tasks.json`, `agent_progress.md`
+- Tests run: none; planning-only harness update
+- Outcome: Added pending tasks `T27` through `T32` to the harness. `T27` now explicitly replaces the low-fidelity SVG mockups with high-fidelity HTML or template-backed explorations and calls out the current failures around ugly fonts and broken wrapping so they are treated as acceptance issues rather than subjective polish.
+- Open risks: Theme direction is not chosen yet, and the current mockups are below the desired aesthetic bar; implementation should not start with those assets as a visual reference.
+- Next recommended task: `T27` Create high-fidelity newsletter theme explorations that clear the aesthetic and rendering bar.
+
+### 2026-03-22 - T27 replaced the SVG pass with high-fidelity HTML theme explorations
+- Context: Reworked the theme exploration assets after the earlier SVG concepts failed on typography and wrapping, and moved the exploration closer to the real email and preview constraints.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `docs/theme-mockups/index.html`, `docs/theme-mockups/theme-preview.css`, `docs/theme-mockups/option-a-financial-briefing.html`, `docs/theme-mockups/option-b-terminal-executive.html`, `docs/theme-mockups/option-c-magazine-ledger.html`, `docs/theme-mockups/option-d-research-memo.html`, `docs/theme-mockups/option-e-market-tape.html`, `tests/integration/test_newsletter_theme_options_render.py`
+- Tests run: `uv run pytest tests/integration/test_newsletter_theme_options_render.py -q`
+- Outcome: The repo now has five HTML-based theme explorations with email-safe font stacks, bounded headline widths, explicit wrapping rules, timestamp placement on story cards, and a shared stylesheet that is much closer to the real newsletter surface than the rejected SVG pass.
+- Open risks: The old SVG files are still present as stale artifacts and can be removed in a later cleanup; the user still needs to choose a direction before the real renderer can be updated in `T28`.
+- Next recommended task: `T28` Implement the chosen newsletter UX across preview and delivered email and add article timestamps.

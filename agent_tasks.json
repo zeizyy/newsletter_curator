@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-21",
+  "updated_at": "2026-03-22",
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -637,6 +637,144 @@
         "The digest and preview UI match the pre-T23 rendering again",
         "The preview and persisted-newsletter flows still pass after the visual rollback",
         "The UX-revert regression tests pass"
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Create high-fidelity newsletter theme explorations that clear the aesthetic and rendering bar",
+      "status": "completed",
+      "depends_on": ["T26"],
+      "scope": [
+        "Replace the low-fidelity SVG concept pass with five higher-fidelity HTML or template-backed explorations that use email-safe typography, proper line wrapping, and intentional spacing",
+        "Demonstrate each option in both preview and email-safe constraints, including dark or light-mode compatibility guidance and mobile-safe width behavior",
+        "Capture the user's feedback about ugly fonts and broken wrapping directly in the acceptance bar so the next design pass is visibly more polished"
+      ],
+      "artifacts": [
+        "five high-fidelity newsletter theme mockups",
+        "documented rendering constraints for font choice, wrapping, spacing, and dark-light compatibility",
+        "integration or snapshot coverage for the theme exploration artifacts"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_theme_options_render.py",
+      "integration_test": "tests/integration/test_newsletter_theme_options_render.py",
+      "done_when": [
+        "There are five concrete theme options the user can review in-repo",
+        "The mockups avoid the previous font and wrapping failures",
+        "The theme exploration regression test passes"
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Implement the chosen newsletter UX across preview and delivered email and add article timestamps",
+      "status": "pending",
+      "depends_on": ["T27"],
+      "scope": [
+        "Implement the selected high-fidelity theme in the shared digest rendering path",
+        "Add article timestamp display for each story using stored published metadata and degrade gracefully when timestamps are missing",
+        "Keep the template compatible across dark and light mode, mobile and desktop widths, and preview and email surfaces"
+      ],
+      "artifacts": [
+        "updated shared digest template and rendering logic",
+        "timestamp display in newsletter story cards",
+        "regression coverage for the selected theme on preview and email HTML"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "The selected newsletter theme is implemented in the real rendering path",
+        "Each story displays a timestamp when one is available",
+        "The selected-theme rendering integration test passes"
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Consolidate fetch and delivery into a single daily orchestrator and update bootstrap scheduling",
+      "status": "pending",
+      "depends_on": ["T25"],
+      "scope": [
+        "Add one daily entrypoint that runs Gmail ingest, source ingest, and digest delivery sequentially with clear logging and failure status",
+        "Keep the existing individual job entrypoints for debugging while switching deployment bootstrap and cron generation to the single orchestrator",
+        "Update the startup and deployment assets so a hosted server installs one daily cron job instead of three separate ones"
+      ],
+      "artifacts": [
+        "daily orchestrator CLI entrypoint",
+        "updated deployment bootstrap and cron generation",
+        "integration coverage for orchestrated fetch-plus-deliver execution"
+      ],
+      "test_command": "uv run pytest tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py",
+      "integration_test": "tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py",
+      "done_when": [
+        "One daily command can fetch Gmail stories, fetch additional sources, and deliver the digest in order",
+        "Bootstrap-generated deployment assets schedule the single orchestrator job",
+        "The daily-orchestrator integration test passes"
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Add newsletter open and click telemetry foundations",
+      "status": "pending",
+      "depends_on": ["T22", "T29"],
+      "scope": [
+        "Add repository storage for delivered-newsletter telemetry, tracked links, open events, and click events",
+        "Add a tracked redirect path for article links and an open-tracking pixel or equivalent endpoint tied to persisted daily newsletters",
+        "Record the telemetry in a way that supports aggregate admin reporting while keeping delivery generation compatible with the cached daily newsletter path"
+      ],
+      "artifacts": [
+        "repository telemetry schema and accessors",
+        "tracking endpoints for opens and clicks",
+        "integration coverage for telemetry event recording"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_telemetry_tracking_endpoints.py",
+      "integration_test": "tests/integration/test_newsletter_telemetry_tracking_endpoints.py",
+      "done_when": [
+        "Newsletter opens and tracked article clicks are recorded against persisted newsletters",
+        "Tracked links redirect correctly while recording click events",
+        "The telemetry-tracking integration test passes"
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Add an admin analytics page for aggregated newsletter open and click stats",
+      "status": "pending",
+      "depends_on": ["T30"],
+      "scope": [
+        "Add an admin page that shows aggregate newsletter opens, unique opens, clicks, click-through rates, and top-clicked stories",
+        "Present analytics by newsletter day and over useful trailing windows while keeping open-rate caveats visible",
+        "Keep the page lightweight and repository-backed so it works in the same admin app as preview and story explorer"
+      ],
+      "artifacts": [
+        "admin analytics route and template",
+        "repository aggregation queries for telemetry reporting",
+        "integration coverage for rendered analytics stats"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_newsletter_analytics_page.py",
+      "integration_test": "tests/integration/test_admin_newsletter_analytics_page.py",
+      "done_when": [
+        "The admin app exposes aggregate newsletter telemetry stats",
+        "Open and click counts are grouped into useful operator-facing summaries",
+        "The admin-analytics integration test passes"
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Harden and document how persona influences ingest scoring, ranking, and summary framing",
+      "status": "pending",
+      "depends_on": ["T28"],
+      "scope": [
+        "Add explicit regression coverage that persona affects ingest-time scoring, final ranking, and the why-this-matters summary framing",
+        "Document the current persona behavior in operator-facing docs or admin help text so it is easy to reason about",
+        "Verify the current prompts are aligned rather than silently drifting across ingest and delivery stages"
+      ],
+      "artifacts": [
+        "persona behavior regression tests",
+        "persona documentation in repo or admin UI",
+        "prompt-path consistency checks if needed"
+      ],
+      "test_command": "uv run pytest tests/integration/test_persona_influences_ranking_scoring_and_summary.py",
+      "integration_test": "tests/integration/test_persona_influences_ranking_scoring_and_summary.py",
+      "done_when": [
+        "Persona influence is explicitly covered in tests for scoring, ranking, and summary framing",
+        "The repo documents how persona changes the newsletter output",
+        "The persona-behavior integration test passes"
       ]
     }
   ]

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1280" viewBox="0 0 800 1280">
+    <defs>
+      <linearGradient id="heroGradient" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#dff5ec" />
+        <stop offset="100%" stop-color="#0c8a61" />
+      </linearGradient>
+    </defs>
+    <rect width="800" height="1280" fill="#f2f5f8"/>
+    <text x="50" y="26" font-size="20" fill="#5d697a" font-family="Arial, Helvetica, sans-serif">Option E: Market Tape</text>
+    <rect x="50" y="40" rx="28" ry="28" width="700" height="160" fill="#ffffff"/>
+        <rect x="50" y="40" rx="28" ry="28" width="700" height="48" fill="#0c8a61"/>
+        <text x="80" y="72" font-size="20" fill="#ffffff">AI VALUE CAPTURE  •  BIG TECH STRATEGY  •  SURPRISING DATA</text>
+        <text x="80" y="148" font-size="56" font-weight="800" fill="#16202f">Newsletter Digest</text>
+    <text x="60" y="250" font-size="18" fill="#5d697a" font-family="Arial, Helvetica, sans-serif">Built for light + dark-safe contrast, email-safe layout, and web preview parity</text>
+
+        <rect x="50" y="290" rx="14" ry="14" width="700" height="255" fill="#ffffff" stroke="#dff5ec" stroke-width="1.5"/>
+        <rect x="70" y="306" width="660" height="30" rx="6" fill="#dff5ec"/>
+            <text x="88" y="326" font-size="15" fill="#0c8a61">AI infra / cloud</text>
+            <text x="584" y="326" font-size="14" fill="#0c8a61">Mar 21, 8:10 AM PT</text>
+        <text x="70" y="364" font-size="30" font-weight="700" fill="#16202f">Nvidia's quietly booming networking unit becomes a second engine</text>
+        <circle cx="76" cy="377" r="4" fill="#0c8a61" /><circle cx="76" cy="405" r="4" fill="#0c8a61" /><circle cx="76" cy="433" r="4" fill="#0c8a61" />
+        <text x="92" y="382" font-size="18" fill="#16202f">Revenue mix shifted from chips to bundled networking + optics.</text><text x="92" y="410" font-size="18" fill="#16202f">Mellanox integration now looks like a margin expansion story.</text><text x="92" y="438" font-size="18" fill="#16202f">Signals stronger AI data-center moat beyond GPU compute.</text>
+        <text x="70" y="505" font-size="20" fill="#5d697a">Why this matters: Value capture is moving into the full AI rack, not just the accelerator.</text>
+        <text x="70" y="530" font-size="18" font-weight="700" fill="#0c8a61">Read article</text>
+
+
+        <rect x="50" y="575" rx="14" ry="14" width="700" height="255" fill="#ffffff" stroke="#dff5ec" stroke-width="1.5"/>
+        <rect x="70" y="591" width="660" height="30" rx="6" fill="#dff5ec"/>
+            <text x="88" y="611" font-size="15" fill="#0c8a61">Search / distribution</text>
+            <text x="584" y="611" font-size="14" fill="#0c8a61">Mar 21, 11:45 AM PT</text>
+        <text x="70" y="649" font-size="30" font-weight="700" fill="#16202f">Google's AI search UI hints at a ranking model reset</text>
+        <circle cx="76" cy="662" r="4" fill="#0c8a61" /><circle cx="76" cy="690" r="4" fill="#0c8a61" /><circle cx="76" cy="718" r="4" fill="#0c8a61" />
+        <text x="92" y="667" font-size="18" fill="#16202f">New answer surfaces compress publisher clickthrough patterns.</text><text x="92" y="695" font-size="18" fill="#16202f">Retrieval and UI layout appear more tightly coupled.</text><text x="92" y="723" font-size="18" fill="#16202f">Creates second-order effects for SEO, ads, and discovery.</text>
+        <text x="70" y="790" font-size="20" fill="#5d697a">Why this matters: This changes who captures intent and where monetization lands.</text>
+        <text x="70" y="815" font-size="18" font-weight="700" fill="#0c8a61">Read article</text>
+
+
+        <rect x="50" y="860" rx="14" ry="14" width="700" height="255" fill="#ffffff" stroke="#dff5ec" stroke-width="1.5"/>
+        <rect x="70" y="876" width="660" height="30" rx="6" fill="#dff5ec"/>
+            <text x="88" y="896" font-size="15" fill="#0c8a61">Agents / evals</text>
+            <text x="584" y="896" font-size="14" fill="#0c8a61">Mar 21, 3:30 PM PT</text>
+        <text x="70" y="934" font-size="30" font-weight="700" fill="#16202f">A dense engineering post on agent eval loops beats generic benchmark news</text>
+        <circle cx="76" cy="947" r="4" fill="#0c8a61" /><circle cx="76" cy="975" r="4" fill="#0c8a61" /><circle cx="76" cy="1003" r="4" fill="#0c8a61" />
+        <text x="92" y="952" font-size="18" fill="#16202f">Shows concrete harness design instead of vague autonomous-agent claims.</text><text x="92" y="980" font-size="18" fill="#16202f">Separates acceptance tests from exploratory evals.</text><text x="92" y="1008" font-size="18" fill="#16202f">Makes agent reliability legible to engineering teams.</text>
+        <text x="70" y="1075" font-size="20" fill="#5d697a">Why this matters: Reusable eval structure matters more than one-off leaderboard results.</text>
+        <text x="70" y="1100" font-size="18" font-weight="700" fill="#0c8a61">Read article</text>
+
+    </svg>
