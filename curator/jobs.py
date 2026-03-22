@@ -37,6 +37,12 @@ from .sources import (
     collect_repository_source_links,
     load_canned_source_links,
 )
+from .telemetry import (
+    build_click_url,
+    build_open_pixel_url,
+    resolve_tracking_base_url,
+    rewrite_newsletter_html_for_tracking,
+)
 
 
 def current_newsletter_date() -> str:
@@ -717,6 +723,7 @@ def run_delivery_job(
     group_summaries_by_category_fn=group_summaries_by_category,
     render_digest_html_fn=render_digest_html,
     send_email_fn=send_email,
+    telemetry_enabled: bool = True,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     readiness = assess_delivery_readiness(config, repository)
@@ -749,6 +756,60 @@ def run_delivery_job(
         )
     )
 
+    def build_tracked_send_html(
+        daily_newsletter_id: int,
+        *,
+        html_body: str,
+        selected_items: list[dict],
+    ) -> str:
+        if not telemetry_enabled:
+            return html_body
+
+        base_url = resolve_tracking_base_url(config)
+        open_token = repository.ensure_newsletter_open_token(daily_newsletter_id)
+        tracked_links = repository.ensure_tracked_links(daily_newsletter_id, selected_items)
+        tracked_link_rows = [
+            {
+                **row,
+                "tracked_url": build_click_url(base_url, str(row["click_token"])),
+            }
+            for row in tracked_links
+        ]
+        return rewrite_newsletter_html_for_tracking(
+            html_body,
+            tracked_links=tracked_link_rows,
+            open_pixel_url=build_open_pixel_url(base_url, open_token),
+        )
+
+    def send_digest(
+        *,
+        subject: str,
+        body: str,
+        html_body: str,
+        selected_items: list[dict],
+        daily_newsletter_id: int | None,
+    ) -> int:
+        send_html = (
+            build_tracked_send_html(
+                daily_newsletter_id,
+                html_body=html_body,
+                selected_items=selected_items,
+            )
+            if daily_newsletter_id is not None
+            else html_body
+        )
+        sent_count = 0
+        for recipient in config["email"]["digest_recipients"]:
+            send_email_fn(
+                service,
+                to_address=recipient,
+                subject=subject,
+                body=body,
+                html_body=send_html,
+            )
+            sent_count += 1
+        return sent_count
+
     run_id = repository.create_delivery_run(
         metadata={
             "job": "deliver_digest",
@@ -759,15 +820,13 @@ def run_delivery_job(
     try:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
-            email_cfg = config["email"]
-            for recipient in email_cfg["digest_recipients"]:
-                send_email_fn(
-                    service,
-                    to_address=recipient,
-                    subject=cached_newsletter["subject"],
-                    body=cached_newsletter["body"],
-                    html_body=cached_newsletter["html_body"],
-                )
+            sent_recipients = send_digest(
+                subject=cached_newsletter["subject"],
+                body=cached_newsletter["body"],
+                html_body=cached_newsletter["html_body"],
+                selected_items=cached_newsletter.get("selected_items", []),
+                daily_newsletter_id=int(cached_newsletter["id"]),
+            )
             cached_result = {
                 "status": "completed",
                 "cached_newsletter": True,
@@ -784,7 +843,7 @@ def run_delivery_job(
                 "skipped_count": int(
                     cached_newsletter["metadata"].get("skipped_count", 0) or 0
                 ),
-                "sent_recipients": len(email_cfg["digest_recipients"]),
+                "sent_recipients": sent_recipients,
                 "digest_subject": cached_newsletter["subject"],
                 "digest_body": cached_newsletter["body"],
                 "digest_html": cached_newsletter["html_body"],
@@ -834,6 +893,13 @@ def run_delivery_job(
                     "backfilled_count": pipeline_result.get("backfilled_count", 0),
                     "skipped_count": pipeline_result.get("skipped_count", 0),
                 },
+            )
+            pipeline_result["sent_recipients"] = send_digest(
+                subject=str(pipeline_result.get("digest_subject", "")).strip(),
+                body=str(pipeline_result.get("digest_body", "")).strip(),
+                html_body=str(pipeline_result.get("digest_html", "")).strip(),
+                selected_items=list(pipeline_result.get("accepted_story_items", [])),
+                daily_newsletter_id=daily_newsletter_id,
             )
         repository.complete_delivery_run(
             run_id,

@@ -1,4 +1,5 @@
 import datetime as dt
+import base64
 import os
 from pathlib import Path
 
@@ -6,11 +7,13 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 import yaml
 
 from curator.jobs import get_repository_from_config
+from curator.telemetry import strip_tracking_pixel
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
 
 
 app = Flask(__name__)
 ADMIN_TOKEN_COOKIE = "curator_admin_token"
+TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
 
 
 def load_config_file() -> dict:
@@ -292,6 +295,8 @@ def preview_newsletter():
         if preview is None:
             error = "Preview generation completed but did not produce a digest."
             status_code = 500
+        elif preview.get("html_body"):
+            preview = {**preview, "html_body": strip_tracking_pixel(preview["html_body"])}
     except Exception as exc:
         error = str(exc)
         status_code = 500
@@ -315,6 +320,46 @@ def preview_newsletter():
             samesite="Lax",
         )
     return response
+
+
+def _request_ip() -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "").strip()
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.remote_addr or ""
+
+
+@app.route("/track/open/<open_token>.gif", methods=["GET"])
+def track_newsletter_open(open_token: str):
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        abort(404)
+
+    repository.record_newsletter_open(
+        open_token,
+        user_agent=request.headers.get("User-Agent", ""),
+        ip_address=_request_ip(),
+    )
+    response = make_response(TRACKING_PIXEL_GIF)
+    response.headers["Content-Type"] = "image/gif"
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.route("/track/click/<click_token>", methods=["GET"])
+def track_newsletter_click(click_token: str):
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        abort(404)
+
+    click = repository.record_newsletter_click(
+        click_token,
+        user_agent=request.headers.get("User-Agent", ""),
+        ip_address=_request_ip(),
+    )
+    if click is None:
+        abort(404)
+    return redirect(click["target_url"], code=302)
 
 
 @app.route("/stories", methods=["GET"])

@@ -405,14 +405,6 @@ def run_job(
                 "published_at": item.get("published_at", ""),
             }
         )
-    for recipient in email_cfg["digest_recipients"]:
-        send_email_fn(
-            service,
-            to_address=recipient,
-            subject=digest_subject,
-            body=final_text,
-            html_body=digest_html,
-        )
     return {
         **result,
         "status": "completed",
@@ -422,7 +414,7 @@ def run_job(
         "accepted_story_items": accepted_story_payloads,
         "backfilled_count": backfilled_count,
         "skipped_count": skipped_count,
-        "sent_recipients": len(email_cfg["digest_recipients"]),
+        "sent_recipients": 0,
         "digest_subject": digest_subject,
         "digest_body": final_text,
         "digest_html": digest_html,

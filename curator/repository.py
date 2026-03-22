@@ -123,6 +123,37 @@ class SQLiteRepository:
                 "summarized_at",
             },
             "user_source_selections": {"id", "source_id", "enabled", "updated_at"},
+            "newsletter_telemetry": {
+                "id",
+                "daily_newsletter_id",
+                "open_token",
+                "created_at",
+            },
+            "tracked_links": {
+                "id",
+                "daily_newsletter_id",
+                "click_token",
+                "target_url",
+                "story_title",
+                "created_at",
+            },
+            "newsletter_open_events": {
+                "id",
+                "daily_newsletter_id",
+                "open_token",
+                "opened_at",
+                "user_agent",
+                "ip_address",
+            },
+            "newsletter_click_events": {
+                "id",
+                "daily_newsletter_id",
+                "tracked_link_id",
+                "click_token",
+                "clicked_at",
+                "user_agent",
+                "ip_address",
+            },
         }
         for table_name, expected in expected_columns.items():
             columns = self._table_columns(connection, table_name)
@@ -135,6 +166,10 @@ class SQLiteRepository:
             "schema_migrations",
             "article_snapshots",
             "user_source_selections",
+            "newsletter_click_events",
+            "newsletter_open_events",
+            "tracked_links",
+            "newsletter_telemetry",
             "fetched_stories",
             "delivery_runs",
             "daily_newsletters",
@@ -230,6 +265,42 @@ class SQLiteRepository:
                 source_id INTEGER NOT NULL UNIQUE REFERENCES sources(id) ON DELETE CASCADE,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS newsletter_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_newsletter_id INTEGER NOT NULL UNIQUE REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                open_token TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS tracked_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                click_token TEXT NOT NULL UNIQUE,
+                target_url TEXT NOT NULL,
+                story_title TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(daily_newsletter_id, target_url)
+            );
+
+            CREATE TABLE IF NOT EXISTS newsletter_open_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                open_token TEXT NOT NULL,
+                opened_at TEXT NOT NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                ip_address TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS newsletter_click_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                click_token TEXT NOT NULL,
+                clicked_at TEXT NOT NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                ip_address TEXT NOT NULL DEFAULT ''
             );
             """
         )
@@ -425,6 +496,151 @@ class SQLiteRepository:
         metadata_json = str(payload.pop("metadata_json", "") or "{}")
         payload["metadata"] = json.loads(metadata_json)
         return payload
+
+    def ensure_newsletter_open_token(self, daily_newsletter_id: int) -> str:
+        open_token = hashlib.sha1(f"open|{daily_newsletter_id}".encode("utf-8")).hexdigest()[:24]
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO newsletter_telemetry (daily_newsletter_id, open_token, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(daily_newsletter_id)
+                DO UPDATE SET open_token = excluded.open_token
+                """,
+                (daily_newsletter_id, open_token, utc_now()),
+            )
+        return open_token
+
+    def ensure_tracked_links(
+        self,
+        daily_newsletter_id: int,
+        selected_items: list[dict] | None = None,
+    ) -> list[dict]:
+        selected_items = selected_items or []
+        with self.connect() as connection:
+            for item in selected_items:
+                target_url = str(item.get("url", "")).strip()
+                if not target_url:
+                    continue
+                click_token = hashlib.sha1(
+                    f"click|{daily_newsletter_id}|{canonicalize_url(target_url)}".encode("utf-8")
+                ).hexdigest()[:24]
+                connection.execute(
+                    """
+                    INSERT INTO tracked_links (
+                        daily_newsletter_id,
+                        click_token,
+                        target_url,
+                        story_title,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(daily_newsletter_id, target_url)
+                    DO UPDATE SET
+                        story_title = excluded.story_title
+                    """,
+                    (
+                        daily_newsletter_id,
+                        click_token,
+                        target_url,
+                        str(item.get("title", "")).strip(),
+                        utc_now(),
+                    ),
+                )
+            rows = connection.execute(
+                """
+                SELECT id, daily_newsletter_id, click_token, target_url, story_title, created_at
+                FROM tracked_links
+                WHERE daily_newsletter_id = ?
+                ORDER BY id ASC
+                """,
+                (daily_newsletter_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_newsletter_open(
+        self,
+        open_token: str,
+        *,
+        user_agent: str = "",
+        ip_address: str = "",
+    ) -> dict | None:
+        with self.connect() as connection:
+            telemetry_row = connection.execute(
+                """
+                SELECT daily_newsletter_id
+                FROM newsletter_telemetry
+                WHERE open_token = ?
+                LIMIT 1
+                """,
+                (open_token,),
+            ).fetchone()
+            if telemetry_row is None:
+                return None
+            daily_newsletter_id = int(telemetry_row["daily_newsletter_id"])
+            connection.execute(
+                """
+                INSERT INTO newsletter_open_events (
+                    daily_newsletter_id,
+                    open_token,
+                    opened_at,
+                    user_agent,
+                    ip_address
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (daily_newsletter_id, open_token, utc_now(), user_agent, ip_address),
+            )
+        return {"daily_newsletter_id": daily_newsletter_id}
+
+    def record_newsletter_click(
+        self,
+        click_token: str,
+        *,
+        user_agent: str = "",
+        ip_address: str = "",
+    ) -> dict | None:
+        with self.connect() as connection:
+            link_row = connection.execute(
+                """
+                SELECT id, daily_newsletter_id, target_url
+                FROM tracked_links
+                WHERE click_token = ?
+                LIMIT 1
+                """,
+                (click_token,),
+            ).fetchone()
+            if link_row is None:
+                return None
+            tracked_link_id = int(link_row["id"])
+            daily_newsletter_id = int(link_row["daily_newsletter_id"])
+            target_url = str(link_row["target_url"])
+            connection.execute(
+                """
+                INSERT INTO newsletter_click_events (
+                    daily_newsletter_id,
+                    tracked_link_id,
+                    click_token,
+                    clicked_at,
+                    user_agent,
+                    ip_address
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    daily_newsletter_id,
+                    tracked_link_id,
+                    click_token,
+                    utc_now(),
+                    user_agent,
+                    ip_address,
+                ),
+            )
+        return {
+            "daily_newsletter_id": daily_newsletter_id,
+            "tracked_link_id": tracked_link_id,
+            "target_url": target_url,
+        }
 
     def upsert_source(self, *, source_type: str, source_name: str) -> int:
         now = utc_now()
@@ -766,6 +982,10 @@ class SQLiteRepository:
             "ingestion_runs",
             "delivery_runs",
             "daily_newsletters",
+            "newsletter_telemetry",
+            "tracked_links",
+            "newsletter_open_events",
+            "newsletter_click_events",
             "fetched_stories",
             "article_snapshots",
             "user_source_selections",

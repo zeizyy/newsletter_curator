@@ -44,6 +44,9 @@ DEFAULT_CONFIG = {
         "alert_recipient": "zeizyy@gmail.com",
         "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
     },
+    "tracking": {
+        "base_url": os.getenv("CURATOR_PUBLIC_BASE_URL", "").strip(),
+    },
 }
 
 

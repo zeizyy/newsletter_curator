@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--admin-port", type=int, default=8080)
     parser.add_argument("--admin-token", default=os.getenv("CURATOR_ADMIN_TOKEN", ""))
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
+    parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
     parser.add_argument("--cron-timezone", default="America/Los_Angeles")
     parser.add_argument("--daily-schedule", default="15 16 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
@@ -48,6 +49,7 @@ def build_env_file(
     admin_port: int,
     admin_token: str,
     openai_api_key: str,
+    public_base_url: str,
 ) -> str:
     return "\n".join(
         [
@@ -57,6 +59,7 @@ def build_env_file(
             f"CURATOR_ADMIN_PORT={admin_port}",
             f"CURATOR_ADMIN_TOKEN={admin_token}",
             f"OPENAI_API_KEY={openai_api_key}",
+            f"CURATOR_PUBLIC_BASE_URL={public_base_url}",
             f"PATH={os.getenv('PATH', '/usr/local/bin:/usr/bin:/bin')}",
             "",
         ]
@@ -170,6 +173,7 @@ def main() -> None:
             admin_port=args.admin_port,
             admin_token=args.admin_token,
             openai_api_key=args.openai_api_key,
+            public_base_url=args.public_base_url,
         ),
         mode=0o600,
     )

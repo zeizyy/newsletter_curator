@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 from urllib.parse import urlparse
 
 from curator.jobs import current_newsletter_date, get_repository_from_config
@@ -8,21 +9,18 @@ from tests.fakes import FakeGmailService, FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
-class FailIfCalledOpenAI:
-    def __init__(self):
-        raise AssertionError("Cached daily newsletter should prevent new OpenAI calls.")
-
-
-def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_path):
+def test_newsletter_telemetry_tracking_endpoints(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
 
     config_path = write_temp_config(
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "tracking": {"base_url": "http://curator.test"},
             "email": {
-                "digest_recipients": ["cached@example.com"],
-                "digest_subject": "Cached Daily Digest",
+                "digest_recipients": ["tracking@example.com"],
+                "digest_subject": "Tracked Digest",
             },
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
@@ -33,6 +31,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     config = main.load_config()
 
     repository = get_repository_from_config(config)
@@ -81,30 +80,6 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     )
 
     fake_openai = FakeOpenAI()
-    monkeypatch.setattr(main, "OpenAI", lambda: fake_openai)
-
-    first_preview = main.preview_job(config)
-    stored_newsletter = repository.get_daily_newsletter(current_newsletter_date())
-
-    assert first_preview["status"] == "completed"
-    assert first_preview["cached_newsletter"] is False
-    assert first_preview["preview"] is not None
-    assert len(fake_openai.calls) == 1
-    assert stored_newsletter is not None
-    assert stored_newsletter["subject"] == "Cached Daily Digest"
-    assert "Rates reset changes software valuations" in stored_newsletter["body"]
-    assert len(stored_newsletter["selected_items"]) == 2
-
-    monkeypatch.setattr(main, "OpenAI", FailIfCalledOpenAI)
-    second_preview = main.preview_job(config)
-
-    assert second_preview["status"] == "completed"
-    assert second_preview["cached_newsletter"] is True
-    assert second_preview["preview"] is not None
-    assert second_preview["preview"]["body"] == stored_newsletter["body"]
-    assert second_preview["preview"]["html_body"] == stored_newsletter["html_body"]
-    assert "/track/" not in stored_newsletter["html_body"]
-
     sent_messages: list[dict] = []
 
     def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
@@ -117,15 +92,46 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
             }
         )
 
+    monkeypatch.setattr(main, "OpenAI", lambda: fake_openai)
     monkeypatch.setattr(main, "send_email", fake_send_email)
-    delivery_service = FakeGmailService(messages=[])
-    delivery_result = main.run_job(config, delivery_service)
 
-    assert delivery_result["status"] == "completed"
-    assert delivery_result["cached_newsletter"] is True
+    delivery_service = FakeGmailService(messages=[])
+    result = main.run_job(config, delivery_service)
+    stored_newsletter = repository.get_daily_newsletter(current_newsletter_date())
+
+    assert result["status"] == "completed"
+    assert stored_newsletter is not None
     assert len(sent_messages) == 1
-    assert sent_messages[0]["subject"] == "Cached Daily Digest"
-    assert sent_messages[0]["body"] == stored_newsletter["body"]
-    assert "/track/click/" in sent_messages[0]["html_body"]
-    assert "/track/open/" in sent_messages[0]["html_body"]
-    assert urlparse(sent_messages[0]["html_body"].split('src="', 1)[1].split('"', 1)[0]).path.startswith("/track/open/")
+    assert "/track/click/" not in stored_newsletter["html_body"]
+    assert "/track/open/" not in stored_newsletter["html_body"]
+
+    html_body = sent_messages[0]["html_body"]
+    click_match = re.search(r'href="([^"]+/track/click/[^"]+)"', html_body)
+    open_match = re.search(r'src="([^"]+/track/open/[^"]+\.gif)"', html_body)
+    assert click_match is not None
+    assert open_match is not None
+    assert urlparse(click_match.group(1)).netloc == "curator.test"
+    assert urlparse(open_match.group(1)).netloc == "curator.test"
+
+    counts = repository.get_table_counts()
+    assert counts["newsletter_telemetry"] == 1
+    assert counts["tracked_links"] == 2
+    assert counts["newsletter_open_events"] == 0
+    assert counts["newsletter_click_events"] == 0
+
+    client = admin_app.app.test_client()
+    open_response = client.get(urlparse(open_match.group(1)).path, headers={"User-Agent": "PixelBot/1.0"})
+    assert open_response.status_code == 200
+    assert open_response.headers["Content-Type"] == "image/gif"
+
+    click_response = client.get(
+        urlparse(click_match.group(1)).path,
+        headers={"User-Agent": "Browser/1.0"},
+        follow_redirects=False,
+    )
+    assert click_response.status_code == 302
+    assert click_response.headers["Location"] == "https://example.com/markets/rates-reset"
+
+    counts = repository.get_table_counts()
+    assert counts["newsletter_open_events"] == 1
+    assert counts["newsletter_click_events"] == 1

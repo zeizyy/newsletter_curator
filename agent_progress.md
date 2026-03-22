@@ -283,3 +283,11 @@ Add new entries below this line.
 - Outcome: The repo now has a single `daily_pipeline.py` production entrypoint, bootstrap-generated cron assets schedule only `run_daily_pipeline.sh`, and the orchestrator records stage-level results for Gmail ingest, source ingest, and delivery while keeping the old scripts available for operators.
 - Open risks: The orchestrator currently attempts delivery even if one fetch stage fails, which is resilient but should be monitored in production logs to ensure partial-failure behavior matches operator expectations.
 - Next recommended task: `T30` Add newsletter open and click telemetry foundations.
+
+### 2026-03-22 - T30 added newsletter telemetry foundations
+- Context: Added repository-backed telemetry primitives so delivered newsletters can record opens and tracked link clicks without breaking the cached daily-newsletter flow or polluting preview traffic.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `admin_app.py`, `curator/config.py`, `curator/jobs.py`, `curator/pipeline.py`, `curator/repository.py`, `curator/telemetry.py`, `main.py`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`, `tests/integration/test_newsletter_telemetry_tracking_endpoints.py`, `tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py`
+- Tests run: `uv run pytest tests/integration/test_newsletter_telemetry_tracking_endpoints.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Delivery now persists open-token and tracked-link metadata for stored daily newsletters, sent HTML rewrites article URLs and appends an open pixel when telemetry is enabled, admin endpoints record open and click events, and deployment assets now carry a public base URL so tracked links can resolve correctly in production.
+- Open risks: Preview intentionally stays untracked, so operators must validate telemetry using the delivery path rather than `/preview`. Telemetry accuracy still depends on `tracking.base_url` or `CURATOR_PUBLIC_BASE_URL` being set correctly, and email-open counts remain approximate because client-side image proxying and prefetching can distort them.
+- Next recommended task: `T31` Add an admin analytics page for aggregated newsletter open and click stats.

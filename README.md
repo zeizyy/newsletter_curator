@@ -88,6 +88,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
   --admin-host 0.0.0.0 \
   --admin-port 8080 \
+  --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --install-systemd-user \
   --install-crontab
@@ -109,6 +110,7 @@ What the script installs when flags are passed:
 
 Notes:
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
+- Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels.
 - The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedule defaults to:
   - `15 16 * * *` run `daily_pipeline.py`
@@ -189,6 +191,7 @@ Edit `config.yaml`:
 - `limits.max_summary_workers`
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
+- `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
 - `email.digest_recipients` and `email.alert_recipient`
 
 You can override the config file path with `NEWSLETTER_CONFIG`.

@@ -204,6 +204,7 @@ def _run_delivery(config: dict, service, *, send_email_fn) -> dict:
         group_summaries_by_category_fn=group_summaries_by_category,
         render_digest_html_fn=render_digest_html,
         send_email_fn=send_email_fn,
+        telemetry_enabled=service is not None,
     )
 
 

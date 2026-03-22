@@ -711,7 +711,7 @@
     {
       "id": "T30",
       "title": "Add newsletter open and click telemetry foundations",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T22", "T29"],
       "scope": [
         "Add repository storage for delivered-newsletter telemetry, tracked links, open events, and click events",
