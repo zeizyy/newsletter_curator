@@ -24,3 +24,6 @@ data/
 # Generated deployment assets
 deploy/generated/
 deploy/*.env
+
+# macOS metadata
+.DS_Store
