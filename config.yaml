@@ -27,7 +27,7 @@ additional_sources:
   max_total: 20
 
 openai:
-  reasoning_model: gpt-4o-mini
+  reasoning_model: gpt-5-mini
   summary_model: gpt-5-mini
 
 limits:
