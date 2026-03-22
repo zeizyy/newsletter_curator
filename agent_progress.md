@@ -243,3 +243,11 @@ Add new entries below this line.
 - Outcome: Generated cron assets now include `CRON_TZ=America/Los_Angeles` by default, and the default schedules are `16:15` for Gmail ingest, `16:25` for source ingest, and `17:00` for delivery in Pacific time.
 - Open risks: The cron timezone line depends on a cron implementation that supports `CRON_TZ`; most modern Linux cron setups do, but very old or unusual cron environments may need a fallback to explicit UTC-converted schedules.
 - Next recommended task: none; `T25` is complete.
+
+### 2026-03-21 - T26 reverted the newsletter UX redesign
+- Context: Rolled the digest and preview presentation back to the pre-T23 layout after the redesigned version proved unpopular, while keeping the later cached-daily-newsletter and deployment work intact.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/pipeline.py`, `curator/rendering.py`, `templates/digest.html`, `templates/digest_preview.html`
+- Tests run: `uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_delivery_uses_repository_not_live_fetch.py -q`
+- Outcome: The newsletter and preview are back on the prior rendering treatment, and the shared preview/delivery paths still work with persisted daily newsletters.
+- Open risks: The original rendering is plainer and less informative than the reverted redesign, but it is the requested baseline. Third-party `httplib2` deprecation warnings still appear during test startup.
+- Next recommended task: none; `T26` is complete.

@@ -615,6 +615,29 @@
         "The default schedules are 16:15 PST for Gmail, 16:25 PST for sources, and 17:00 PST for delivery",
         "The deployment bootstrap integration test passes"
       ]
+    },
+    {
+      "id": "T26",
+      "title": "Revert the newsletter UX redesign to the previous rendering",
+      "status": "completed",
+      "depends_on": ["T25"],
+      "scope": [
+        "Restore the pre-T23 digest template and preview shell",
+        "Remove the richer UX-specific rendering changes while preserving the later daily-newsletter caching and deployment work",
+        "Keep preview and delivery behavior unchanged apart from the visual rollback"
+      ],
+      "artifacts": [
+        "restored pre-redesign digest template and preview shell",
+        "reverted shared rendering structure",
+        "regression verification for preview and persisted-newsletter behavior after the rollback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "The digest and preview UI match the pre-T23 rendering again",
+        "The preview and persisted-newsletter flows still pass after the visual rollback",
+        "The UX-revert regression tests pass"
+      ]
     }
   ]
 }

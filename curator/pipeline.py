@@ -371,7 +371,7 @@ def run_job(
     sections = []
     for category, entries in grouped.items():
         section_text = [category, ""]
-        section_text.extend(entry["summary_block"] for entry in entries)
+        section_text.extend(entries)
         sections.append("\n\n".join(section_text))
     final_text = "\n\n===\n\n".join(sections)
 
