@@ -1056,7 +1056,7 @@
     {
       "id": "T45",
       "title": "Compute confusion-matrix metrics from agent labels and expose periodic evaluation results",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T44"],
       "scope": [
         "Compute false positives, false negatives, and uncertain counts from classifier decisions versus agent labels",

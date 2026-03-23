@@ -545,6 +545,76 @@ class SQLiteRepository:
             runs.append(payload)
         return runs
 
+    def get_access_evaluation_metrics(self, evaluation_run_id: int) -> dict[str, int]:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS labels_reviewed,
+                    SUM(CASE WHEN agent_label = 'uncertain' THEN 1 ELSE 0 END) AS uncertain_labels,
+                    SUM(
+                        CASE
+                            WHEN agent_label != 'uncertain'
+                             AND classifier_status = 'blocked'
+                             AND agent_label = 'blocked'
+                            THEN 1 ELSE 0
+                        END
+                    ) AS true_positives,
+                    SUM(
+                        CASE
+                            WHEN agent_label != 'uncertain'
+                             AND classifier_status = 'blocked'
+                             AND agent_label = 'servable'
+                            THEN 1 ELSE 0
+                        END
+                    ) AS false_positives,
+                    SUM(
+                        CASE
+                            WHEN agent_label != 'uncertain'
+                             AND classifier_status != 'blocked'
+                             AND agent_label = 'blocked'
+                            THEN 1 ELSE 0
+                        END
+                    ) AS false_negatives,
+                    SUM(
+                        CASE
+                            WHEN agent_label != 'uncertain'
+                             AND classifier_status != 'blocked'
+                             AND agent_label = 'servable'
+                            THEN 1 ELSE 0
+                        END
+                    ) AS true_negatives
+                FROM access_evaluation_labels
+                WHERE evaluation_run_id = ?
+                """,
+                (evaluation_run_id,),
+            ).fetchone()
+        metrics = {
+            "labels_reviewed": int(row["labels_reviewed"] or 0),
+            "uncertain_labels": int(row["uncertain_labels"] or 0),
+            "true_positives": int(row["true_positives"] or 0),
+            "false_positives": int(row["false_positives"] or 0),
+            "false_negatives": int(row["false_negatives"] or 0),
+            "true_negatives": int(row["true_negatives"] or 0),
+        }
+        reviewed_with_decision = (
+            metrics["true_positives"]
+            + metrics["false_positives"]
+            + metrics["false_negatives"]
+            + metrics["true_negatives"]
+        )
+        metrics["evaluated_labels"] = reviewed_with_decision
+        return metrics
+
+    def list_access_evaluation_run_summaries(self, *, limit: int = 20) -> list[dict]:
+        runs = self.list_access_evaluation_runs(limit=limit)
+        summaries: list[dict] = []
+        for run in runs:
+            summary = dict(run)
+            summary["metrics"] = self.get_access_evaluation_metrics(int(run["id"]))
+            summaries.append(summary)
+        return summaries
+
     def record_access_evaluation_label(
         self,
         evaluation_run_id: int,

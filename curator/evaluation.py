@@ -60,17 +60,27 @@ def store_agent_evaluation(
             agent_label=agent_label,
             rationale=str(label.get("rationale", "")).strip(),
         )
+    metrics = repository.get_access_evaluation_metrics(run_id)
     repository.complete_access_evaluation_run(
         run_id,
         status="completed",
-        metadata={"counts": counts, "labels_written": len(labels)},
+        metadata={"counts": counts, "labels_written": len(labels), "metrics": metrics},
     )
     return {
         "evaluation_run_id": run_id,
         "status": "completed",
         "counts": counts,
+        "metrics": metrics,
         "labels_written": len(labels),
     }
+
+
+def report_access_evaluations(
+    repository: SQLiteRepository,
+    *,
+    limit: int = 10,
+) -> list[dict]:
+    return repository.list_access_evaluation_run_summaries(limit=limit)
 
 
 def load_labels_file(path: str | Path) -> list[dict]:

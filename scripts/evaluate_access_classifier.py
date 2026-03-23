@@ -13,6 +13,7 @@ from curator.config import load_config
 from curator.evaluation import (
     export_evaluation_candidates,
     load_labels_file,
+    report_access_evaluations,
     store_agent_evaluation,
 )
 from curator.jobs import get_repository_from_config
@@ -48,6 +49,17 @@ def parse_args() -> argparse.Namespace:
         default="codex",
         help="Evaluator name to store with the evaluation run.",
     )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Print recent evaluation runs and confusion-matrix metrics instead of exporting candidates.",
+    )
+    parser.add_argument(
+        "--report-limit",
+        type=int,
+        default=10,
+        help="Maximum number of evaluation runs to include in report mode.",
+    )
     return parser.parse_args()
 
 
@@ -55,6 +67,10 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     repository = get_repository_from_config(config)
+
+    if args.report:
+        print(json.dumps(report_access_evaluations(repository, limit=args.report_limit), indent=2))
+        return
 
     if args.labels_file:
         labels = load_labels_file(Path(args.labels_file))

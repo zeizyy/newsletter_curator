@@ -411,3 +411,11 @@ Add new entries below this line.
 - Outcome: The repository now stores `access_evaluation_runs` and `access_evaluation_labels`, Codex can export review candidates or apply a JSON label set through `scripts/evaluate_access_classifier.py`, and integration coverage proves labels are persisted with evaluator provenance and per-run counts.
 - Open risks: The agent can now store labels, but there is still no confusion-matrix aggregation or replay/diff loop until `T45` and `T46` land.
 - Next recommended task: `T45` Compute confusion-matrix metrics from agent labels and expose periodic evaluation results.
+
+### 2026-03-22 - T45 added confusion-matrix metrics and evaluation reporting
+- Context: Added the first reporting layer on top of Codex-written labels so each evaluation run now carries measurable false-positive, false-negative, true-positive, true-negative, and uncertain counts.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/evaluation.py`, `curator/repository.py`, `scripts/evaluate_access_classifier.py`, `tests/integration/test_classifier_evaluation_metrics.py`
+- Tests run: `uv run pytest tests/integration/test_classifier_evaluation_metrics.py tests/integration/test_agent_evaluation_writes_labels.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Evaluation runs now compute and persist confusion-matrix metrics in run metadata, the CLI can report recent evaluation runs with those metrics, and integration coverage proves the false-positive/false-negative accounting is stable.
+- Open risks: Metrics are now available, but there is still no classifier replay/diff loop against labeled data until `T46` lands.
+- Next recommended task: `T46` Version the classifier and add a replay loop for iterative tuning against the labeled corpus.
