@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-from curator.repository import SQLiteRepository
+import pytest
+
+from curator.repository import SQLiteRepository, SchemaResetRequiredError
 from tests.helpers import temp_db_path
 
 
@@ -86,7 +88,18 @@ def test_repository_schema_bootstrap_after_reset(tmp_path):
     connection.close()
 
     repository = SQLiteRepository(db_path)
-    repository.initialize()
+    with pytest.raises(SchemaResetRequiredError) as excinfo:
+        repository.initialize()
+
+    assert "were not reset automatically" in str(excinfo.value)
+
+    with sqlite3.connect(db_path) as connection:
+        source_count = connection.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
+        migration_count = connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+    assert source_count == 1
+    assert migration_count == 1
+
+    repository.initialize(allow_schema_reset=True)
 
     counts = repository.get_table_counts()
     assert counts["schema_migrations"] == 0

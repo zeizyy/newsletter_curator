@@ -22,6 +22,11 @@ def test_preview_generation_lock_prevents_duplicate_runs(monkeypatch, tmp_path):
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     config = main.load_config()
     repository = get_repository_from_config(config)
+    monkeypatch.setattr(
+        admin_app,
+        "assess_delivery_readiness",
+        lambda _config, _repository: {"ok": True, "required_source_types": [], "ready_source_types": []},
+    )
 
     started = threading.Event()
     release = threading.Event()

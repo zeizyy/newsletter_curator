@@ -128,6 +128,20 @@ def parse_email_datetime(value: str) -> str:
     return parsed.astimezone(UTC).isoformat() if parsed else ""
 
 
+def normalize_gmail_source_name(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "gmail"
+    display_name, email_address = email.utils.parseaddr(raw)
+    display_name = display_name.strip()
+    email_address = email_address.strip()
+    if display_name:
+        return display_name
+    if email_address:
+        return email_address
+    return raw
+
+
 def collect_live_gmail_links(
     service,
     config: dict,
@@ -155,6 +169,7 @@ def collect_live_gmail_links(
         headers = payload.get("headers", [])
         subject = get_header_value_fn(headers, "Subject")
         from_header = get_header_value_fn(headers, "From")
+        source_name = normalize_gmail_source_name(from_header)
         date_header = get_header_value_fn(headers, "Date")
 
         _text_bodies, html_bodies = extract_bodies_fn(payload)
@@ -167,7 +182,7 @@ def collect_live_gmail_links(
                 {
                     "subject": subject,
                     "from": from_header,
-                    "source_name": from_header or "gmail",
+                    "source_name": source_name,
                     "source_type": "gmail",
                     "date": date_header,
                     "published_at": parse_email_datetime(date_header),
@@ -210,11 +225,12 @@ def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
     )
     links = []
     for story in stories:
+        source_name = normalize_gmail_source_name(str(story.get("source_name", "")).strip())
         links.append(
             {
                 "subject": str(story.get("subject", "")).strip(),
-                "from": str(story.get("source_name", "")).strip() or "gmail",
-                "source_name": str(story.get("source_name", "")).strip() or "gmail",
+                "from": source_name or "gmail",
+                "source_name": source_name or "gmail",
                 "source_type": "gmail",
                 "date": str(story.get("published_at", "")).strip(),
                 "published_at": str(story.get("published_at", "")).strip(),

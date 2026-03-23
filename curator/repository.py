@@ -26,6 +26,10 @@ def canonicalize_url(url: str) -> str:
     return urlunparse(cleaned)
 
 
+class SchemaResetRequiredError(RuntimeError):
+    pass
+
+
 def story_key(source_type: str, source_name: str, url: str) -> str:
     raw = f"{source_type.strip()}|{source_name.strip()}|{canonicalize_url(url)}"
     return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
@@ -50,9 +54,18 @@ class SQLiteRepository:
         finally:
             connection.close()
 
-    def initialize(self) -> None:
+    def initialize(self, *, allow_schema_reset: bool = False) -> None:
         with self.connect() as connection:
-            if self._needs_schema_reset(connection):
+            reset_reason = self._schema_reset_reason(connection)
+            if reset_reason and not allow_schema_reset:
+                raise SchemaResetRequiredError(
+                    f"Database schema mismatch detected for {self.path}. "
+                    f"Managed tables were not reset automatically because that would purge data. "
+                    f"Reason: {reset_reason}. "
+                    "Opt in explicitly with database.allow_schema_reset=true or "
+                    "CURATOR_ALLOW_SCHEMA_RESET=1 if you want to recreate the managed tables."
+                )
+            if reset_reason:
                 self._drop_managed_tables(connection)
             self._create_schema(connection)
 
@@ -70,8 +83,11 @@ class SQLiteRepository:
         return {str(row["name"]) for row in rows}
 
     def _needs_schema_reset(self, connection: sqlite3.Connection) -> bool:
+        return self._schema_reset_reason(connection) is not None
+
+    def _schema_reset_reason(self, connection: sqlite3.Connection) -> str | None:
         if self._table_exists(connection, "schema_migrations"):
-            return True
+            return "legacy schema_migrations table is present"
 
         expected_columns = {
             "sources": {"id", "source_type", "source_name", "created_at", "updated_at"},
@@ -170,8 +186,9 @@ class SQLiteRepository:
         for table_name, expected in expected_columns.items():
             columns = self._table_columns(connection, table_name)
             if columns and not expected.issubset(columns):
-                return True
-        return False
+                missing = sorted(expected - columns)
+                return f"{table_name} is missing expected columns: {', '.join(missing)}"
+        return None
 
     def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
         for table_name in [

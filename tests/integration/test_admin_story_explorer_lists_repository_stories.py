@@ -64,6 +64,8 @@ def test_admin_story_explorer_lists_repository_stories(monkeypatch, tmp_path):
     assert "Repository Stories" in page
     assert "Rates reset changes software valuations" in page
     assert "Cloud budgets reset" in page
+    assert "Infra Letter" in page
+    assert "infra@example.com" not in page
     assert "snapshot stored" in page
     assert "metadata only" in page
 

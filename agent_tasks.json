@@ -1144,6 +1144,52 @@
         "Cached preview and cached delivery render different templates from the same stored content",
         "The cached-preview-and-delivery integration test passes without new OpenAI calls"
       ]
+    },
+    {
+      "id": "T50",
+      "title": "Require explicit opt-in before schema resets and show an empty-repository preview message",
+      "status": "completed",
+      "depends_on": ["T49"],
+      "scope": [
+        "Stop silently dropping managed tables on schema mismatches unless the operator opts in explicitly",
+        "Expose a clear empty-repository state in the admin preview without starting generation or calling the LLM",
+        "Keep the preview generation lock behavior intact when repository data is actually ready"
+      ],
+      "artifacts": [
+        "schema reset guard with explicit allow flag",
+        "empty repository preview message in admin",
+        "integration coverage for safe schema bootstrap and empty preview behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "integration_test": "tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "done_when": [
+        "Schema drift no longer purges data without explicit operator opt-in",
+        "An empty repository preview shows a sensible message and does not start generation",
+        "The schema reset and empty preview integration tests pass"
+      ]
+    },
+    {
+      "id": "T51",
+      "title": "Normalize Gmail source names to drop raw sender email addresses",
+      "status": "completed",
+      "depends_on": ["T50"],
+      "scope": [
+        "Normalize Gmail source display names so newsletter and admin surfaces show the sender name without the angle-bracket email suffix",
+        "Apply the normalization to both live Gmail ingest and repository-backed Gmail reads",
+        "Make the story explorer render old Gmail rows without leaking the raw email address"
+      ],
+      "artifacts": [
+        "gmail source-name normalization helper",
+        "admin display normalization for Gmail source names",
+        "integration coverage for title extraction and story explorer rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "integration_test": "tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "done_when": [
+        "Gmail sender display names no longer include the raw email address in newsletter-facing surfaces",
+        "Repository-backed Gmail reads use the normalized source name",
+        "The Gmail source-name integration tests pass"
+      ]
     }
   ]
 }

@@ -84,4 +84,5 @@ def test_title_extraction_avoids_generic_read_more_titles(monkeypatch, tmp_path)
     page = response.get_data(as_text=True)
     assert "Nvidia&#39;s Blackwell and Vera Rubin roadmap pushes demand toward $1 trillion" in page
     assert "The Gemini-powered Google Workspace features actually worth using" in page
+    assert "newsletters@techcrunch.com" not in page
     assert ">Read More<" not in page

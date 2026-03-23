@@ -411,3 +411,19 @@ Add new entries below this line.
 - Outcome: `daily_newsletters` now stores a first-class `content` payload, delivery caches and sends the email-safe HTML, and the admin preview renders the market-tape or email-safe variants from the same stored content without another LLM call on cache hits.
 - Open risks: Existing cached newsletters created before this schema change will still fall back to their stored HTML until they are regenerated under the new code; the richer browser preview still depends on `render_groups` remaining backward-compatible with future template changes.
 - Next recommended task: none; `T49` is complete.
+
+### 2026-03-22 - T50 gated schema resets and added an empty preview state
+- Context: Removed the last silent data-loss path by making schema resets explicit opt-in only, and improved the admin preview so an empty repository shows a clear fetch-first message instead of kicking off a doomed generation run.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/config.py`, `curator/jobs.py`, `curator/repository.py`, `tests/integration/test_admin_preview_empty_repository_shows_message.py`, `tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py`, `tests/integration/test_repository_schema_bootstrap_after_reset.py`
+- Tests run: `uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py tests/integration/test_admin_preview_empty_repository_shows_message.py tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py -q`; `uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_delivery_uses_repository_not_live_fetch.py -q`
+- Outcome: Schema mismatches now raise an explicit error unless `database.allow_schema_reset=true` or `CURATOR_ALLOW_SCHEMA_RESET=1` is set, and `/preview` now short-circuits with a sensible "run the fetch job" message when no delivery-ready stories exist, without calling `preview_job` or the LLM.
+- Open risks: Operators with existing old-schema databases will need to opt in once if they truly want a destructive reset; the admin app still reports repository init failures generically rather than rendering the exact schema mismatch reason.
+- Next recommended task: none; `T50` is complete.
+
+### 2026-03-22 - T51 normalized Gmail source names for display
+- Context: Trimmed verbose Gmail sender strings so newsletter and admin surfaces show the sender display name without the angle-bracket email suffix.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/gmail.py`, `tests/integration/test_admin_story_explorer_lists_repository_stories.py`, `tests/integration/test_title_extraction_avoids_generic_read_more_titles.py`
+- Tests run: `uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py tests/integration/test_admin_story_explorer_lists_repository_stories.py tests/integration/test_admin_preview_renders_digest.py -q`
+- Outcome: Gmail stories now use a normalized source name like `TechCrunch Week in Review` instead of `TechCrunch Week in Review <newsletters@techcrunch.com>`, and the story explorer also normalizes older Gmail rows already stored in the repository.
+- Open risks: This normalizer assumes standard `Name <email>` formatting; unusual sender headers without a parseable display name still fall back to the email address or raw header text.
+- Next recommended task: none; `T51` is complete.

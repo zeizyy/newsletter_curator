@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -59,7 +60,10 @@ def get_repository_from_config(config: dict) -> SQLiteRepository:
     if not Path(database_path).is_absolute():
         database_path = Path(BASE_DIR) / database_path
     repository = SQLiteRepository(Path(database_path))
-    repository.initialize()
+    allow_schema_reset = bool(database_cfg.get("allow_schema_reset", False)) or str(
+        os.getenv("CURATOR_ALLOW_SCHEMA_RESET", "")
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    repository.initialize(allow_schema_reset=allow_schema_reset)
     return repository
 
 

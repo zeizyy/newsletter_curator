@@ -17,6 +17,7 @@ DEFAULT_CONFIG = {
         "path": "data/newsletter_curator.sqlite3",
         "ttl_days": 7,
         "newsletter_ttl_days": 7,
+        "allow_schema_reset": False,
     },
     "development": {
         "use_canned_sources": False,

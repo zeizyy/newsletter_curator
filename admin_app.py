@@ -7,7 +7,8 @@ import threading
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
 
-from curator.jobs import current_newsletter_date, get_repository_from_config
+from curator.jobs import assess_delivery_readiness, current_newsletter_date, get_repository_from_config
+from curator.gmail import normalize_gmail_source_name
 from curator.rendering import render_digest_html, render_email_safe_digest_html
 from curator.telemetry import strip_tracking_pixel
 from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
@@ -35,6 +36,13 @@ def load_repository(config: dict):
         return get_repository_from_config(config)
     except Exception:
         return None
+
+
+def normalize_story_source_name(story: dict) -> dict:
+    normalized = dict(story)
+    if str(normalized.get("source_type", "")).strip() == "gmail":
+        normalized["source_name"] = normalize_gmail_source_name(str(normalized.get("source_name", "")))
+    return normalized
 
 
 def build_preview_payload(newsletter: dict | None, *, preview_template: str = "market_tape") -> dict | None:
@@ -359,35 +367,47 @@ def preview_newsletter():
     generation_started = False
 
     newsletter_date = current_newsletter_date()
-    cached_newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
-    if cached_newsletter is not None:
-        preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
-        metadata = cached_newsletter.get("metadata", {})
-        result = {
-            "status": "completed",
-            "ranked_candidates": int(metadata.get("ranked_candidates", 0) or 0),
-            "selected": int(metadata.get("selected", 0) or 0),
-            "accepted_items": len(cached_newsletter.get("selected_items", []) or []),
-            "cached_preview": True,
-        }
+    if repository is None:
+        error = "Repository is unavailable. Check the server logs for configuration or schema issues."
+        status_code = 200
     else:
-        lock_state = (
-            repository.acquire_preview_generation(newsletter_date)
-            if repository
-            else {"acquired": True, "generation_token": ""}
-        )
-        if not lock_state.get("acquired", True):
-            generation_in_progress = True
-            generation_state = lock_state
-            status_code = 202
+        readiness = assess_delivery_readiness(merged, repository)
+        cached_newsletter = repository.get_daily_newsletter(newsletter_date)
+        if cached_newsletter is not None:
+            preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
+            metadata = cached_newsletter.get("metadata", {})
+            result = {
+                "status": "completed",
+                "ranked_candidates": int(metadata.get("ranked_candidates", 0) or 0),
+                "selected": int(metadata.get("selected", 0) or 0),
+                "accepted_items": len(cached_newsletter.get("selected_items", []) or []),
+                "cached_preview": True,
+            }
+        elif not readiness["ok"]:
+            required_source_types = readiness.get("required_source_types", [])
+            if required_source_types:
+                source_hint = ", ".join(required_source_types)
+                error = (
+                    "No delivery-ready stories are available yet. "
+                    f"Run the fetch job to populate the repository for: {source_hint}."
+                )
+            else:
+                error = "No delivery-ready stories are available yet. Run the fetch job and try again."
+            status_code = 200
         else:
-            generation_token = str(lock_state.get("generation_token", ""))
-            if repository and generation_token:
-                start_preview_generation(merged, newsletter_date, generation_token)
-            generation_in_progress = True
-            generation_state = lock_state
-            generation_started = True
-            status_code = 202
+            lock_state = repository.acquire_preview_generation(newsletter_date)
+            if not lock_state.get("acquired", True):
+                generation_in_progress = True
+                generation_state = lock_state
+                status_code = 202
+            else:
+                generation_token = str(lock_state.get("generation_token", ""))
+                if generation_token:
+                    start_preview_generation(merged, newsletter_date, generation_token)
+                generation_in_progress = True
+                generation_state = lock_state
+                generation_started = True
+                status_code = 202
 
     if generation_in_progress and repository:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
@@ -404,6 +424,10 @@ def preview_newsletter():
             generation_in_progress = False
             generation_state = None
             generation_started = False
+            status_code = 200
+        elif generation_state and generation_state.get("status") == "failed":
+            error = str(generation_state.get("last_error", "") or "Preview generation failed.")
+            generation_in_progress = False
             status_code = 200
 
     response = make_response(
@@ -483,11 +507,28 @@ def story_explorer():
     if source_name:
         source_name_lower = source_name.lower()
         stories = [
-            story
+            normalize_story_source_name(story)
             for story in stories
-            if source_name_lower in str(story.get("source_name", "")).lower()
+            if source_name_lower in normalize_gmail_source_name(str(story.get("source_name", ""))).lower()
+            or source_name_lower in str(story.get("source_name", "")).lower()
+        ]
+    else:
+        stories = [
+            normalize_story_source_name(story)
+            for story in stories
         ]
     available_sources = repository.list_sources_with_selection() if repository else []
+    available_sources = [
+        {
+            **source,
+            "source_name": (
+                normalize_gmail_source_name(str(source.get("source_name", "")))
+                if str(source.get("source_type", "")).strip() == "gmail"
+                else source.get("source_name", "")
+            ),
+        }
+        for source in available_sources
+    ]
     response = make_response(
         render_template(
             "story_explorer.html",
