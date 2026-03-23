@@ -257,12 +257,12 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                 (
                     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
                     'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:16px;margin:0 0 14px 0;">'
-                    '<tr><td style="padding:18px 18px 16px 18px;">'
+                    '<tr><td style="padding:14px 14px 12px 14px;">'
                     f'<div style="margin:0 0 8px 0;font-size:12px;line-height:1.4;color:#0c7a5b;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">{html.escape(category)}</div>'
                     f"{metadata_html}"
-                    f'<div style="margin:0 0 14px 0;font-size:30px;line-height:1.1;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
+                    f'<div style="margin:0 0 12px 0;font-size:24px;line-height:1.08;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
                     f'<div style="font-size:15px;line-height:1.6;color:#223240;">{body_html}</div>'
-                    f'<div style="margin-top:14px;font-size:14px;line-height:1.5;">{link_html}</div>'
+                    f'<div style="margin-top:12px;font-size:14px;line-height:1.5;">{link_html}</div>'
                     "</td></tr></table>"
                 )
             )

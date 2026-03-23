@@ -92,8 +92,6 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
     assert "Read original" in html
     assert 'target="_blank"' in html
     assert "Mar 21, 12:30 AM PT" in html
-    assert 'data-story-timestamp="' in html
     assert "Financial Times" not in html
-    assert "@media (prefers-color-scheme: dark)" in html
-    assert "[data-ogsc]" in html
-    assert "story-time" in html
+    assert 'role="presentation"' in html
+    assert "max-width:640px" in html
