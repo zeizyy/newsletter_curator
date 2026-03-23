@@ -403,3 +403,11 @@ Add new entries below this line.
 - Outcome: `/preview?template=gmail_lab` now shows the currently sent template and the email-safe alternative side by side in mobile-width frames, with explicit copy that it is a Gmail-focused approximation rather than a perfect Gmail renderer.
 - Open risks: This lab helps catch containment and hierarchy issues locally, but Gmail app dark-mode rewriting is still only approximated; the actual delivery template is unchanged and still uses the richer sent HTML unless switched later.
 - Next recommended task: none; `T48` is complete.
+
+### 2026-03-22 - T49 shared newsletter content across cached preview and delivery
+- Context: Removed the last coupling between cached newsletters and a single stored HTML variant by persisting template-independent newsletter content, then re-rendering different frontend templates from that shared payload for admin preview and email delivery.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/jobs.py`, `curator/repository.py`, `tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py`
+- Tests run: `uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_preview_renders_digest.py -q`; `uv run pytest tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_full_two_job_pipeline.py -q`
+- Outcome: `daily_newsletters` now stores a first-class `content` payload, delivery caches and sends the email-safe HTML, and the admin preview renders the market-tape or email-safe variants from the same stored content without another LLM call on cache hits.
+- Open risks: Existing cached newsletters created before this schema change will still fall back to their stored HTML until they are regenerated under the new code; the richer browser preview still depends on `render_groups` remaining backward-compatible with future template changes.
+- Next recommended task: none; `T49` is complete.

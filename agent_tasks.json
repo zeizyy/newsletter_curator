@@ -1121,6 +1121,29 @@
         "The preview shows the actual sent template and the email-safe alternative side by side",
         "The admin preview integration test passes with the Gmail lab route"
       ]
+    },
+    {
+      "id": "T49",
+      "title": "Persist shared newsletter content and render email/web templates from the same cached payload",
+      "status": "completed",
+      "depends_on": ["T40"],
+      "scope": [
+        "Persist a template-independent newsletter content payload in the daily newsletter table",
+        "Reuse that stored content to render market-tape admin previews and email-safe delivery HTML without rerunning ranking or summaries",
+        "Keep delivery using the cached email-safe HTML while the admin preview renders the richer browser-first template from the same content"
+      ],
+      "artifacts": [
+        "daily_newsletters content payload storage",
+        "shared cached rendering logic for preview and delivery",
+        "integration coverage proving one cached newsletter feeds both templates without new OpenAI calls"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "A daily newsletter stores structured content separately from rendered HTML",
+        "Cached preview and cached delivery render different templates from the same stored content",
+        "The cached-preview-and-delivery integration test passes without new OpenAI calls"
+      ]
     }
   ]
 }

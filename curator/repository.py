@@ -84,6 +84,7 @@ class SQLiteRepository:
                 "subject",
                 "body",
                 "html_body",
+                "content_json",
                 "selected_items_json",
                 "metadata_json",
                 "created_at",
@@ -226,6 +227,7 @@ class SQLiteRepository:
                 subject TEXT NOT NULL,
                 body TEXT NOT NULL,
                 html_body TEXT NOT NULL,
+                content_json TEXT NOT NULL DEFAULT '{}',
                 selected_items_json TEXT NOT NULL DEFAULT '[]',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
@@ -438,6 +440,7 @@ class SQLiteRepository:
                     subject,
                     body,
                     html_body,
+                    content_json,
                     selected_items_json,
                     metadata_json,
                     created_at,
@@ -451,6 +454,7 @@ class SQLiteRepository:
         if row is None:
             return None
         payload = dict(row)
+        payload["content"] = json.loads(str(payload.pop("content_json", "") or "{}"))
         payload["selected_items"] = json.loads(
             str(payload.pop("selected_items_json", "") or "[]")
         )
@@ -466,6 +470,9 @@ class SQLiteRepository:
                     newsletter_date,
                     delivery_run_id,
                     subject,
+                    body,
+                    html_body,
+                    content_json,
                     selected_items_json,
                     metadata_json,
                     created_at,
@@ -480,6 +487,7 @@ class SQLiteRepository:
         newsletters: list[dict] = []
         for row in rows:
             payload = dict(row)
+            payload["content"] = json.loads(str(payload.pop("content_json", "") or "{}"))
             selected_items = json.loads(str(payload.pop("selected_items_json", "") or "[]"))
             payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
             payload["selected_items_count"] = len(selected_items)
@@ -612,6 +620,7 @@ class SQLiteRepository:
         subject: str,
         body: str,
         html_body: str,
+        content: dict | None = None,
         selected_items: list[dict] | None = None,
         metadata: dict | None = None,
         delivery_run_id: int | None = None,
@@ -626,18 +635,20 @@ class SQLiteRepository:
                     subject,
                     body,
                     html_body,
+                    content_json,
                     selected_items_json,
                     metadata_json,
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(newsletter_date)
                 DO UPDATE SET
                     delivery_run_id = excluded.delivery_run_id,
                     subject = excluded.subject,
                     body = excluded.body,
                     html_body = excluded.html_body,
+                    content_json = excluded.content_json,
                     selected_items_json = excluded.selected_items_json,
                     metadata_json = excluded.metadata_json,
                     updated_at = excluded.updated_at
@@ -648,6 +659,7 @@ class SQLiteRepository:
                     subject,
                     body,
                     html_body,
+                    json.dumps(content or {}, sort_keys=True),
                     json.dumps(selected_items or [], sort_keys=True),
                     json.dumps(metadata or {}, sort_keys=True),
                     now,

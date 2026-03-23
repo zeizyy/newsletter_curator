@@ -30,7 +30,11 @@ from .llm import (
     summarize_article_with_llm,
 )
 from .pipeline import process_story, run_job as run_pipeline_job
-from .rendering import group_summaries_by_category, render_digest_html
+from .rendering import (
+    group_summaries_by_category,
+    render_digest_html,
+    render_email_safe_digest_html,
+)
 from .repository import SQLiteRepository
 from .sources import (
     collect_additional_source_links,
@@ -835,6 +839,32 @@ def run_delivery_job(
             sent_count += 1
         return sent_count
 
+    def build_newsletter_content(
+        *,
+        pipeline_result: dict | None = None,
+        cached_newsletter: dict | None = None,
+    ) -> dict:
+        if cached_newsletter is not None:
+            content = cached_newsletter.get("content", {}) or {}
+            if isinstance(content, dict):
+                return content
+            return {}
+
+        pipeline_result = pipeline_result or {}
+        return {
+            "version": 1,
+            "render_groups": pipeline_result.get("render_groups", {}) or {},
+            "ranked_candidates": int(pipeline_result.get("ranked_candidates", 0) or 0),
+            "selected": int(pipeline_result.get("selected", 0) or 0),
+            "accepted_items": int(pipeline_result.get("accepted_items", 0) or 0),
+        }
+
+    def render_delivery_html(content: dict, fallback_html: str) -> str:
+        render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
+        if not render_groups:
+            return fallback_html
+        return render_email_safe_digest_html(render_groups)
+
     run_id = repository.create_delivery_run(
         metadata={
             "job": "deliver_digest",
@@ -846,10 +876,15 @@ def run_delivery_job(
     try:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
+            cached_content = build_newsletter_content(cached_newsletter=cached_newsletter)
+            delivery_html = render_delivery_html(
+                cached_content,
+                str(cached_newsletter.get("html_body", "")).strip(),
+            )
             sent_recipients = send_digest(
                 subject=cached_newsletter["subject"],
                 body=cached_newsletter["body"],
-                html_body=cached_newsletter["html_body"],
+                html_body=delivery_html,
                 selected_items=cached_newsletter.get("selected_items", []),
                 daily_newsletter_id=int(cached_newsletter["id"]),
             )
@@ -872,7 +907,9 @@ def run_delivery_job(
                 "sent_recipients": sent_recipients,
                 "digest_subject": cached_newsletter["subject"],
                 "digest_body": cached_newsletter["body"],
-                "digest_html": cached_newsletter["html_body"],
+                "digest_html": delivery_html,
+                "email_safe_digest_html": delivery_html,
+                "content": cached_content,
             }
             repository.complete_delivery_run(
                 run_id,
@@ -906,12 +943,19 @@ def run_delivery_job(
             and str(pipeline_result.get("digest_body", "")).strip()
             and str(pipeline_result.get("digest_html", "")).strip()
         ):
+            newsletter_content = build_newsletter_content(pipeline_result=pipeline_result)
+            delivery_html = render_delivery_html(
+                newsletter_content,
+                str(pipeline_result.get("email_safe_digest_html", "")).strip()
+                or str(pipeline_result.get("digest_html", "")).strip(),
+            )
             daily_newsletter_id = repository.upsert_daily_newsletter(
                 newsletter_date=newsletter_date,
                 delivery_run_id=run_id,
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
                 body=str(pipeline_result.get("digest_body", "")).strip(),
-                html_body=str(pipeline_result.get("digest_html", "")).strip(),
+                html_body=delivery_html,
+                content=newsletter_content,
                 selected_items=list(pipeline_result.get("accepted_story_items", [])),
                 metadata={
                     "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
@@ -926,10 +970,12 @@ def run_delivery_job(
             pipeline_result["sent_recipients"] = send_digest(
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
                 body=str(pipeline_result.get("digest_body", "")).strip(),
-                html_body=str(pipeline_result.get("digest_html", "")).strip(),
+                html_body=delivery_html,
                 selected_items=list(pipeline_result.get("accepted_story_items", [])),
                 daily_newsletter_id=daily_newsletter_id,
             )
+            pipeline_result["content"] = newsletter_content
+            pipeline_result["delivery_digest_html"] = delivery_html
         repository.complete_delivery_run(
             run_id,
             status="completed",

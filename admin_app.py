@@ -40,8 +40,9 @@ def load_repository(config: dict):
 def build_preview_payload(newsletter: dict | None, *, preview_template: str = "market_tape") -> dict | None:
     if not newsletter:
         return None
+    content = newsletter.get("content", {}) or {}
     metadata = newsletter.get("metadata", {}) or {}
-    render_groups = metadata.get("render_groups", {})
+    render_groups = content.get("render_groups") or metadata.get("render_groups", {})
     market_tape_html = str(newsletter.get("html_body", "") or "")
     email_safe_html = market_tape_html
     if render_groups:
