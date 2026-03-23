@@ -116,9 +116,10 @@ Notes:
 - Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels.
 - The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedule defaults to:
-  - `15 23 * * *` run `daily_pipeline.py`
+  - `30 14 * * *` run `daily_pipeline.py`
 - The default cron output now uses fixed UTC times instead of `CRON_TZ`, because some cron daemons ignore `CRON_TZ`.
-- `15 23 * * *` corresponds to `4:15 PM` Pacific during daylight saving time. Fixed UTC does not automatically follow DST, so update the schedule manually if you want a different winter/summer local time mapping.
+- `30 14 * * *` corresponds to `6:30 AM PST` exactly. On March 22, 2026 Los Angeles is on PDT, so that same fixed UTC schedule currently lands at `7:30 AM` local.
+- Fixed UTC does not automatically follow DST, so update the schedule manually if you want a different winter/summer local time mapping.
 - Override schedules with:
   - `--daily-schedule`
   - `--cron-timezone` if your cron daemon reliably supports it and you want timezone-based scheduling

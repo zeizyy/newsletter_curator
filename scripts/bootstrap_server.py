@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
     parser.add_argument("--cron-timezone", default="")
-    parser.add_argument("--daily-schedule", default="15 23 * * *")
+    parser.add_argument("--daily-schedule", default="30 14 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
