@@ -77,6 +77,24 @@ class SQLiteRepository:
             "sources": {"id", "source_type", "source_name", "created_at", "updated_at"},
             "ingestion_runs": {"id", "source_type", "status", "started_at", "finished_at", "metadata_json"},
             "delivery_runs": {"id", "status", "started_at", "finished_at", "metadata_json"},
+            "access_evaluation_runs": {
+                "id",
+                "evaluator",
+                "status",
+                "started_at",
+                "finished_at",
+                "scope_json",
+                "metadata_json",
+            },
+            "access_evaluation_labels": {
+                "id",
+                "evaluation_run_id",
+                "story_id",
+                "classifier_status",
+                "agent_label",
+                "rationale",
+                "created_at",
+            },
             "daily_newsletters": {
                 "id",
                 "newsletter_date",
@@ -186,6 +204,8 @@ class SQLiteRepository:
             "newsletter_telemetry",
             "fetched_stories",
             "delivery_runs",
+            "access_evaluation_labels",
+            "access_evaluation_runs",
             "daily_newsletters",
             "preview_generations",
             "ingestion_runs",
@@ -220,6 +240,27 @@ class SQLiteRepository:
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
                 metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS access_evaluation_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluator TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                scope_json TEXT NOT NULL DEFAULT '{}',
+                metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS access_evaluation_labels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluation_run_id INTEGER NOT NULL REFERENCES access_evaluation_runs(id) ON DELETE CASCADE,
+                story_id INTEGER NOT NULL REFERENCES fetched_stories(id) ON DELETE CASCADE,
+                classifier_status TEXT NOT NULL,
+                agent_label TEXT NOT NULL,
+                rationale TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(evaluation_run_id, story_id)
             );
 
             CREATE TABLE IF NOT EXISTS daily_newsletters (
@@ -432,6 +473,148 @@ class SQLiteRepository:
                 """
             ).fetchone()
         return self._run_row_to_dict(row)
+
+    def create_access_evaluation_run(
+        self,
+        evaluator: str,
+        *,
+        scope: dict | None = None,
+        metadata: dict | None = None,
+    ) -> int:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO access_evaluation_runs (
+                    evaluator,
+                    status,
+                    started_at,
+                    scope_json,
+                    metadata_json
+                )
+                VALUES (?, 'running', ?, ?, ?)
+                """,
+                (
+                    evaluator,
+                    utc_now(),
+                    json.dumps(scope or {}, sort_keys=True),
+                    json.dumps(metadata or {}, sort_keys=True),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def complete_access_evaluation_run(
+        self,
+        run_id: int,
+        *,
+        status: str,
+        metadata: dict | None = None,
+    ) -> None:
+        with self.connect() as connection:
+            current = connection.execute(
+                "SELECT metadata_json FROM access_evaluation_runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            merged_metadata = json.loads(current["metadata_json"]) if current else {}
+            if metadata:
+                merged_metadata.update(metadata)
+            connection.execute(
+                """
+                UPDATE access_evaluation_runs
+                SET status = ?, finished_at = ?, metadata_json = ?
+                WHERE id = ?
+                """,
+                (status, utc_now(), json.dumps(merged_metadata, sort_keys=True), run_id),
+            )
+
+    def list_access_evaluation_runs(self, *, limit: int = 20) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, evaluator, status, started_at, finished_at, scope_json, metadata_json
+                FROM access_evaluation_runs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        runs: list[dict] = []
+        for row in rows:
+            payload = dict(row)
+            payload["scope"] = json.loads(str(payload.pop("scope_json", "") or "{}"))
+            payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
+            runs.append(payload)
+        return runs
+
+    def record_access_evaluation_label(
+        self,
+        evaluation_run_id: int,
+        *,
+        story_id: int,
+        classifier_status: str,
+        agent_label: str,
+        rationale: str = "",
+    ) -> int:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO access_evaluation_labels (
+                    evaluation_run_id,
+                    story_id,
+                    classifier_status,
+                    agent_label,
+                    rationale,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(evaluation_run_id, story_id)
+                DO UPDATE SET
+                    classifier_status = excluded.classifier_status,
+                    agent_label = excluded.agent_label,
+                    rationale = excluded.rationale,
+                    created_at = excluded.created_at
+                """,
+                (
+                    evaluation_run_id,
+                    story_id,
+                    classifier_status,
+                    agent_label,
+                    rationale,
+                    utc_now(),
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT id
+                FROM access_evaluation_labels
+                WHERE evaluation_run_id = ? AND story_id = ?
+                """,
+                (evaluation_run_id, story_id),
+            ).fetchone()
+            return int(row["id"])
+
+    def list_access_evaluation_labels(self, evaluation_run_id: int) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    ael.id,
+                    ael.evaluation_run_id,
+                    ael.story_id,
+                    ael.classifier_status,
+                    ael.agent_label,
+                    ael.rationale,
+                    ael.created_at,
+                    fs.url,
+                    fs.source_name,
+                    fs.source_type
+                FROM access_evaluation_labels ael
+                JOIN fetched_stories fs ON fs.id = ael.story_id
+                WHERE ael.evaluation_run_id = ?
+                ORDER BY ael.id ASC
+                """,
+                (evaluation_run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_daily_newsletter(self, newsletter_date: str) -> dict | None:
         with self.connect() as connection:
@@ -1449,6 +1632,8 @@ class SQLiteRepository:
             "sources",
             "ingestion_runs",
             "delivery_runs",
+            "access_evaluation_runs",
+            "access_evaluation_labels",
             "daily_newsletters",
             "preview_generations",
             "newsletter_telemetry",

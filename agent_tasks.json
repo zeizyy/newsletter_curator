@@ -1033,7 +1033,7 @@
     {
       "id": "T44",
       "title": "Add an agent-driven evaluation script that labels the live repository corpus",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T43"],
       "scope": [
         "Read recent repository candidates and have the agent evaluate whether each story should be servable or blocked",

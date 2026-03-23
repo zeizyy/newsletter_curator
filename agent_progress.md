@@ -403,3 +403,11 @@ Add new entries below this line.
 - Outcome: Article snapshots now persist `servability_status`, `detector_version`, and `classifier_signals_json`; ingest records `servable`, `blocked`, or `candidate` per story; and repository reads expose parsed classifier signals alongside the existing summary and paywall fields.
 - Open risks: The repository now contains the metadata needed for evaluation, but there is still no persisted agent-label layer or confusion-matrix reporting until `T44` and `T45` land.
 - Next recommended task: `T44` Add an agent-driven evaluation script that labels the live repository corpus.
+
+### 2026-03-22 - T44 added Codex-friendly evaluation runs and label writeback
+- Context: Added the persistence layer and CLI entrypoint needed for Codex to export recent stories for review and then write back its labels to the live repository with run-level provenance.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/evaluation.py`, `curator/repository.py`, `scripts/evaluate_access_classifier.py`, `tests/integration/test_agent_evaluation_writes_labels.py`
+- Tests run: `uv run pytest tests/integration/test_agent_evaluation_writes_labels.py tests/integration/test_ingest_persists_servability_metadata.py tests/integration/test_repository_schema_bootstrap_after_reset.py -q`; `uv run python scripts/evaluate_access_classifier.py --help`; `uv run pytest tests/integration -q`
+- Outcome: The repository now stores `access_evaluation_runs` and `access_evaluation_labels`, Codex can export review candidates or apply a JSON label set through `scripts/evaluate_access_classifier.py`, and integration coverage proves labels are persisted with evaluator provenance and per-run counts.
+- Open risks: The agent can now store labels, but there is still no confusion-matrix aggregation or replay/diff loop until `T45` and `T46` land.
+- Next recommended task: `T45` Compute confusion-matrix metrics from agent labels and expose periodic evaluation results.
