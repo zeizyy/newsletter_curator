@@ -395,3 +395,11 @@ Add new entries below this line.
 - Outcome: Ingest now persists the full fetched corpus for later evaluation, including blocked and unsummarized candidates, while delivery readiness, Gmail/source repository collectors, and preview/delivery behavior continue to operate only on stories with stored summaries. Added `T43` through `T46` to the harness for servability metadata, agent labeling, periodic metrics, and classifier replay.
 - Open risks: Repository growth will increase until the next tasks add explicit servability metadata, evaluation storage, and a review/reporting loop; T42 only creates the raw corpus needed for that later analysis.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-03-22 - T43 added first-class servability and classifier metadata
+- Context: Promoted classifier details from loose snapshot metadata into first-class repository fields so every fetched candidate now carries an explicit servability state, detector version, and structured classifier signals.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/content.py`, `curator/jobs.py`, `curator/repository.py`, `tests/integration/test_ingest_persists_servability_metadata.py`, `tests/integration/test_repository_schema_bootstrap_after_reset.py`
+- Tests run: `uv run pytest tests/integration/test_ingest_persists_servability_metadata.py tests/integration/test_repository_schema_bootstrap_after_reset.py tests/integration/test_ingest_persists_all_candidates_for_evaluation.py tests/integration/test_paywalled_stories_are_excluded_from_digest.py -q`; `uv run pytest tests/integration -q`
+- Outcome: Article snapshots now persist `servability_status`, `detector_version`, and `classifier_signals_json`; ingest records `servable`, `blocked`, or `candidate` per story; and repository reads expose parsed classifier signals alongside the existing summary and paywall fields.
+- Open risks: The repository now contains the metadata needed for evaluation, but there is still no persisted agent-label layer or confusion-matrix reporting until `T44` and `T45` land.
+- Next recommended task: `T44` Add an agent-driven evaluation script that labels the live repository corpus.

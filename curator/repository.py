@@ -127,6 +127,9 @@ class SQLiteRepository:
                 "metadata_json",
                 "paywall_detected",
                 "paywall_reason",
+                "servability_status",
+                "detector_version",
+                "classifier_signals_json",
                 "summary_raw",
                 "summary_headline",
                 "summary_body",
@@ -276,6 +279,9 @@ class SQLiteRepository:
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 paywall_detected INTEGER NOT NULL DEFAULT 0,
                 paywall_reason TEXT NOT NULL DEFAULT '',
+                servability_status TEXT NOT NULL DEFAULT 'candidate',
+                detector_version TEXT NOT NULL DEFAULT '',
+                classifier_signals_json TEXT NOT NULL DEFAULT '{}',
                 summary_raw TEXT NOT NULL DEFAULT '',
                 summary_headline TEXT NOT NULL DEFAULT '',
                 summary_body TEXT NOT NULL DEFAULT '',
@@ -1177,6 +1183,9 @@ class SQLiteRepository:
         *,
         paywall_detected: bool = False,
         paywall_reason: str = "",
+        servability_status: str = "candidate",
+        detector_version: str = "",
+        classifier_signals: dict | None = None,
         summary_raw: str = "",
         summary_headline: str = "",
         summary_body: str = "",
@@ -1185,6 +1194,7 @@ class SQLiteRepository:
     ) -> int:
         now = utc_now()
         payload = json.dumps(metadata or {}, sort_keys=True)
+        classifier_signals_json = json.dumps(classifier_signals or {}, sort_keys=True)
         content_hash = hashlib.sha1(article_text.encode("utf-8", errors="ignore")).hexdigest()
         with self.connect() as connection:
             connection.execute(
@@ -1197,13 +1207,16 @@ class SQLiteRepository:
                     metadata_json,
                     paywall_detected,
                     paywall_reason,
+                    servability_status,
+                    detector_version,
+                    classifier_signals_json,
                     summary_raw,
                     summary_headline,
                     summary_body,
                     summary_model,
                     summarized_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(story_id)
                 DO UPDATE SET
                     article_text = excluded.article_text,
@@ -1212,6 +1225,9 @@ class SQLiteRepository:
                     metadata_json = excluded.metadata_json,
                     paywall_detected = excluded.paywall_detected,
                     paywall_reason = excluded.paywall_reason,
+                    servability_status = excluded.servability_status,
+                    detector_version = excluded.detector_version,
+                    classifier_signals_json = excluded.classifier_signals_json,
                     summary_raw = excluded.summary_raw,
                     summary_headline = excluded.summary_headline,
                     summary_body = excluded.summary_body,
@@ -1226,6 +1242,9 @@ class SQLiteRepository:
                     payload,
                     int(paywall_detected),
                     paywall_reason,
+                    servability_status,
+                    detector_version,
+                    classifier_signals_json,
                     summary_raw,
                     summary_headline,
                     summary_body,
@@ -1343,6 +1362,9 @@ class SQLiteRepository:
                 snap.fetched_at AS article_fetched_at,
                 snap.paywall_detected,
                 snap.paywall_reason,
+                snap.servability_status,
+                snap.detector_version,
+                snap.classifier_signals_json,
                 snap.summary_raw,
                 snap.summary_headline,
                 snap.summary_body,
@@ -1355,7 +1377,14 @@ class SQLiteRepository:
         """
         with self.connect() as connection:
             rows = connection.execute(query, params).fetchall()
-        return [dict(row) for row in rows]
+        stories: list[dict] = []
+        for row in rows:
+            payload = dict(row)
+            payload["classifier_signals"] = json.loads(
+                str(payload.pop("classifier_signals_json", "") or "{}")
+            )
+            stories.append(payload)
+        return stories
 
     def delete_stories_older_than(
         self,

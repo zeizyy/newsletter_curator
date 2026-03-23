@@ -1010,7 +1010,7 @@
     {
       "id": "T43",
       "title": "Persist explicit servability status, blocked reasons, detector version, and classifier signals",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T42"],
       "scope": [
         "Add first-class servability metadata for every fetched candidate",
@@ -1025,7 +1025,7 @@
       "test_command": "uv run pytest tests/integration/test_ingest_persists_servability_metadata.py",
       "integration_test": "tests/integration/test_ingest_persists_servability_metadata.py",
       "done_when": [
-        "Each fetched candidate records whether it is servable, blocked, or ambiguous",
+        "Each fetched candidate records whether it is servable, blocked, or still just a candidate",
         "Blocked reason, detector version, and signal payload are queryable from the repository",
         "The servability metadata integration test passes"
       ]

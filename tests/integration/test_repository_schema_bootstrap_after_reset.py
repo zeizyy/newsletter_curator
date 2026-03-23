@@ -104,6 +104,9 @@ def test_repository_schema_bootstrap_after_reset(tmp_path):
     assert {
         "paywall_detected",
         "paywall_reason",
+        "servability_status",
+        "detector_version",
+        "classifier_signals_json",
         "summary_raw",
         "summary_headline",
         "summary_body",

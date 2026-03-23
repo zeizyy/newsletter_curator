@@ -10,7 +10,8 @@ from openai import OpenAI
 
 from .config import BASE_DIR
 from .content import (
-    detect_paywalled_article,
+    ACCESS_CLASSIFIER_VERSION,
+    classify_article_access,
     enrich_story_with_article_metadata,
     extract_links_from_html,
     fetch_article_details,
@@ -210,12 +211,15 @@ def _prepare_ingest_snapshot_candidates(
             paywall_detected = bool(article_details.get("access_blocked"))
             paywall_reason = str(article_details.get("access_reason", "") or "")
         else:
-            paywall_detected, paywall_reason = detect_paywalled_article(
+            access = classify_article_access(
                 article_text,
                 story_record.get("url", ""),
                 document_title=article_details.get("document_title", ""),
                 document_excerpt=article_details.get("document_excerpt", ""),
             )
+            access_signals = access.get("signals", {}) or {}
+            paywall_detected = bool(access.get("blocked"))
+            paywall_reason = str(access.get("reason", "") or "")
         if paywall_detected:
             stats["paywall_stories"] += 1
         prepared.append(
@@ -287,6 +291,7 @@ def _persist_ingest_snapshots(
         paywall_detected = item["paywall_detected"]
         summary_selected = bool(item.get("summary_selected"))
         summary_body = str(item["summary_body"]).strip()
+        servability_status = "candidate"
         if summary_selected and not paywall_detected and (
             not summary_body or summary_body == "No article text available."
         ):
@@ -299,6 +304,10 @@ def _persist_ingest_snapshots(
                 }
             )
             summary_body = ""
+        if paywall_detected:
+            servability_status = "blocked"
+        elif summary_selected and summary_body:
+            servability_status = "servable"
 
         story_id = repository.upsert_story(story, ingestion_run_id=run_id)
         stats["stories_persisted"] += 1
@@ -314,6 +323,9 @@ def _persist_ingest_snapshots(
             },
             paywall_detected=paywall_detected,
             paywall_reason=item["paywall_reason"],
+            servability_status=servability_status,
+            detector_version=ACCESS_CLASSIFIER_VERSION,
+            classifier_signals=item.get("access_signals", {}),
             summary_raw=item["summary_raw"],
             summary_headline=item["summary_headline"],
             summary_body=summary_body,

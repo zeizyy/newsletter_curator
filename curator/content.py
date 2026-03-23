@@ -75,6 +75,8 @@ GENERIC_CTA_TITLES = {
     "watch now",
 }
 
+ACCESS_CLASSIFIER_VERSION = "2026-03-22-v2"
+
 
 def normalize_whitespace(text: str) -> str:
     return " ".join(text.split())
