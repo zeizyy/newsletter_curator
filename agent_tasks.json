@@ -1079,7 +1079,7 @@
     {
       "id": "T46",
       "title": "Version the classifier and add a replay loop for iterative tuning against the labeled corpus",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T45"],
       "scope": [
         "Version classifier decisions so changes can be compared against prior behavior",

@@ -419,3 +419,11 @@ Add new entries below this line.
 - Outcome: Evaluation runs now compute and persist confusion-matrix metrics in run metadata, the CLI can report recent evaluation runs with those metrics, and integration coverage proves the false-positive/false-negative accounting is stable.
 - Open risks: Metrics are now available, but there is still no classifier replay/diff loop against labeled data until `T46` lands.
 - Next recommended task: `T46` Version the classifier and add a replay loop for iterative tuning against the labeled corpus.
+
+### 2026-03-22 - T46 added classifier replay and version comparison
+- Context: Closed the evaluation loop by replaying the current classifier against a stored labeled evaluation run, so Codex can see exactly which story decisions would change before rollout.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/evaluation.py`, `curator/repository.py`, `scripts/evaluate_access_classifier.py`, `tests/integration/test_classifier_replay_loop.py`
+- Tests run: `uv run pytest tests/integration/test_classifier_replay_loop.py tests/integration/test_classifier_evaluation_metrics.py tests/integration/test_agent_evaluation_writes_labels.py -q`; `uv run pytest tests/integration -q`
+- Outcome: The classifier version constant is now part of replay output, `scripts/evaluate_access_classifier.py --replay-run-id <id>` can diff current decisions against a stored evaluation run, and the replay integration test proves a previously labeled false negative is corrected and surfaced as a changed decision.
+- Open risks: Replay currently reclassifies from stored article text, title, and context rather than raw HTML, so structured-data-only signals that were present only at fetch time are not fully replayable unless we persist raw HTML in a future task.
+- Next recommended task: none; `T42` through `T46` are complete.

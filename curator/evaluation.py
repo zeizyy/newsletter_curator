@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .content import ACCESS_CLASSIFIER_VERSION, classify_article_access
 from .repository import SQLiteRepository
 
 
@@ -81,6 +82,88 @@ def report_access_evaluations(
     limit: int = 10,
 ) -> list[dict]:
     return repository.list_access_evaluation_run_summaries(limit=limit)
+
+
+def _metrics_from_classifier_rows(rows: list[dict]) -> dict[str, int]:
+    metrics = {
+        "labels_reviewed": len(rows),
+        "uncertain_labels": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "true_negatives": 0,
+        "evaluated_labels": 0,
+    }
+    for row in rows:
+        agent_label = str(row.get("agent_label", "")).strip().lower()
+        classifier_status = str(row.get("classifier_status", "")).strip().lower()
+        if agent_label == "uncertain":
+            metrics["uncertain_labels"] += 1
+            continue
+        metrics["evaluated_labels"] += 1
+        if classifier_status == "blocked" and agent_label == "blocked":
+            metrics["true_positives"] += 1
+        elif classifier_status == "blocked" and agent_label == "servable":
+            metrics["false_positives"] += 1
+        elif classifier_status != "blocked" and agent_label == "blocked":
+            metrics["false_negatives"] += 1
+        elif classifier_status != "blocked" and agent_label == "servable":
+            metrics["true_negatives"] += 1
+    return metrics
+
+
+def replay_classifier_against_evaluation(
+    repository: SQLiteRepository,
+    *,
+    evaluation_run_id: int,
+) -> dict:
+    labels = repository.list_access_evaluation_labels(evaluation_run_id)
+    replay_rows: list[dict] = []
+    changed: list[dict] = []
+
+    for label in labels:
+        story = repository.get_story(int(label["story_id"]))
+        if story is None:
+            continue
+        replay = classify_article_access(
+            str(story.get("article_text", "")),
+            str(story.get("url", "")),
+            document_title=str(story.get("anchor_text", "") or story.get("subject", "")),
+            document_excerpt=str(story.get("context", "")),
+        )
+        replay_status = "blocked" if replay["blocked"] else "servable"
+        replay_row = {
+            "story_id": int(label["story_id"]),
+            "url": str(label.get("url", "")),
+            "source_name": str(label.get("source_name", "")),
+            "previous_classifier_status": str(label.get("classifier_status", "")),
+            "classifier_status": replay_status,
+            "agent_label": str(label.get("agent_label", "")),
+            "rationale": str(label.get("rationale", "")),
+            "replay_reason": str(replay.get("reason", "")),
+            "replay_signals": replay.get("signals", {}) or {},
+        }
+        replay_rows.append(replay_row)
+        if replay_status != replay_row["previous_classifier_status"]:
+            changed.append(
+                {
+                    "story_id": replay_row["story_id"],
+                    "url": replay_row["url"],
+                    "source_name": replay_row["source_name"],
+                    "previous_classifier_status": replay_row["previous_classifier_status"],
+                    "replay_classifier_status": replay_status,
+                    "replay_reason": replay_row["replay_reason"],
+                }
+            )
+
+    metrics = _metrics_from_classifier_rows(replay_rows)
+    return {
+        "evaluation_run_id": evaluation_run_id,
+        "replay_detector_version": ACCESS_CLASSIFIER_VERSION,
+        "metrics": metrics,
+        "changed_decisions_count": len(changed),
+        "changed_decisions": changed,
+    }
 
 
 def load_labels_file(path: str | Path) -> list[dict]:

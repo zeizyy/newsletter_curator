@@ -1639,6 +1639,53 @@ class SQLiteRepository:
             stories.append(payload)
         return stories
 
+    def get_story(self, story_id: int) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    fs.id,
+                    fs.story_key,
+                    fs.source_type,
+                    fs.source_name,
+                    fs.subject,
+                    fs.url,
+                    fs.canonical_url,
+                    fs.anchor_text,
+                    fs.context,
+                    fs.category,
+                    fs.published_at,
+                    fs.summary,
+                    fs.first_seen_at,
+                    fs.last_seen_at,
+                    snap.article_text,
+                    snap.content_hash,
+                    snap.fetched_at AS article_fetched_at,
+                    snap.paywall_detected,
+                    snap.paywall_reason,
+                    snap.servability_status,
+                    snap.detector_version,
+                    snap.classifier_signals_json,
+                    snap.summary_raw,
+                    snap.summary_headline,
+                    snap.summary_body,
+                    snap.summary_model,
+                    snap.summarized_at
+                FROM fetched_stories fs
+                LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
+                WHERE fs.id = ?
+                LIMIT 1
+                """,
+                (story_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        payload = dict(row)
+        payload["classifier_signals"] = json.loads(
+            str(payload.pop("classifier_signals_json", "") or "{}")
+        )
+        return payload
+
     def delete_stories_older_than(
         self,
         cutoff: str,

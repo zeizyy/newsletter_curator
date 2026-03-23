@@ -13,6 +13,7 @@ from curator.config import load_config
 from curator.evaluation import (
     export_evaluation_candidates,
     load_labels_file,
+    replay_classifier_against_evaluation,
     report_access_evaluations,
     store_agent_evaluation,
 )
@@ -60,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         default=10,
         help="Maximum number of evaluation runs to include in report mode.",
     )
+    parser.add_argument(
+        "--replay-run-id",
+        type=int,
+        default=0,
+        help="Replay the current classifier against a stored evaluation run.",
+    )
     return parser.parse_args()
 
 
@@ -67,6 +74,18 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     repository = get_repository_from_config(config)
+
+    if args.replay_run_id:
+        print(
+            json.dumps(
+                replay_classifier_against_evaluation(
+                    repository,
+                    evaluation_run_id=args.replay_run_id,
+                ),
+                indent=2,
+            )
+        )
+        return
 
     if args.report:
         print(json.dumps(report_access_evaluations(repository, limit=args.report_limit), indent=2))
