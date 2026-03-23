@@ -37,8 +37,6 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
             "test-openai-key",
             "--public-base-url",
             "https://curator.example.com",
-            "--cron-timezone",
-            "America/Los_Angeles",
         ],
         check=True,
         capture_output=True,
@@ -80,8 +78,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert oct(admin_script.stat().st_mode & 0o777) == "0o700"
 
     cron_text = cron_file.read_text(encoding="utf-8")
-    assert "CRON_TZ=America/Los_Angeles" in cron_text
-    assert "15 16 * * *" in cron_text
+    assert "CRON_TZ=" not in cron_text
+    assert "15 23 * * *" in cron_text
     assert str(daily_script) in cron_text
     assert str(fetch_gmail_script) not in cron_text
     assert str(fetch_sources_script) not in cron_text

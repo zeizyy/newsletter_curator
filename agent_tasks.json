@@ -1190,6 +1190,29 @@
         "Repository-backed Gmail reads use the normalized source name",
         "The Gmail source-name integration tests pass"
       ]
+    },
+    {
+      "id": "T52",
+      "title": "Default bootstrap cron generation to fixed UTC schedules instead of CRON_TZ",
+      "status": "completed",
+      "depends_on": ["T24"],
+      "scope": [
+        "Generate fixed UTC cron schedules by default because some cron daemons ignore CRON_TZ",
+        "Keep timezone-based scheduling optional for hosts that explicitly support it",
+        "Document the DST tradeoff of fixed UTC schedules"
+      ],
+      "artifacts": [
+        "updated bootstrap defaults for UTC cron output",
+        "deployment docs describing the fixed UTC schedule",
+        "integration coverage for generated cron assets"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The generated cron file defaults to a fixed UTC schedule without CRON_TZ",
+        "The deployment docs explain the UTC default and DST tradeoff",
+        "The bootstrap asset integration test passes"
+      ]
     }
   ]
 }

@@ -427,3 +427,11 @@ Add new entries below this line.
 - Outcome: Gmail stories now use a normalized source name like `TechCrunch Week in Review` instead of `TechCrunch Week in Review <newsletters@techcrunch.com>`, and the story explorer also normalizes older Gmail rows already stored in the repository.
 - Open risks: This normalizer assumes standard `Name <email>` formatting; unusual sender headers without a parseable display name still fall back to the email address or raw header text.
 - Next recommended task: none; `T51` is complete.
+
+### 2026-03-22 - T52 switched bootstrap cron defaults to fixed UTC
+- Context: Changed the generated cron defaults to fixed UTC times because the target host appears to ignore `CRON_TZ`, which made the Pacific-time schedule unreliable.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run python scripts/bootstrap_server.py --help`
+- Outcome: The generated cron file now defaults to `15 23 * * *` without `CRON_TZ`, which is deterministic on UTC hosts, and the README now explains that fixed UTC does not automatically follow DST.
+- Open risks: Fixed UTC scheduling will drift relative to Pacific wall-clock time across DST boundaries, so operators must adjust the schedule manually if they want a different seasonal mapping.
+- Next recommended task: none; `T52` is complete.
