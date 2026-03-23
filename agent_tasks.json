@@ -1098,6 +1098,29 @@
         "The agent can compare old and new classifier behavior before rollout",
         "The replay-loop integration test passes"
       ]
+    },
+    {
+      "id": "T47",
+      "title": "Add a direct Codex review mode that writes agent labels without an external labels file",
+      "status": "completed",
+      "depends_on": ["T44"],
+      "scope": [
+        "Add an in-process evaluation mode that reads repository candidates, asks the configured model for a servable/blocked/uncertain judgment, and persists labels directly",
+        "Keep the JSON labels-file workflow available as a fallback",
+        "Cover the direct-review path with deterministic integration tests"
+      ],
+      "artifacts": [
+        "direct review helper in the evaluation module",
+        "CLI flag for direct Codex review",
+        "integration coverage for direct label writeback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_codex_review_writes_labels_directly.py",
+      "integration_test": "tests/integration/test_codex_review_writes_labels_directly.py",
+      "done_when": [
+        "The evaluator CLI can run a model-based review and persist agent labels directly",
+        "The labels-file workflow still works as a fallback",
+        "The direct-review integration test passes"
+      ]
     }
   ]
 }

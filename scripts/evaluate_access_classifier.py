@@ -15,6 +15,7 @@ from curator.evaluation import (
     load_labels_file,
     replay_classifier_against_evaluation,
     report_access_evaluations,
+    run_codex_evaluation,
     store_agent_evaluation,
 )
 from curator.jobs import get_repository_from_config
@@ -49,6 +50,22 @@ def parse_args() -> argparse.Namespace:
         "--evaluator",
         default="codex",
         help="Evaluator name to store with the evaluation run.",
+    )
+    parser.add_argument(
+        "--codex-review",
+        action="store_true",
+        help="Run an in-process model review over exported candidates and write labels directly.",
+    )
+    parser.add_argument(
+        "--review-model",
+        default="",
+        help="Optional model override for --codex-review. Defaults to openai.reasoning_model.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10,
+        help="Batch size for --codex-review candidate evaluation.",
     )
     parser.add_argument(
         "--report",
@@ -89,6 +106,19 @@ def main() -> None:
 
     if args.report:
         print(json.dumps(report_access_evaluations(repository, limit=args.report_limit), indent=2))
+        return
+
+    if args.codex_review:
+        result = run_codex_evaluation(
+            repository,
+            config,
+            evaluator=args.evaluator,
+            source_type=args.source_type,
+            limit=args.limit,
+            batch_size=args.batch_size,
+            model=args.review_model or None,
+        )
+        print(json.dumps(result, sort_keys=True))
         return
 
     if args.labels_file:

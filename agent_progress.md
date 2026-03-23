@@ -427,3 +427,11 @@ Add new entries below this line.
 - Outcome: The classifier version constant is now part of replay output, `scripts/evaluate_access_classifier.py --replay-run-id <id>` can diff current decisions against a stored evaluation run, and the replay integration test proves a previously labeled false negative is corrected and surfaced as a changed decision.
 - Open risks: Replay currently reclassifies from stored article text, title, and context rather than raw HTML, so structured-data-only signals that were present only at fetch time are not fully replayable unless we persist raw HTML in a future task.
 - Next recommended task: none; `T42` through `T46` are complete.
+
+### 2026-03-22 - T47 added a direct Codex review mode for evaluation writeback
+- Context: Removed the need for an external labels JSON handoff by adding an in-process review path that reads repository candidates, calls the configured model for `servable` / `blocked` / `uncertain`, and writes the resulting agent labels directly.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `curator/evaluation.py`, `scripts/evaluate_access_classifier.py`, `tests/integration/test_codex_review_writes_labels_directly.py`
+- Tests run: `uv run pytest tests/integration/test_codex_review_writes_labels_directly.py tests/integration/test_agent_evaluation_writes_labels.py tests/integration/test_classifier_evaluation_metrics.py -q`; `uv run pytest tests/integration -q`
+- Outcome: `scripts/evaluate_access_classifier.py --codex-review` now batches repository candidates through the configured reasoning model and persists labels directly, while the older `--labels-file` workflow remains available as a fallback. The direct-review test proves writeback works without manual JSON generation.
+- Open risks: The direct review path uses model reasoning over stored article text, title, context, and current classifier metadata, so if you want richer review evidence later we may still want to persist raw HTML or fetch-time structured data for the evaluator.
+- Next recommended task: none; `T42` through `T47` are complete.

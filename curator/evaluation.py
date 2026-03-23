@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from openai import OpenAI
+
 from .content import ACCESS_CLASSIFIER_VERSION, classify_article_access
 from .repository import SQLiteRepository
 
@@ -35,6 +37,160 @@ def export_evaluation_candidates(
             }
         )
     return candidates
+
+
+def _parse_label_items(text: str) -> list[dict]:
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            data = json.loads(text[start : end + 1])
+            if isinstance(data, list):
+                return [item for item in data if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            return []
+    return []
+
+
+def _build_codex_review_prompts(batch: list[dict]) -> tuple[str, str]:
+    system_prompt = (
+        "You are evaluating whether fetched web articles should be treated as servable content "
+        "for a news digest. Decide whether each item is servable, blocked, or uncertain. "
+        "Use the article text, title, context, current classifier status, paywall reason, and "
+        "classifier signals. Do not blindly trust the current classifier status."
+    )
+    batch_lines = []
+    for item in batch:
+        batch_lines.append(
+            "\n".join(
+                [
+                    f"story_id: {item['story_id']}",
+                    f"url: {item.get('url', '')}",
+                    f"source_name: {item.get('source_name', '')}",
+                    f"title: {item.get('title', '')}",
+                    f"context: {item.get('context', '')}",
+                    f"category: {item.get('category', '')}",
+                    f"classifier_status: {item.get('servability_status', '')}",
+                    f"paywall_reason: {item.get('paywall_reason', '')}",
+                    f"classifier_signals: {json.dumps(item.get('classifier_signals', {}), sort_keys=True)}",
+                    f"article_text: {item.get('article_text', '')}",
+                ]
+            )
+        )
+    user_prompt = (
+        "Review the following fetched story candidates.\n"
+        "Return ONLY a JSON array. Each object must be: "
+        '{"story_id": <int>, "classifier_status": <string>, "agent_label": <"servable"|"blocked"|"uncertain">, "rationale": <string>}.\n'
+        "Preserve the input story_id values exactly.\n\n"
+        + "\n\n---\n\n".join(batch_lines)
+    )
+    return system_prompt, user_prompt
+
+
+def run_codex_evaluation(
+    repository: SQLiteRepository,
+    config: dict,
+    *,
+    evaluator: str = "codex",
+    source_type: str | None = None,
+    limit: int = 50,
+    batch_size: int = 10,
+    model: str | None = None,
+    client_factory=OpenAI,
+) -> dict:
+    candidates = export_evaluation_candidates(
+        repository,
+        limit=limit,
+        source_type=source_type,
+    )
+    if not candidates:
+        return {
+            "evaluation_run_id": 0,
+            "status": "completed",
+            "counts": {"servable": 0, "blocked": 0, "uncertain": 0},
+            "metrics": {
+                "labels_reviewed": 0,
+                "uncertain_labels": 0,
+                "true_positives": 0,
+                "false_positives": 0,
+                "false_negatives": 0,
+                "true_negatives": 0,
+                "evaluated_labels": 0,
+            },
+            "labels_written": 0,
+            "candidate_count": 0,
+            "review_model": model or config["openai"]["reasoning_model"],
+        }
+
+    review_model = model or config["openai"]["reasoning_model"]
+    client = client_factory()
+    labels: list[dict] = []
+    normalized_candidates = {int(item["story_id"]): item for item in candidates}
+
+    for offset in range(0, len(candidates), max(1, batch_size)):
+        batch = candidates[offset : offset + max(1, batch_size)]
+        system_prompt, user_prompt = _build_codex_review_prompts(batch)
+        response = client.chat.completions.create(
+            model=review_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        items = _parse_label_items(response.choices[0].message.content.strip())
+        for item in items:
+            story_id = item.get("story_id")
+            if isinstance(story_id, (int, float)) and int(story_id) == story_id:
+                story_id = int(story_id)
+            if not isinstance(story_id, int) or story_id not in normalized_candidates:
+                continue
+            agent_label = str(item.get("agent_label", "")).strip().lower()
+            if agent_label not in {"servable", "blocked", "uncertain"}:
+                continue
+            candidate = normalized_candidates[story_id]
+            labels.append(
+                {
+                    "story_id": story_id,
+                    "classifier_status": str(
+                        item.get("classifier_status", candidate.get("servability_status", ""))
+                    ).strip()
+                    or str(candidate.get("servability_status", "")),
+                    "agent_label": agent_label,
+                    "rationale": str(item.get("rationale", "")).strip(),
+                }
+            )
+
+    deduped_labels: list[dict] = []
+    seen_story_ids: set[int] = set()
+    for label in labels:
+        story_id = int(label["story_id"])
+        if story_id in seen_story_ids:
+            continue
+        seen_story_ids.add(story_id)
+        deduped_labels.append(label)
+
+    result = store_agent_evaluation(
+        repository,
+        labels=deduped_labels,
+        evaluator=evaluator,
+        scope={
+            "source_type": source_type,
+            "limit": limit,
+            "batch_size": batch_size,
+            "candidate_count": len(candidates),
+            "review_model": review_model,
+        },
+    )
+    result["candidate_count"] = len(candidates)
+    result["review_model"] = review_model
+    return result
 
 
 def store_agent_evaluation(
