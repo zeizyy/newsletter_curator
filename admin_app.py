@@ -42,21 +42,28 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
         return None
     metadata = newsletter.get("metadata", {}) or {}
     render_groups = metadata.get("render_groups", {})
-    html_body = str(newsletter.get("html_body", "") or "")
-    if preview_template == "email_safe" and render_groups:
-        html_body = render_email_safe_digest_html(render_groups)
-    elif preview_template == "market_tape" and render_groups:
-        html_body = render_digest_html(render_groups)
+    market_tape_html = str(newsletter.get("html_body", "") or "")
+    email_safe_html = market_tape_html
+    if render_groups:
+        market_tape_html = render_digest_html(render_groups)
+        email_safe_html = render_email_safe_digest_html(render_groups)
+    html_body = email_safe_html if preview_template == "email_safe" else market_tape_html
     return {
         "subject": str(newsletter.get("subject", "") or ""),
         "body": str(newsletter.get("body", "") or ""),
         "html_body": strip_tracking_pixel(html_body) if html_body else "",
+        "market_tape_html": strip_tracking_pixel(market_tape_html) if market_tape_html else "",
+        "email_safe_html": strip_tracking_pixel(email_safe_html) if email_safe_html else "",
     }
 
 
 def resolve_preview_template() -> str:
     template_name = request.args.get("template", "").strip().lower()
-    return "email_safe" if template_name == "email_safe" else "market_tape"
+    if template_name == "email_safe":
+        return "email_safe"
+    if template_name == "gmail_lab":
+        return "gmail_lab"
+    return "market_tape"
 
 
 def start_preview_generation(config: dict, newsletter_date: str, generation_token: str) -> None:

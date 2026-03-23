@@ -1098,6 +1098,29 @@
         "The agent can compare old and new classifier behavior before rollout",
         "The replay-loop integration test passes"
       ]
+    },
+    {
+      "id": "T48",
+      "title": "Add a local Gmail-focused preview lab for the current delivery HTML",
+      "status": "completed",
+      "depends_on": ["T40"],
+      "scope": [
+        "Add an admin preview mode that renders the current sent template in a mobile-width Gmail-style frame",
+        "Show the email-safe candidate alongside the currently sent template for side-by-side inspection",
+        "Keep this as a local approximation and avoid silently changing delivery output"
+      ],
+      "artifacts": [
+        "gmail lab preview mode in the admin UI",
+        "template support for side-by-side current-vs-email-safe rendering",
+        "integration coverage for the new preview route"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "Admins can inspect a Gmail-focused local preview without sending a test email",
+        "The preview shows the actual sent template and the email-safe alternative side by side",
+        "The admin preview integration test passes with the Gmail lab route"
+      ]
     }
   ]
 }

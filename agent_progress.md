@@ -395,3 +395,11 @@ Add new entries below this line.
 - Outcome: Ingest now persists the full fetched corpus for later evaluation, including blocked and unsummarized candidates, while delivery readiness, Gmail/source repository collectors, and preview/delivery behavior continue to operate only on stories with stored summaries. Added `T43` through `T46` to the harness for servability metadata, agent labeling, periodic metrics, and classifier replay.
 - Open risks: Repository growth will increase until the next tasks add explicit servability metadata, evaluation storage, and a review/reporting loop; T42 only creates the raw corpus needed for that later analysis.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-03-22 - T48 added a local Gmail lab preview surface
+- Context: Added a Gmail-focused local preview mode so the admin UI can approximate a narrow mobile Gmail inspection flow without requiring you to send a test email to a phone.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `templates/digest_preview.html`, `tests/integration/test_admin_preview_renders_digest.py`
+- Tests run: `uv run pytest tests/integration/test_admin_preview_renders_digest.py -q`; `uv run pytest tests/integration -q`
+- Outcome: `/preview?template=gmail_lab` now shows the currently sent template and the email-safe alternative side by side in mobile-width frames, with explicit copy that it is a Gmail-focused approximation rather than a perfect Gmail renderer.
+- Open risks: This lab helps catch containment and hierarchy issues locally, but Gmail app dark-mode rewriting is still only approximated; the actual delivery template is unchanged and still uses the richer sent HTML unless switched later.
+- Next recommended task: none; `T48` is complete.
