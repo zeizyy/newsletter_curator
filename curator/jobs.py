@@ -193,6 +193,8 @@ def _prepare_ingest_snapshot_candidates(
     stats: dict,
     failures: list[dict],
     job_name: str,
+    repository: SQLiteRepository,
+    run_id: int,
 ) -> list[dict]:
     fetch_timeout = int(config.get("limits", {}).get("article_fetch_timeout", 15) or 15)
     fetch_retries = int(config.get("limits", {}).get("article_fetch_retries", 2) or 2)
@@ -307,6 +309,14 @@ def _prepare_ingest_snapshot_candidates(
         prepared_item = result.get("prepared")
         if prepared_item is not None:
             prepared_by_index[index] = prepared_item
+            _checkpoint_ingest_item(
+                prepared_item,
+                repository=repository,
+                run_id=run_id,
+                job_name=job_name,
+            )
+            stats["checkpointed_stories"] += 1
+            stats["checkpointed_snapshots"] += 1
             if result.get("paywall_detected"):
                 stats["paywall_stories"] += 1
         if completed == len(stories) or completed % 5 == 0:
@@ -377,6 +387,36 @@ def _run_parallel_ingest_summaries(
         item["summary_headline"] = summary_headline
         item["summary_body"] = summary_body
     return worker_count
+
+
+def _checkpoint_ingest_item(
+    item: dict,
+    *,
+    repository: SQLiteRepository,
+    run_id: int,
+    job_name: str,
+) -> None:
+    story_id = repository.upsert_story(item["story"], ingestion_run_id=run_id)
+    item["story_id"] = story_id
+    repository.upsert_article_snapshot(
+        story_id,
+        item["article_text"],
+        metadata={
+            "job": job_name,
+            "checkpointed": True,
+            "summary_selected": False,
+            "ingest_score": "",
+            "ingest_rationale": "",
+            "access_signals": item.get("access_signals", {}),
+        },
+        paywall_detected=item["paywall_detected"],
+        paywall_reason=item["paywall_reason"],
+        summary_raw="",
+        summary_headline="",
+        summary_body="",
+        summary_model="",
+        summarized_at=None,
+    )
 
 
 def _persist_ingest_snapshots(
@@ -497,6 +537,8 @@ def run_fetch_sources_job(
         "summary_workers": 0,
         "scored_candidates": 0,
         "summary_candidates": 0,
+        "checkpointed_stories": 0,
+        "checkpointed_snapshots": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -513,6 +555,8 @@ def run_fetch_sources_job(
             stats=stats,
             failures=failures,
             job_name=job_name,
+            repository=repository,
+            run_id=run_id,
         )
         _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
@@ -584,6 +628,8 @@ def run_fetch_sources_job(
                 "summary_workers": stats["summary_workers"],
                 "scored_candidates": stats["scored_candidates"],
                 "summary_candidates": stats["summary_candidates"],
+                "checkpointed_stories": stats["checkpointed_stories"],
+                "checkpointed_snapshots": stats["checkpointed_snapshots"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },
@@ -624,6 +670,8 @@ def run_fetch_gmail_job(
         "summary_workers": 0,
         "scored_candidates": 0,
         "summary_candidates": 0,
+        "checkpointed_stories": 0,
+        "checkpointed_snapshots": 0,
     }
     failures: list[dict] = []
     usage_by_model: dict = {}
@@ -640,6 +688,8 @@ def run_fetch_gmail_job(
             stats=stats,
             failures=failures,
             job_name=job_name,
+            repository=repository,
+            run_id=run_id,
         )
         _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
@@ -711,6 +761,8 @@ def run_fetch_gmail_job(
                 "summary_workers": stats["summary_workers"],
                 "scored_candidates": stats["scored_candidates"],
                 "summary_candidates": stats["summary_candidates"],
+                "checkpointed_stories": stats["checkpointed_stories"],
+                "checkpointed_snapshots": stats["checkpointed_snapshots"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
             },
