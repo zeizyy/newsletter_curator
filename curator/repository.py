@@ -1272,6 +1272,19 @@ class SQLiteRepository:
         source_id = self.upsert_source(source_type=source_type, source_name=source_name)
         return self.set_source_selection_by_id(source_id, enabled=enabled)
 
+    def get_article_text_for_story(self, story_id: int) -> str:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT article_text
+                FROM article_snapshots
+                WHERE story_id = ?
+                LIMIT 1
+                """,
+                (story_id,),
+            ).fetchone()
+        return str(row["article_text"]) if row is not None else ""
+
     def set_source_selection_by_id(self, source_id: int, *, enabled: bool) -> int:
         with self.connect() as connection:
             connection.execute(

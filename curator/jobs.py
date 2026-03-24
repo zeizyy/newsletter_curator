@@ -139,7 +139,7 @@ def score_for_ingest(
                 "source_name": story.get("source_name", ""),
                 "category": story.get("category", ""),
                 "context": story.get("context", ""),
-                "article_excerpt": item["article_text"][:600],
+                "article_excerpt": str(item.get("article_excerpt", "") or item.get("article_text", ""))[:600],
                 "url": story.get("url", ""),
             }
         )
@@ -357,6 +357,7 @@ def _run_parallel_ingest_summaries(
     prepared: list[dict],
     *,
     config: dict,
+    repository: SQLiteRepository,
     usage_by_model: dict,
     lock: Lock,
 ) -> int:
@@ -369,9 +370,12 @@ def _run_parallel_ingest_summaries(
         return 0
 
     def summarize(item: dict) -> tuple[str, str, str]:
+        article_text = str(item.get("article_text", "") or "")
+        if not article_text:
+            article_text = repository.get_article_text_for_story(int(item["story_id"]))
         return summarize_for_ingest(
             config,
-            item["article_text"],
+            article_text,
             usage_by_model,
             lock,
         )
@@ -417,6 +421,8 @@ def _checkpoint_ingest_item(
         summary_model="",
         summarized_at=None,
     )
+    item["article_excerpt"] = str(item.get("article_text", "") or "")[:600]
+    item["article_text"] = ""
 
 
 def _persist_ingest_snapshots(
@@ -447,11 +453,14 @@ def _persist_ingest_snapshots(
             )
             summary_body = ""
 
-        story_id = repository.upsert_story(story, ingestion_run_id=run_id)
+        story_id = int(item.get("story_id") or repository.upsert_story(story, ingestion_run_id=run_id))
         stats["stories_persisted"] += 1
+        article_text = str(item.get("article_text", "") or "")
+        if not article_text:
+            article_text = repository.get_article_text_for_story(story_id)
         repository.upsert_article_snapshot(
             story_id,
-            item["article_text"],
+            article_text,
             metadata={
                 "job": job_name,
                 "summary_selected": summary_selected,
@@ -575,6 +584,7 @@ def run_fetch_sources_job(
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
+            repository=repository,
             usage_by_model=usage_by_model,
             lock=lock,
         )
@@ -708,6 +718,7 @@ def run_fetch_gmail_job(
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
+            repository=repository,
             usage_by_model=usage_by_model,
             lock=lock,
         )

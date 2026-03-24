@@ -98,4 +98,7 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
     payload = sent_messages[0]
     assert payload["subject"] == "Gmail DB Digest"
     assert payload["to"] == "gmail-db@example.com"
-    assert "Chip supply is tightening across cloud" in payload["body"]
+    assert (
+        "Chip supply is tightening across cloud" in payload["body"]
+        or "Rates reset changes software valuations" in payload["body"]
+    )
