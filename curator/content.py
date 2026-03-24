@@ -7,6 +7,9 @@ from bs4 import BeautifulSoup
 import requests
 from trafilatura import extract
 
+MAX_FETCH_RESPONSE_BYTES = 2_000_000
+FETCH_CHUNK_SIZE_BYTES = 64 * 1024
+
 
 PAYWALL_STRONG_MARKERS = {
     "subscribe to continue reading": "subscribe_to_continue",
@@ -262,6 +265,35 @@ def extract_article_details_from_html(
     }
 
 
+def _read_response_text_limited(
+    response: requests.Response,
+    *,
+    max_response_bytes: int | None = None,
+) -> tuple[str, bool]:
+    max_response_bytes = max_response_bytes or MAX_FETCH_RESPONSE_BYTES
+    chunks: list[bytes] = []
+    total_bytes = 0
+    truncated = False
+
+    for chunk in response.iter_content(chunk_size=FETCH_CHUNK_SIZE_BYTES):
+        if not chunk:
+            continue
+        remaining = max_response_bytes - total_bytes
+        if remaining <= 0:
+            truncated = True
+            break
+        if len(chunk) > remaining:
+            chunks.append(chunk[:remaining])
+            total_bytes += remaining
+            truncated = True
+            break
+        chunks.append(chunk)
+        total_bytes += len(chunk)
+
+    encoding = response.encoding or "utf-8"
+    return b"".join(chunks).decode(encoding, errors="replace"), truncated
+
+
 def fetch_article_details(
     url: str,
     max_article_chars: int,
@@ -281,7 +313,7 @@ def fetch_article_details(
         }
         for attempt in range(1, retries + 1):
             try:
-                response = session.get(url, headers=headers, timeout=timeout)
+                response = session.get(url, headers=headers, timeout=timeout, stream=True)
                 response.raise_for_status()
                 break
             except requests.RequestException as exc:
@@ -291,11 +323,17 @@ def fetch_article_details(
                 raise last_exc
         if response is None:
             return {"article_text": "", "document_title": "", "document_excerpt": ""}
-        return extract_article_details_from_html(
-            response.text,
-            url=url,
-            max_article_chars=max_article_chars,
-        )
+        try:
+            response_text, truncated = _read_response_text_limited(response)
+            if truncated:
+                print(f"Truncated article response: {url} ({MAX_FETCH_RESPONSE_BYTES} bytes cap)")
+            return extract_article_details_from_html(
+                response_text,
+                url=url,
+                max_article_chars=max_article_chars,
+            )
+        finally:
+            response.close()
     except requests.RequestException as exc:
         print(f"Failed to fetch article: {url} ({exc})")
         return {"article_text": "", "document_title": "", "document_excerpt": ""}
