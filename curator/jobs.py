@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
@@ -97,6 +97,20 @@ def summarize_for_ingest(
     return summary_raw, headline, body
 
 
+def _log_ingest_progress(job_name: str, stage: str, **payload) -> None:
+    print(
+        json.dumps(
+            {
+                "event": "ingest_progress",
+                "job": job_name,
+                "stage": stage,
+                **payload,
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def score_for_ingest(
     config: dict,
     prepared: list[dict],
@@ -177,9 +191,14 @@ def _prepare_ingest_snapshot_candidates(
     article_fetcher,
     stats: dict,
     failures: list[dict],
+    job_name: str,
 ) -> list[dict]:
-    prepared: list[dict] = []
-    for story in stories:
+    fetch_timeout = int(config.get("limits", {}).get("article_fetch_timeout", 15) or 15)
+    fetch_retries = int(config.get("limits", {}).get("article_fetch_retries", 2) or 2)
+    configured_workers = max(1, int(config.get("limits", {}).get("max_fetch_workers", 5) or 5))
+    worker_count = min(configured_workers, len(stories)) if stories else 0
+
+    def prepare_one(story: dict) -> dict:
         story_record = dict(story)
         article_text = str(story_record.get("article_text", "") or "").strip()
         article_details = {
@@ -191,6 +210,8 @@ def _prepare_ingest_snapshot_candidates(
             fetched = article_fetcher(
                 story.get("url", ""),
                 config["limits"]["max_article_chars"],
+                timeout=fetch_timeout,
+                retries=fetch_retries,
             )
             if isinstance(fetched, dict):
                 article_details = {
@@ -202,15 +223,15 @@ def _prepare_ingest_snapshot_candidates(
                 article_details["article_text"] = str(fetched or "").strip()
             article_text = article_details["article_text"]
         if not article_text:
-            stats["article_failures"] += 1
-            failures.append(
-                {
+            return {
+                "prepared": None,
+                "failure": {
                     "url": story_record.get("url", ""),
                     "source_name": story_record.get("source_name", ""),
                     "reason": "empty_article_text",
-                }
-            )
-            continue
+                },
+                "paywall_detected": False,
+            }
 
         story_record = enrich_story_with_article_metadata(story_record, article_details)
         access_signals = article_details.get("access_signals", {}) or {}
@@ -224,10 +245,8 @@ def _prepare_ingest_snapshot_candidates(
                 document_title=article_details.get("document_title", ""),
                 document_excerpt=article_details.get("document_excerpt", ""),
             )
-        if paywall_detected:
-            stats["paywall_stories"] += 1
-        prepared.append(
-            {
+        return {
+            "prepared": {
                 "story": story_record,
                 "article_text": article_text,
                 "paywall_detected": paywall_detected,
@@ -239,8 +258,56 @@ def _prepare_ingest_snapshot_candidates(
                 "summary_selected": False,
                 "ingest_score": "",
                 "ingest_rationale": "",
+            },
+            "failure": None,
+            "paywall_detected": paywall_detected,
+        }
+
+    prepared_by_index: list[dict | None] = [None] * len(stories)
+    completed = 0
+
+    def consume_result(index: int, result: dict) -> None:
+        nonlocal completed
+        completed += 1
+        failure = result.get("failure")
+        if failure:
+            stats["article_failures"] += 1
+            failures.append(failure)
+        prepared_item = result.get("prepared")
+        if prepared_item is not None:
+            prepared_by_index[index] = prepared_item
+            if result.get("paywall_detected"):
+                stats["paywall_stories"] += 1
+        if completed == len(stories) or completed % 5 == 0:
+            _log_ingest_progress(
+                job_name,
+                "article_fetch_progress",
+                completed=completed,
+                total=len(stories),
+                article_failures=stats["article_failures"],
+            )
+
+    if worker_count <= 1:
+        for index, story in enumerate(stories):
+            consume_result(index, prepare_one(story))
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(prepare_one, story): index for index, story in enumerate(stories)
             }
-        )
+            for future in as_completed(futures):
+                consume_result(futures[future], future.result())
+
+    prepared = [item for item in prepared_by_index if item is not None]
+    _log_ingest_progress(
+        job_name,
+        "article_fetch_complete",
+        prepared_candidates=len(prepared),
+        total=len(stories),
+        fetch_workers=worker_count,
+        article_failures=stats["article_failures"],
+        paywall_stories=stats["paywall_stories"],
+    )
     return prepared
 
 
@@ -376,6 +443,7 @@ def run_fetch_sources_job(
     source_fetcher=None,
     article_fetcher=None,
 ) -> dict:
+    job_name = "fetch_sources"
     repository = repository or get_repository_from_config(config)
     if source_fetcher is None:
         if config.get("development", {}).get("use_canned_sources", False):
@@ -384,7 +452,7 @@ def run_fetch_sources_job(
             source_fetcher = collect_additional_source_links
     article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
-    run_id = repository.create_ingestion_run("additional_source", metadata={"job": "fetch_sources"})
+    run_id = repository.create_ingestion_run("additional_source", metadata={"job": job_name})
     stats = {
         "run_id": run_id,
         "ttl_cleanup": cleanup_result,
@@ -405,13 +473,16 @@ def run_fetch_sources_job(
     try:
         stories = source_fetcher(config)
         stats["stories_seen"] = len(stories)
+        _log_ingest_progress(job_name, "stories_collected", stories_seen=stats["stories_seen"])
         prepared = _prepare_ingest_snapshot_candidates(
             stories,
             config=config,
             article_fetcher=article_fetcher,
             stats=stats,
             failures=failures,
+            job_name=job_name,
         )
+        _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
             config,
             prepared,
@@ -419,20 +490,33 @@ def run_fetch_sources_job(
         )
         stats["scored_candidates"] = len([item for item in prepared if not item["paywall_detected"]])
         stats["summary_candidates"] = len(selected_candidates)
+        _log_ingest_progress(
+            job_name,
+            "scoring_complete",
+            scored_candidates=stats["scored_candidates"],
+            summary_candidates=stats["summary_candidates"],
+        )
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
             usage_by_model=usage_by_model,
             lock=lock,
         )
+        _log_ingest_progress(job_name, "summaries_complete", summary_workers=stats["summary_workers"])
         _persist_ingest_snapshots(
             prepared,
             config=config,
             repository=repository,
             run_id=run_id,
-            job_name="fetch_sources",
+            job_name=job_name,
             stats=stats,
             failures=failures,
+        )
+        _log_ingest_progress(
+            job_name,
+            "persist_complete",
+            stories_persisted=stats["stories_persisted"],
+            snapshots_persisted=stats["snapshots_persisted"],
         )
 
         final_status = "completed"
@@ -457,7 +541,7 @@ def run_fetch_sources_job(
             run_id,
             status=final_status,
             metadata={
-                "job": "fetch_sources",
+                "job": job_name,
                 "ttl_cleanup": cleanup_result,
                 "stories_seen": stats["stories_seen"],
                 "stories_persisted": stats["stories_persisted"],
@@ -484,6 +568,7 @@ def run_fetch_gmail_job(
     article_fetcher=None,
     collect_gmail_links_fn=None,
 ) -> dict:
+    job_name = "fetch_gmail"
     repository = repository or get_repository_from_config(config)
     article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
@@ -494,7 +579,7 @@ def run_fetch_gmail_job(
             extract_links_from_html_fn=extract_links_from_html,
         )
     )
-    run_id = repository.create_ingestion_run("gmail", metadata={"job": "fetch_gmail"})
+    run_id = repository.create_ingestion_run("gmail", metadata={"job": job_name})
     stats = {
         "run_id": run_id,
         "ttl_cleanup": cleanup_result,
@@ -515,13 +600,16 @@ def run_fetch_gmail_job(
     try:
         stories = collect_gmail_links_fn(service, config)
         stats["stories_seen"] = len(stories)
+        _log_ingest_progress(job_name, "stories_collected", stories_seen=stats["stories_seen"])
         prepared = _prepare_ingest_snapshot_candidates(
             stories,
             config=config,
             article_fetcher=article_fetcher,
             stats=stats,
             failures=failures,
+            job_name=job_name,
         )
+        _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
             config,
             prepared,
@@ -529,20 +617,33 @@ def run_fetch_gmail_job(
         )
         stats["scored_candidates"] = len([item for item in prepared if not item["paywall_detected"]])
         stats["summary_candidates"] = len(selected_candidates)
+        _log_ingest_progress(
+            job_name,
+            "scoring_complete",
+            scored_candidates=stats["scored_candidates"],
+            summary_candidates=stats["summary_candidates"],
+        )
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
             usage_by_model=usage_by_model,
             lock=lock,
         )
+        _log_ingest_progress(job_name, "summaries_complete", summary_workers=stats["summary_workers"])
         _persist_ingest_snapshots(
             prepared,
             config=config,
             repository=repository,
             run_id=run_id,
-            job_name="fetch_gmail",
+            job_name=job_name,
             stats=stats,
             failures=failures,
+        )
+        _log_ingest_progress(
+            job_name,
+            "persist_complete",
+            stories_persisted=stats["stories_persisted"],
+            snapshots_persisted=stats["snapshots_persisted"],
         )
 
         final_status = "completed"
@@ -567,7 +668,7 @@ def run_fetch_gmail_job(
             run_id,
             status=final_status,
             metadata={
-                "job": "fetch_gmail",
+                "job": job_name,
                 "ttl_cleanup": cleanup_result,
                 "stories_seen": stats["stories_seen"],
                 "stories_persisted": stats["stories_persisted"],

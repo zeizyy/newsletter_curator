@@ -91,5 +91,7 @@ def test_fetch_sources_job_writes_repository(monkeypatch, tmp_path, capsys):
 
     fetch_sources.main()
     captured = capsys.readouterr()
-    cli_result = json.loads(captured.out)
+    json_start = captured.out.rfind('{\n  "')
+    assert json_start != -1
+    cli_result = json.loads(captured.out[json_start:])
     assert cli_result["status"] == "completed"
