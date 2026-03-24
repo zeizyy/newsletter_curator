@@ -46,8 +46,11 @@ def test_fetch_gmail_logs_progress(tmp_path, capsys):
     ]
 
     assert result["status"] == "completed"
-    assert [event["stage"] for event in progress_events] == [
+    stages = [event["stage"] for event in progress_events]
+    assert stages == [
         "stories_collected",
+        "article_fetch_started",
+        "article_fetch_finished",
         "article_fetch_progress",
         "article_fetch_complete",
         "prepared_candidates",
@@ -55,4 +58,7 @@ def test_fetch_gmail_logs_progress(tmp_path, capsys):
         "summaries_complete",
         "persist_complete",
     ]
-
+    started = next(event for event in progress_events if event["stage"] == "article_fetch_started")
+    finished = next(event for event in progress_events if event["stage"] == "article_fetch_finished")
+    assert started["url"] == "https://example.com/story-1"
+    assert finished["url"] == "https://example.com/story-1"

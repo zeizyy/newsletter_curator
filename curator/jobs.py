@@ -107,7 +107,8 @@ def _log_ingest_progress(job_name: str, stage: str, **payload) -> None:
                 **payload,
             },
             sort_keys=True,
-        )
+        ),
+        flush=True,
     )
 
 
@@ -198,7 +199,7 @@ def _prepare_ingest_snapshot_candidates(
     configured_workers = max(1, int(config.get("limits", {}).get("max_fetch_workers", 5) or 5))
     worker_count = min(configured_workers, len(stories)) if stories else 0
 
-    def prepare_one(story: dict) -> dict:
+    def prepare_one(index: int, story: dict) -> dict:
         story_record = dict(story)
         article_text = str(story_record.get("article_text", "") or "").strip()
         article_details = {
@@ -207,6 +208,15 @@ def _prepare_ingest_snapshot_candidates(
             "document_excerpt": str(story_record.get("context", "") or "").strip(),
         }
         if not article_text:
+            _log_ingest_progress(
+                job_name,
+                "article_fetch_started",
+                index=index + 1,
+                total=len(stories),
+                source_name=story_record.get("source_name", ""),
+                subject=story_record.get("subject", ""),
+                url=story_record.get("url", ""),
+            )
             fetched = article_fetcher(
                 story.get("url", ""),
                 config["limits"]["max_article_chars"],
@@ -222,6 +232,27 @@ def _prepare_ingest_snapshot_candidates(
             else:
                 article_details["article_text"] = str(fetched or "").strip()
             article_text = article_details["article_text"]
+            _log_ingest_progress(
+                job_name,
+                "article_fetch_finished",
+                index=index + 1,
+                total=len(stories),
+                source_name=story_record.get("source_name", ""),
+                subject=story_record.get("subject", ""),
+                url=story_record.get("url", ""),
+                article_text_chars=len(article_text),
+            )
+        else:
+            _log_ingest_progress(
+                job_name,
+                "article_fetch_reused",
+                index=index + 1,
+                total=len(stories),
+                source_name=story_record.get("source_name", ""),
+                subject=story_record.get("subject", ""),
+                url=story_record.get("url", ""),
+                article_text_chars=len(article_text),
+            )
         if not article_text:
             return {
                 "prepared": None,
@@ -289,11 +320,12 @@ def _prepare_ingest_snapshot_candidates(
 
     if worker_count <= 1:
         for index, story in enumerate(stories):
-            consume_result(index, prepare_one(story))
+            consume_result(index, prepare_one(index, story))
     else:
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = {
-                executor.submit(prepare_one, story): index for index, story in enumerate(stories)
+                executor.submit(prepare_one, index, story): index
+                for index, story in enumerate(stories)
             }
             for future in as_completed(futures):
                 consume_result(futures[future], future.result())
