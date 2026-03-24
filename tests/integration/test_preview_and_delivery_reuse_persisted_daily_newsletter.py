@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 from urllib.parse import urlparse
 
+from datetime import UTC, datetime
+
 from curator.jobs import current_newsletter_date, get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
@@ -13,9 +15,16 @@ class FailIfCalledOpenAI:
         raise AssertionError("Cached daily newsletter should prevent new OpenAI calls.")
 
 
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
+
+
 def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
+    jobs = importlib.import_module("curator.jobs")
 
     config_path = write_temp_config(
         tmp_path,
@@ -35,6 +44,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
     config = main.load_config()
 
     repository = get_repository_from_config(config)
@@ -49,7 +59,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Repository context for rates reset",
                 "category": "Markets / stocks / macro / economy",
-                "published_at": "2026-03-21T07:30:00+00:00",
+                "published_at": "2026-03-24T07:30:00+00:00",
                 "summary": "Rates reset summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -58,7 +68,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
         summary_headline="Rates reset changes software valuations",
         summary_body="Key takeaways\n- Rates reset changes software valuations.\n\nWhy this matters to me\nThis matters for software multiples.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T08:00:00+00:00",
+        summarized_at="2026-03-24T08:00:00+00:00",
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -70,7 +80,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
                 "anchor_text": "Open model pricing changed",
                 "context": "Repository context for pricing",
                 "category": "AI & ML industry developments",
-                "published_at": "2026-03-21T06:00:00+00:00",
+                "published_at": "2026-03-24T06:00:00+00:00",
                 "summary": "Pricing summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -79,7 +89,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
         summary_headline="Open model pricing changed",
         summary_body="Key takeaways\n- Open model pricing changed.\n\nWhy this matters to me\nThis matters for inference budgets.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T08:05:00+00:00",
+        summarized_at="2026-03-24T08:05:00+00:00",
     )
 
     fake_openai = FakeOpenAI()
@@ -122,6 +132,10 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     admin_email_safe_page = admin_email_safe_preview.get_data(as_text=True)
     assert "Email-Safe Preview" in admin_email_safe_page
     assert 'role="presentation"' in admin_email_safe_page
+
+    with repository.connect() as connection:
+        connection.execute("DELETE FROM fetched_stories")
+        connection.execute("DELETE FROM article_snapshots")
 
     sent_messages: list[dict] = []
 

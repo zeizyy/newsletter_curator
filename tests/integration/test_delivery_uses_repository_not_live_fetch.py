@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import importlib
 import json
+from datetime import UTC, datetime
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
+
+
 def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
 
     config_path = write_temp_config(
         tmp_path,
@@ -28,6 +36,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
     config = main.load_config()
 
     repository = get_repository_from_config(config)
@@ -42,7 +51,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Repository context for rates reset",
                 "category": "Markets / stocks / macro / economy",
-                "published_at": "2026-03-21T07:30:00+00:00",
+                "published_at": "2026-03-24T07:30:00+00:00",
                 "summary": "Rates reset summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -51,7 +60,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
         summary_headline="Rates reset changes software valuations",
         summary_body="Rates reset changes software valuations and reprices growth names.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T07:35:00+00:00",
+        summarized_at="2026-03-24T07:35:00+00:00",
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -63,7 +72,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
                 "anchor_text": "Open model pricing changed",
                 "context": "Repository context for pricing",
                 "category": "AI & ML industry developments",
-                "published_at": "2026-03-21T06:00:00+00:00",
+                "published_at": "2026-03-24T06:00:00+00:00",
                 "summary": "Pricing summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -72,7 +81,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
         summary_headline="Open model pricing changed",
         summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T06:05:00+00:00",
+        summarized_at="2026-03-24T06:05:00+00:00",
     )
 
     service = FakeGmailService(messages=[])
@@ -106,6 +115,6 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     assert "Open model pricing changed and" in payload["body"]
     assert "Read original" in payload["html_body"]
     assert 'target="_blank"' in payload["html_body"]
-    assert "Mar 21, 12:30 AM PT" in payload["html_body"]
+    assert "Mar 24, 12:30 AM PT" in payload["html_body"]
     assert "Newsletter Digest" in payload["html_body"]
     assert len(fake_openai.calls) == 1

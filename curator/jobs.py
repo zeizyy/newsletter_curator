@@ -758,6 +758,8 @@ def run_delivery_job(
     telemetry_enabled: bool = True,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
+    newsletter_date = current_newsletter_date()
+    cached_newsletter = repository.get_daily_newsletter(newsletter_date)
     newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
     print(
@@ -766,11 +768,10 @@ def run_delivery_job(
             sort_keys=True,
         )
     )
-    if not readiness["ok"]:
+    if not readiness["ok"] and cached_newsletter is None:
         raise RuntimeError(
             "No delivery-ready repository data is available for the required source types."
         )
-    newsletter_date = current_newsletter_date()
 
     collect_gmail_links_fn = collect_gmail_links_fn or (
         lambda cfg, svc: collect_repository_gmail_links(cfg, repository=repository)
@@ -878,7 +879,6 @@ def run_delivery_job(
         }
     )
     try:
-        cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
             cached_content = build_newsletter_content(cached_newsletter=cached_newsletter)
             delivery_html = render_delivery_html(
