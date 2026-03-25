@@ -91,7 +91,6 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --enable-linger \
-  --install-systemd-user \
   --install-crontab
 ```
 
@@ -112,6 +111,7 @@ What the script installs when flags are passed:
 - `--enable-linger`: runs `loginctl enable-linger $USER` so the `systemd --user` admin service survives SSH logout
 
 Notes:
+- The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels.
 - The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
@@ -133,9 +133,13 @@ Before running the bootstrap:
 ### Verification
 After bootstrap:
 ```bash
-systemctl --user status newsletter-curator-admin
 crontab -l
 tail -n 200 /root/newsletter_curator/deploy/generated/cron.log
+```
+
+If you chose to install the admin service too:
+```bash
+systemctl --user status newsletter-curator-admin
 ```
 
 Open the admin UI:

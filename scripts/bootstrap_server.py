@@ -28,7 +28,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
-    parser.add_argument("--install-systemd-user", action="store_true")
+    parser.add_argument(
+        "--install-systemd-user",
+        action="store_true",
+        help="Opt in to installing and starting the admin app systemd --user service.",
+    )
     parser.add_argument("--enable-linger", action="store_true")
     parser.add_argument("--linger-user", default=os.getenv("USER") or getpass.getuser())
     return parser.parse_args()
@@ -284,8 +288,12 @@ def main() -> None:
     print(f"- Admin server script: {admin_script}")
     print(f"- Cron file: {cron_file}")
     print(f"- Log file: {log_file}")
-    print("- If you passed --install-systemd-user, check: systemctl --user status "
-          f"{args.service_name}")
+    if args.install_systemd_user:
+        print("- Admin app service installed and restarted. Check: systemctl --user status "
+              f"{args.service_name}")
+    else:
+        print("- Admin app not started by default. Pass --install-systemd-user to install "
+              "and start it.")
     print("- If you passed --install-crontab, check: crontab -l")
 
 
