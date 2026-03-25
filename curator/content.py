@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -76,6 +77,17 @@ GENERIC_CTA_TITLES = {
     "full story",
     "details",
     "watch now",
+}
+
+CONTEXT_BLOCK_TAGS = {
+    "p",
+    "li",
+    "td",
+    "th",
+    "blockquote",
+    "article",
+    "section",
+    "div",
 }
 
 
@@ -170,6 +182,64 @@ def is_non_article_link(url: str, anchor_text: str, context: str) -> bool:
     return False
 
 
+def _find_context_node(anchor) -> object:
+    current = anchor
+    fallback = anchor.parent or anchor
+    while current is not None:
+        name = getattr(current, "name", None)
+        if name in CONTEXT_BLOCK_TAGS:
+            text = normalize_whitespace(current.get_text(" ", strip=True))
+            if 20 <= len(text) <= 1200:
+                return current
+            fallback = current
+        current = getattr(current, "parent", None)
+    return fallback
+
+
+def _remove_generic_cta_from_context(context: str, anchor_text: str) -> str:
+    cleaned = normalize_whitespace(context)
+    if not cleaned:
+        return ""
+    if not is_generic_title(anchor_text):
+        return cleaned
+
+    anchor_pattern = re.escape(normalize_whitespace(anchor_text))
+    patterns = [
+        rf"(?:\s*[:\-\u2014\|]?\s*){anchor_pattern}\s*$",
+        rf"\b{anchor_pattern}\b",
+    ]
+    for pattern in patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = normalize_whitespace(cleaned)
+    return cleaned
+
+
+def _extract_context_text(anchor, anchor_text: str) -> str:
+    context_node = _find_context_node(anchor)
+    context = normalize_whitespace(context_node.get_text(" ", strip=True)) if context_node else ""
+    context = _remove_generic_cta_from_context(context, anchor_text)
+    if not context or normalize_title_candidate(context) == normalize_title_candidate(anchor_text):
+        parent = anchor.parent
+        sibling_bits: list[str] = []
+        if parent is not None:
+            for sibling in getattr(parent, "contents", []):
+                if sibling is anchor:
+                    continue
+                get_text = getattr(sibling, "get_text", None)
+                text = (
+                    get_text(" ", strip=True)
+                    if callable(get_text)
+                    else str(sibling).strip()
+                )
+                text = normalize_whitespace(text)
+                if text:
+                    sibling_bits.append(text)
+        sibling_context = normalize_whitespace(" ".join(sibling_bits))
+        if sibling_context:
+            context = sibling_context
+    return trim_context(context or anchor_text)
+
+
 def extract_links_from_html(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     links = []
@@ -180,8 +250,7 @@ def extract_links_from_html(html: str) -> list[dict]:
             continue
         seen.add(href)
         anchor_text = anchor.get_text(" ", strip=True)
-        parent_text = anchor.find_parent().get_text(" ", strip=True) if anchor.parent else ""
-        context = trim_context(parent_text or anchor_text)
+        context = _extract_context_text(anchor, anchor_text)
         if is_non_article_link(href, anchor_text, context):
             continue
         links.append(
