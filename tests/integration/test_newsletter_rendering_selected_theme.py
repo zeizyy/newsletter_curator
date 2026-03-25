@@ -41,7 +41,7 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
             "anchor_text": "Rates reset changes software valuations",
             "context": "Repository context for rates reset",
             "category": "Markets / stocks / macro / economy",
-            "published_at": "2026-03-21T07:30:00+00:00",
+            "published_at": "2026-03-24T07:30:00+00:00",
             "summary": "Rates reset summary",
         },
         ingestion_run_id=ingestion_run_id,
@@ -52,7 +52,7 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
         summary_headline="Rates reset changes software valuations",
         summary_body="Key takeaways\n- Rates reset changes software valuations.\n\nWhy this matters to me\nThis matters for software multiples.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T08:00:00+00:00",
+        summarized_at="2026-03-24T08:00:00+00:00",
     )
 
     second_story_id = repository.upsert_story(
@@ -64,7 +64,7 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
             "anchor_text": "Open model pricing changed",
             "context": "Repository context for pricing",
             "category": "AI & ML industry developments",
-            "published_at": "2026-03-21T06:00:00+00:00",
+            "published_at": "2026-03-24T06:00:00+00:00",
             "summary": "Pricing summary",
         },
         ingestion_run_id=ingestion_run_id,
@@ -75,7 +75,7 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
         summary_headline="Open model pricing changed",
         summary_body="Key takeaways\n- Open model pricing changed.\n\nWhy this matters to me\nThis matters for inference budgets.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T08:05:00+00:00",
+        summarized_at="2026-03-24T08:05:00+00:00",
     )
 
     fake_openai = FakeOpenAI()
@@ -91,7 +91,7 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
     assert "2 stories selected" in html
     assert "Read original" in html
     assert 'target="_blank"' in html
-    assert "Mar 21, 12:30 AM PT" in html
+    assert "Mar 24, 12:30 AM PT" in html
     assert "Financial Times" not in html
     assert 'role="presentation"' in html
     assert "max-width:640px" in html

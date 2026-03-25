@@ -162,6 +162,40 @@ def render_summary_body_html(body: str) -> str:
     return "".join(blocks) or "No summary."
 
 
+def split_summary_sections(body: str) -> tuple[list[str], list[str], list[str]]:
+    takeaways: list[str] = []
+    why_matters: list[str] = []
+    other: list[str] = []
+    active_section = "other"
+
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        normalized = re.sub(r"[:\s]+$", "", line).strip().lower()
+        if normalized in {"key takeaways", "takeaways"}:
+            active_section = "takeaways"
+            continue
+        if normalized in {"why this matters to me", "why this matters"}:
+            active_section = "why_matters"
+            continue
+
+        bullet_match = re.match(r"^[-*]\s+(.+)$", line)
+        content = bullet_match.group(1).strip() if bullet_match else line
+        if not content:
+            continue
+
+        if active_section == "takeaways":
+            takeaways.append(content)
+        elif active_section == "why_matters":
+            why_matters.append(content)
+        else:
+            other.append(content)
+
+    return takeaways, why_matters, other
+
+
 def render_digest_html(grouped: dict[str, list[dict]]) -> str:
     category_sections = []
     total_entries = 0
@@ -234,7 +268,7 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
             body = str(entry.get("body", "")).strip()
             source_name = str(entry.get("source_name", "")).strip()
             timestamp = str(entry.get("display_timestamp", "")).strip()
-            body_html = render_summary_body_html(body)
+            takeaways, why_matters, other = split_summary_sections(body)
             link_html = (
                 f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0b57d0;text-decoration:underline;font-weight:700;">Read original</a>'
                 if url
@@ -253,20 +287,68 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                 else ""
             )
 
+            takeaways_html = ""
+            if takeaways:
+                items_html = "".join(
+                    f'<li style="margin:0 0 8px 0;">{html.escape(item)}</li>' for item in takeaways
+                )
+                takeaways_html = (
+                    '<div style="margin:0 0 12px 0;">'
+                    '<div style="margin:0 0 6px 0;font-size:12px;line-height:1.4;color:#0c7a5b;'
+                    'font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Key takeaways</div>'
+                    f'<ul style="margin:0 0 0 18px;padding:0;font-size:15px;line-height:1.6;color:#223240;">{items_html}</ul>'
+                    '</div>'
+                )
+
+            why_html = ""
+            if why_matters:
+                why_text = " ".join(why_matters)
+                why_html = (
+                    '<div style="margin:0 0 12px 0;padding:10px 12px;background:#f5f9ff;'
+                    'border:1px solid #dbe7f5;border-radius:12px;">'
+                    '<div style="margin:0 0 4px 0;font-size:12px;line-height:1.4;color:#5b6a78;'
+                    'font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Why this matters</div>'
+                    f'<div style="font-size:14px;line-height:1.6;color:#223240;">{html.escape(why_text)}</div>'
+                    '</div>'
+                )
+
+            other_html = ""
+            if other:
+                other_html = "".join(
+                    (
+                        '<p style="margin:0 0 10px 0;font-size:14px;line-height:1.6;color:#223240;">'
+                        f"{html.escape(paragraph)}"
+                        "</p>"
+                    )
+                    for paragraph in other
+                )
+
             cards.append(
                 (
                     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
                     'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:16px;margin:0 0 14px 0;">'
                     '<tr><td style="padding:14px 14px 12px 14px;">'
-                    f'<div style="margin:0 0 8px 0;font-size:12px;line-height:1.4;color:#0c7a5b;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">{html.escape(category)}</div>'
                     f"{metadata_html}"
-                    f'<div style="margin:0 0 12px 0;font-size:24px;line-height:1.08;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
-                    f'<div style="font-size:15px;line-height:1.6;color:#223240;">{body_html}</div>'
+                    f'<div style="margin:0 0 12px 0;font-size:22px;line-height:1.12;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
+                    f"{takeaways_html}"
+                    f"{why_html}"
+                    f"{other_html}"
                     f'<div style="margin-top:12px;font-size:14px;line-height:1.5;">{link_html}</div>'
                     "</td></tr></table>"
                 )
             )
-        category_sections.append("".join(cards))
+        story_count_label = "story" if len(entries) == 1 else "stories"
+        category_sections.append(
+            (
+                '<div style="margin:0 0 18px 0;">'
+                f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#0c7a5b;'
+                'font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">'
+                f'{html.escape(category)} <span style="color:#6f7f87;font-weight:600;">({len(entries)} {story_count_label})</span>'
+                '</div>'
+                f"{''.join(cards)}"
+                '</div>'
+            )
+        )
 
     with EMAIL_SAFE_DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()

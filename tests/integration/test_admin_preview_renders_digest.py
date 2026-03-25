@@ -43,7 +43,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Repository context for rates reset",
                 "category": "Markets / stocks / macro / economy",
-                "published_at": "2026-03-21T07:30:00+00:00",
+                    "published_at": "2026-03-24T07:30:00+00:00",
                 "summary": "Rates reset summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -52,7 +52,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
         summary_headline="Rates reset changes software valuations",
         summary_body="Rates reset changes software valuations and reprices growth names.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T07:35:00+00:00",
+            summarized_at="2026-03-24T07:35:00+00:00",
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -64,7 +64,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
                 "anchor_text": "Open model pricing changed",
                 "context": "Repository context for pricing",
                 "category": "AI & ML industry developments",
-                "published_at": "2026-03-21T06:00:00+00:00",
+                    "published_at": "2026-03-24T06:00:00+00:00",
                 "summary": "Pricing summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -73,7 +73,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
         summary_headline="Open model pricing changed",
         summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T06:05:00+00:00",
+            summarized_at="2026-03-24T06:05:00+00:00",
     )
 
     def fail_live_email_send(*args, **kwargs):
@@ -101,7 +101,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Open model pricing changed" in page
     assert "Read original" in page
     assert 'target="_blank"' in page
-    assert "Mar 21, 12:30 AM PT" in page
+    assert "Mar 24, 12:30 AM PT" in page
     assert "data-story-timestamp" in page
     assert "Intl.DateTimeFormat" in page
     assert "Email-Safe Template" in page
