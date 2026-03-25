@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-22",
+  "updated_at": "2026-03-25",
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -1212,6 +1212,75 @@
         "The generated cron file defaults to a fixed UTC schedule without CRON_TZ",
         "The deployment docs explain the UTC default and DST tradeoff",
         "The bootstrap asset integration test passes"
+      ]
+    },
+    {
+      "id": "T53",
+      "title": "Introduce a shared editorial UX system across the digest and admin app",
+      "status": "completed",
+      "depends_on": ["T52"],
+      "scope": [
+        "Create one coherent visual shell for the admin control room, preview, archive, analytics, and story explorer instead of leaving each page as an isolated utility view",
+        "Refresh the browser-first and email-safe digest treatments so they share the same editorial identity while preserving delivery-safe markup",
+        "Add integration coverage for the new shell and run a screenshot-based UX review before closing the task"
+      ],
+      "artifacts": [
+        "shared admin base template and updated admin surface templates",
+        "refreshed digest rendering and digest templates",
+        "integration coverage for the shared shell and preview rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_config_page_uses_shared_shell.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_admin_newsletter_analytics_page.py tests/integration/test_admin_story_explorer_lists_repository_stories.py tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_source_selection_filters_delivery.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_admin_preview_empty_repository_shows_message.py -q",
+      "integration_test": "tests/integration/test_admin_config_page_uses_shared_shell.py",
+      "done_when": [
+        "The admin app surfaces read as one product with a shared hierarchy, navigation, and control language",
+        "The digest and email-safe output share the same editorial direction without breaking existing delivery behavior",
+        "A screenshot-based UX review no longer finds blocking issues for this iteration"
+      ]
+    },
+    {
+      "id": "T54",
+      "title": "Restore true browser-first cached previews and harden screenshot QA for digest variants",
+      "status": "pending",
+      "depends_on": ["T53"],
+      "scope": [
+        "Make cached admin previews show the browser-first market-tape rendering directly from stored render groups instead of falling back to the cached delivery HTML",
+        "Capture stable screenshot fixtures for admin preview, browser digest, and email-safe digest as a repeatable local review pack",
+        "Tighten any remaining mobile and dark-mode issues found in that screenshot pack"
+      ],
+      "artifacts": [
+        "cached preview rendering path improvements",
+        "repeatable screenshot review fixture generation",
+        "integration coverage for cached browser-preview behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_preview_renders_digest.py -q",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "Cached admin previews render the browser-first digest from stored content without rerunning the LLM",
+        "The screenshot review pack can be regenerated locally in one step",
+        "The preview and cached-rendering integration tests pass"
+      ]
+    },
+    {
+      "id": "T55",
+      "title": "Polish admin empty, loading, and narrow-screen states under the new shell",
+      "status": "pending",
+      "depends_on": ["T53"],
+      "scope": [
+        "Refine the empty, loading, saved, and error states so they feel native to the new editorial shell",
+        "Improve narrow-screen spacing and action clarity on the control room, preview, archive, analytics, and story explorer pages",
+        "Keep the copy and control emphasis crisp without adding UI noise"
+      ],
+      "artifacts": [
+        "state-specific admin shell refinements",
+        "mobile or narrow-screen layout adjustments",
+        "integration coverage for key empty and saved states"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_empty_repository_shows_message.py tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_admin_source_selection_filters_delivery.py -q",
+      "integration_test": "tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "done_when": [
+        "The new shell remains legible and intentional in empty, loading, and saved states",
+        "Primary actions stay obvious on narrow screens",
+        "The targeted state-coverage tests pass"
       ]
     }
   ]

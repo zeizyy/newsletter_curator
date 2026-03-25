@@ -45,6 +45,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
     config = main.load_config()
 
     repository = get_repository_from_config(config)

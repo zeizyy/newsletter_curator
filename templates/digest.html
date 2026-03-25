@@ -4,23 +4,45 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="supported-color-schemes" content="light dark" />
   <style>
-    body { margin: 0; padding: 0; background: #eef4f3; color: #16222f; font-family: Arial, Helvetica, sans-serif; }
-    .email-shell { max-width: 760px; margin: 0 auto; padding: 28px 16px; }
-    .email-frame { background: rgba(255,255,255,0.86); border: 1px solid rgba(19,91,72,0.18); border-radius: 30px; padding: 18px; box-shadow: 0 18px 44px rgba(17,27,45,0.12); }
-    .email-canvas { background: #ffffff; border: 1px solid rgba(19,91,72,0.18); border-radius: 24px; overflow: hidden; }
-    .hero { background: linear-gradient(135deg,#0e3f35,#0f8661); color: #f3fffb; padding: 28px 30px 24px; }
-    .hero-kicker { display: inline-block; margin-bottom: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.14); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-    .hero-title { margin: 0; max-width: 12ch; font-family: Trebuchet MS, Arial Narrow, Arial, sans-serif; font-size: 50px; line-height: 0.98; letter-spacing: -0.04em; }
-    .hero-copy { margin: 14px 0 0; max-width: 34rem; color: rgba(243,255,251,0.82); font-size: 16px; line-height: 1.6; }
-    .stories-wrap { padding: 18px; }
-    .footer { font-size: 12px; color: #6f7f87; margin-top: 10px; }
+    body {
+      margin: 0;
+      padding: 0;
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,0.86), transparent 26%),
+        linear-gradient(180deg,#f2ece1,#e6ddce);
+      color: #16222f;
+      font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+    }
+    .email-shell { max-width: 820px; margin: 0 auto; padding: 28px 16px; }
+    .email-frame { background: rgba(255,250,243,0.86); border: 1px solid rgba(23,37,62,0.12); border-radius: 34px; padding: 18px; box-shadow: 0 22px 56px rgba(17,27,45,0.14); }
+    .email-canvas { background: #fffaf2; border: 1px solid rgba(23,37,62,0.12); border-radius: 28px; overflow: hidden; }
+    .hero {
+      background:
+        linear-gradient(135deg,rgba(255,255,255,0.08),transparent 45%),
+        linear-gradient(135deg,#132742,#1c3657 64%,#6c552e);
+      color: #f6f3ec;
+      padding: 30px;
+    }
+    .hero-topline { margin: 0 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(246,243,236,0.72); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.7fr); gap: 18px; align-items: end; }
+    .hero-kicker { display: inline-block; margin-bottom: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.12); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+    .hero-title { margin: 0; max-width: 11ch; font-family: Georgia, "Times New Roman", Times, serif; font-size: 56px; line-height: 0.94; letter-spacing: -0.05em; }
+    .hero-copy { margin: 14px 0 0; max-width: 36rem; color: rgba(246,243,236,0.82); font-size: 16px; line-height: 1.65; }
+    .hero-stat { padding: 16px 18px; border-radius: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); }
+    .hero-stat-label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(246,243,236,0.68); }
+    .hero-stat-value { margin-top: 10px; font-family: Georgia, "Times New Roman", Times, serif; font-size: 54px; line-height: 0.9; letter-spacing: -0.05em; }
+    .hero-stat-copy { margin-top: 10px; color: rgba(246,243,236,0.78); font-size: 14px; line-height: 1.55; }
+    .stories-wrap { padding: 22px 18px 8px; background: linear-gradient(180deg,rgba(255,255,255,0.44),rgba(255,255,255,0)); }
+    .footer { font-size: 12px; color: #736755; margin-top: 10px; }
 
     @media (max-width: 600px) {
       .email-shell { padding: 16px 10px !important; }
-      .email-frame { padding: 10px !important; border-radius: 22px !important; }
-      .hero { padding: 22px 20px 18px !important; }
-      .hero-title { font-size: 36px !important; }
+      .email-frame { padding: 10px !important; border-radius: 24px !important; }
+      .hero { padding: 22px 20px 20px !important; }
+      .hero-grid { grid-template-columns: 1fr !important; }
+      .hero-title { font-size: 40px !important; }
       .hero-copy { font-size: 15px !important; }
+      .hero-stat-value { font-size: 42px !important; }
       .stories-wrap { padding: 12px !important; }
       .story-card { padding: 18px !important; border-radius: 18px !important; }
       .story-title { font-size: 28px !important; max-width: none !important; }
@@ -34,52 +56,65 @@
     }
 
     @media (prefers-color-scheme: dark) {
-      body, .body-shell { background: #07110f !important; color: #edf7f4 !important; }
-      .email-frame { background: rgba(10,17,15,0.9) !important; border-color: rgba(73,134,112,0.26) !important; }
-      .email-canvas { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
-      .story-card { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
-      .story-title, .category-title, .summary-heading { color: #edf7f4 !important; }
-      .story-body, .summary-paragraph, .summary-list, .summary-list-item, .footer { color: #b2c7c0 !important; }
+      body, .body-shell { background: #13161c !important; color: #edf1f7 !important; }
+      .email-frame { background: rgba(19,24,31,0.92) !important; border-color: rgba(175,188,206,0.14) !important; }
+      .email-canvas { background: #1b212a !important; border-color: rgba(175,188,206,0.14) !important; }
+      .story-card { background: #1d2430 !important; border-color: rgba(175,188,206,0.14) !important; }
+      .story-title, .category-title, .summary-heading { color: #edf1f7 !important; }
+      .story-body, .summary-paragraph, .summary-list, .summary-list-item, .footer { color: #c5cfdd !important; }
+      .summary-note { background: #273246 !important; border-color: rgba(157,193,236,0.18) !important; }
+      .summary-note-copy { color: #dbe7f5 !important; }
       .story-time, .story-source { background: rgba(255,255,255,0.07) !important; color: #b2c7c0 !important; }
-      .story-chip { background: rgba(103,211,172,0.16) !important; color: #67d3ac !important; }
-      .story-link { color: #7be0bc !important; }
+      .story-chip { background: rgba(157,193,236,0.16) !important; color: #9dc1ec !important; }
+      .story-link { color: #9dc1ec !important; }
     }
 
     [data-ogsc] body,
-    [data-ogsc] .body-shell { background: #07110f !important; color: #edf7f4 !important; }
-    [data-ogsc] .email-frame { background: rgba(10,17,15,0.9) !important; border-color: rgba(73,134,112,0.26) !important; }
+    [data-ogsc] .body-shell { background: #13161c !important; color: #edf1f7 !important; }
+    [data-ogsc] .email-frame { background: rgba(19,24,31,0.92) !important; border-color: rgba(175,188,206,0.14) !important; }
     [data-ogsc] .email-canvas,
-    [data-ogsc] .story-card { background: #0f1716 !important; border-color: rgba(73,134,112,0.26) !important; }
+    [data-ogsc] .story-card { background: #1b212a !important; border-color: rgba(175,188,206,0.14) !important; }
     [data-ogsc] .story-title,
     [data-ogsc] .category-title,
-    [data-ogsc] .summary-heading { color: #edf7f4 !important; }
+    [data-ogsc] .summary-heading { color: #edf1f7 !important; }
     [data-ogsc] .story-body,
     [data-ogsc] .summary-paragraph,
     [data-ogsc] .summary-list,
     [data-ogsc] .summary-list-item,
-    [data-ogsc] .footer { color: #b2c7c0 !important; }
+    [data-ogsc] .footer { color: #c5cfdd !important; }
+    [data-ogsc] .summary-note { background: #273246 !important; border-color: rgba(157,193,236,0.18) !important; }
+    [data-ogsc] .summary-note-copy { color: #dbe7f5 !important; }
     [data-ogsc] .story-time,
     [data-ogsc] .story-source { background: rgba(255,255,255,0.07) !important; color: #b2c7c0 !important; }
-    [data-ogsc] .story-chip { background: rgba(103,211,172,0.16) !important; color: #67d3ac !important; }
-    [data-ogsc] .story-link { color: #7be0bc !important; }
+    [data-ogsc] .story-chip { background: rgba(157,193,236,0.16) !important; color: #9dc1ec !important; }
+    [data-ogsc] .story-link { color: #9dc1ec !important; }
   </style>
 </head>
-<body class="body-shell" style="margin:0;padding:0;background:#eef4f3;color:#16222f;font-family:Arial,Helvetica,sans-serif;">
-  <div class="email-shell" style="max-width:760px;margin:0 auto;padding:28px 16px;">
-    <div class="email-frame" style="background:rgba(255,255,255,0.86);border:1px solid rgba(19,91,72,0.18);border-radius:30px;padding:18px;box-shadow:0 18px 44px rgba(17,27,45,0.12);">
-      <div class="email-canvas" style="background:#ffffff;border:1px solid rgba(19,91,72,0.18);border-radius:24px;overflow:hidden;">
-        <div class="hero" style="background:linear-gradient(135deg,#0e3f35,#0f8661);color:#f3fffb;padding:28px 30px 24px;">
-          <div class="hero-kicker" style="display:inline-block;margin-bottom:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.14);font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Daily Briefing</div>
-          <div class="hero-title" style="margin:0;max-width:12ch;font-family:Trebuchet MS,Arial Narrow,Arial,sans-serif;font-size:50px;line-height:0.98;letter-spacing:-0.04em;">Newsletter Digest</div>
-          <div class="hero-copy" style="margin:14px 0 0;max-width:34rem;color:rgba(243,255,251,0.82);font-size:16px;line-height:1.6;">The highest-signal stories for today, pre-ranked and condensed for fast scanning.</div>
-          <div class="hero-copy" style="margin:10px 0 0;max-width:34rem;color:rgba(243,255,251,0.92);font-size:14px;line-height:1.5;font-weight:700;">{{HERO_COUNT}} stories selected</div>
+<body class="body-shell" style="margin:0;padding:0;background:#f2ece1;color:#16222f;font-family:'Trebuchet MS','Segoe UI',Arial,sans-serif;">
+  <div class="email-shell" style="max-width:820px;margin:0 auto;padding:28px 16px;">
+    <div class="email-frame" style="background:rgba(255,250,243,0.86);border:1px solid rgba(23,37,62,0.12);border-radius:34px;padding:18px;box-shadow:0 22px 56px rgba(17,27,45,0.14);">
+      <div class="email-canvas" style="background:#fffaf2;border:1px solid rgba(23,37,62,0.12);border-radius:28px;overflow:hidden;">
+        <div class="hero" style="background:linear-gradient(135deg,#132742,#1c3657 64%,#6c552e);color:#f6f3ec;padding:30px;">
+          <div class="hero-topline" style="margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:rgba(246,243,236,0.72);">Operator Edition</div>
+          <div class="hero-grid" style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(180px,0.7fr);gap:18px;align-items:end;">
+            <div>
+              <div class="hero-kicker" style="display:inline-block;margin-bottom:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.12);font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Daily Briefing</div>
+              <div class="hero-title" style="margin:0;max-width:11ch;font-family:Georgia,'Times New Roman',Times,serif;font-size:56px;line-height:0.94;letter-spacing:-0.05em;">Newsletter Digest</div>
+              <div class="hero-copy" style="margin:14px 0 0;max-width:36rem;color:rgba(246,243,236,0.82);font-size:16px;line-height:1.65;">The highest-signal stories for today, pre-ranked and condensed for fast scanning.</div>
+            </div>
+            <div class="hero-stat" style="padding:16px 18px;border-radius:22px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.12);">
+              <div class="hero-stat-label" style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(246,243,236,0.68);">Selected Signals</div>
+              <div class="hero-stat-value" style="margin-top:10px;font-family:Georgia,'Times New Roman',Times,serif;font-size:54px;line-height:0.9;letter-spacing:-0.05em;">{{HERO_COUNT}}</div>
+              <div class="hero-stat-copy" style="margin-top:10px;color:rgba(246,243,236,0.78);font-size:14px;line-height:1.55;">Each card is formatted for fast morning scan speed and clearer follow-up decisions.</div>
+            </div>
+          </div>
         </div>
-        <div class="stories-wrap" style="padding:18px;">
+        <div class="stories-wrap" style="padding:22px 18px 8px;background:linear-gradient(180deg,rgba(255,255,255,0.44),rgba(255,255,255,0));">
           {{CATEGORY_SECTIONS}}
         </div>
       </div>
     </div>
-    <div class="footer" style="font-size:12px;color:#6f7f87;margin-top:10px;">Generated by Newsletter Curator</div>
+    <div class="footer" style="font-size:12px;color:#736755;margin-top:10px;">Generated by Newsletter Curator</div>
   </div>
 </body>
 </html>

@@ -1,69 +1,71 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Repository Stories</title>
+{% extends "admin_base.html" %}
+
+{% block title %}Signal Repository{% endblock %}
+{% block eyebrow %}Repository Inventory{% endblock %}
+{% block page_title %}Signal Repository{% endblock %}
+{% block page_lead %}Scan what the ingest pipeline actually captured, filter by source, and verify that the story inventory is strong before ranking compresses it into the digest.{% endblock %}
+{% block page_meta %}Browsing centrally fetched stories stored for <code>{{ config_path }}</code>{% endblock %}
+{% block head_extra %}
   <style>
-    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
-    .wrap { max-width: 1200px; margin: 0 auto; }
-    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
-    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
-    .muted { font-size: 12px; color: #6b778c; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; border-bottom: 1px solid #e6ecf5; text-align: left; vertical-align: top; font-size: 14px; }
-    th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b778c; }
-    .pill { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
-    .pill-ok { background: #e8f7ee; color: #1b6b3a; }
-    .pill-muted { background: #eef2f7; color: #52637a; }
-    .filters { display: grid; grid-template-columns: 180px 1fr auto; gap: 10px; align-items: end; }
-    input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c5d0e0; border-radius: 6px; font-size: 14px; }
-    button { background: #0b57d0; color: #fff; border: 0; border-radius: 7px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
-    .title-link { color: #0b57d0; text-decoration: none; }
-    @media (max-width: 860px) { .filters { grid-template-columns: 1fr; } table, thead, tbody, th, td, tr { display: block; } thead { display: none; } td { padding: 8px 0; } }
+    .filters {
+      display: grid;
+      grid-template-columns: 180px 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .status-stack {
+      display: grid;
+      gap: 6px;
+    }
+
+    @media (max-width: 860px) {
+      .filters { grid-template-columns: 1fr; }
+    }
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+{% endblock %}
+
+{% block content %}
+  <section class="surface surface-section">
+    <div class="section-head">
       <div>
-        <h1 style="margin:0 0 6px 0;">Repository Stories</h1>
-        <div class="muted">Browsing centrally fetched stories stored for <code>{{ config_path }}</code></div>
+        <div class="section-kicker">Filters</div>
+        <h2>Narrow the repository view</h2>
       </div>
-      <div style="display:flex; gap:10px;">
-        <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Past Newsletters</a>
-        <a class="button-link" href="{{ url_for('analytics_dashboard', token=token or None) }}">View Analytics</a>
-        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Newsletter</a>
-        <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
+      <div class="section-copy">Use these filters to separate Gmail candidates from centrally fetched feeds and inspect whether a source is producing usable depth.</div>
+    </div>
+    <form method="get" class="filters">
+      {% if token %}
+      <input type="hidden" name="token" value="{{ token }}" />
+      {% endif %}
+      <div class="field">
+        <label class="field-label" for="source_type">Source Type</label>
+        <select id="source_type" name="source_type">
+          <option value="">All source types</option>
+          <option value="gmail" {% if source_type == "gmail" %}selected{% endif %}>gmail</option>
+          <option value="additional_source" {% if source_type == "additional_source" %}selected{% endif %}>additional_source</option>
+        </select>
       </div>
-    </div>
+      <div class="field">
+        <label class="field-label" for="source_name">Source Name</label>
+        <input id="source_name" name="source_name" value="{{ source_name }}" placeholder="Filter by source name" />
+      </div>
+      <div>
+        <button type="submit">Apply Filters</button>
+      </div>
+    </form>
+  </section>
 
-    <div class="card">
-      <form method="get" class="filters">
-        {% if token %}
-        <input type="hidden" name="token" value="{{ token }}" />
-        {% endif %}
-        <div>
-          <label class="muted" for="source_type">Source Type</label>
-          <select id="source_type" name="source_type">
-            <option value="">All source types</option>
-            <option value="gmail" {% if source_type == "gmail" %}selected{% endif %}>gmail</option>
-            <option value="additional_source" {% if source_type == "additional_source" %}selected{% endif %}>additional_source</option>
-          </select>
-        </div>
-        <div>
-          <label class="muted" for="source_name">Source Name</label>
-          <input id="source_name" name="source_name" value="{{ source_name }}" placeholder="Filter by source name" />
-        </div>
-        <div>
-          <button type="submit">Apply Filters</button>
-        </div>
-      </form>
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Inventory</div>
+        <h2>Repository stories</h2>
+      </div>
+      <div class="section-copy">{{ stories|length }} stories match the current view.</div>
     </div>
-
-    <div class="card">
-      <div class="muted" style="margin-bottom:12px;">{{ stories|length }} stories</div>
-      {% if stories %}
+    {% if stories %}
+    <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -78,7 +80,7 @@
           {% for story in stories %}
           <tr>
             <td>
-              <div style="font-weight:700; color:#152238;">
+              <div style="font-weight:700; color:inherit;">
                 <a class="title-link" href="{{ story.url }}" target="_blank" rel="noreferrer">{{ story.anchor_text or story.subject or story.url }}</a>
               </div>
               <div class="muted" style="margin-top:4px;">{{ story.context }}</div>
@@ -90,23 +92,24 @@
             <td>{{ story.category or "Uncategorized" }}</td>
             <td>{{ story.published_at or story.first_seen_at }}</td>
             <td>
-              {% if story.article_text %}
-                <span class="pill pill-ok">snapshot stored</span>
-              {% else %}
-                <span class="pill pill-muted">metadata only</span>
-              {% endif %}
-              {% if story.paywall_detected %}
-                <div style="margin-top:6px;"><span class="pill pill-muted">paywalled</span></div>
-              {% endif %}
+              <div class="status-stack">
+                {% if story.article_text %}
+                  <span class="pill">snapshot stored</span>
+                {% else %}
+                  <span class="pill muted-pill">metadata only</span>
+                {% endif %}
+                {% if story.paywall_detected %}
+                  <span class="pill muted-pill">paywalled</span>
+                {% endif %}
+              </div>
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-      {% else %}
-      <div class="muted">No stories match the current filters.</div>
-      {% endif %}
     </div>
-  </div>
-</body>
-</html>
+    {% else %}
+    <div class="muted">No stories match the current filters.</div>
+    {% endif %}
+  </section>
+{% endblock %}

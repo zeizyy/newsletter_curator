@@ -1,71 +1,78 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="supported-color-schemes" content="light dark" />
-  <title>Stored Newsletter</title>
-  <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: linear-gradient(180deg,#eef4f3,#f8fbfb); color: #16222f; }
-    .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 40px; }
-    .card { background: rgba(255,255,255,0.88); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 22px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(17,27,45,0.08); }
-    .muted { font-size: 12px; color: #5b6a78; }
-    .button-link { display: inline-block; background: #ddf3eb; color: #0c7a5b; border: 1px solid rgba(12,122,91,0.18); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
-    .preview-frame { background: rgba(255,255,255,0.5); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 14px; }
-    .preview-label { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5b6a78; margin-bottom: 8px; }
-    pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    h1 { margin: 0 0 6px 0; font-size: 44px; line-height: 1.02; letter-spacing: -0.04em; font-family: Trebuchet MS, Arial Narrow, Arial, sans-serif; }
+{% extends "admin_base.html" %}
 
-    @media (max-width: 680px) {
-      .wrap { padding: 16px 10px 24px; }
-      .card { padding: 18px; border-radius: 18px; }
-      .preview-frame { padding: 10px; border-radius: 18px; }
-      h1 { font-size: 34px; }
+{% block title %}Archive Detail{% endblock %}
+{% block eyebrow %}Stored Newsletter{% endblock %}
+{% block page_title %}{{ newsletter.newsletter_date }}{% endblock %}
+{% block page_lead %}Open the persisted issue exactly as it was stored so historical audits use the same HTML and body payload the system kept on record.{% endblock %}
+{% block page_meta %}Loaded from persisted newsletter history for <code>{{ config_path }}</code>{% endblock %}
+{% block page_actions %}
+  <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Back To History</a>
+  <a class="button-link ghost" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
+{% endblock %}
+{% block head_extra %}
+  <style>
+    .preview-frame {
+      padding: 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(24, 37, 58, 0.1);
+      background: rgba(255, 255, 255, 0.42);
     }
 
-    @media (prefers-color-scheme: dark) {
-      body { background: linear-gradient(180deg,#07110f,#0b1815); color: #edf7f4; }
-      .card { background: rgba(12,20,18,0.96); border-color: rgba(73,134,112,0.26); }
-      .preview-frame { background: rgba(10,17,15,0.7); border-color: rgba(73,134,112,0.26); }
-      .muted, .preview-label { color: #b2c7c0; }
-      .button-link { background: rgba(103,211,172,0.16); color: #7be0bc; border-color: rgba(103,211,172,0.2); }
+    .preview-viewport {
+      width: 100%;
+      min-height: 1080px;
+      border: 0;
+      display: block;
+      border-radius: 18px;
+      background: #ffffff;
+    }
+
+    .preview-label {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--soft);
     }
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
+{% endblock %}
+
+{% block content %}
+  <section class="surface surface-section">
+    <div class="section-head">
       <div>
-        <div class="preview-label">Stored Newsletter</div>
-        <h1>{{ newsletter.newsletter_date }}</h1>
-        <div class="muted">Loaded from persisted newsletter history for <code>{{ config_path }}</code></div>
+        <div class="section-kicker">Stored Subject</div>
+        <h2>{{ preview.subject }}</h2>
       </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Back To History</a>
-        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
-        <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
-      </div>
+      <div class="section-copy">created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}</div>
     </div>
+  </section>
 
-    <div class="card">
-      <div class="preview-label">Subject</div>
-      <div style="font-size:28px; font-weight:700; color:inherit; line-height:1.1;">{{ preview.subject }}</div>
-      <div class="muted" style="margin-top:8px;">
-        created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Rendered Output</div>
+        <h2>HTML preview</h2>
       </div>
     </div>
-
-    <div class="card">
-      <div class="preview-label">HTML Preview</div>
-      <div class="preview-frame">{{ preview.html_body | safe }}</div>
+    <div class="preview-frame">
+      <iframe class="preview-viewport" title="Stored newsletter preview" srcdoc='{{ preview.html_body | replace("'", "&#39;") | safe }}'></iframe>
     </div>
+  </section>
 
-    <div class="card">
-      <div class="preview-label">Plain Text</div>
-      <pre>{{ preview.body }}</pre>
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Fallback</div>
+        <h2>Plain-text body</h2>
+      </div>
     </div>
-  </div>
+    <pre>{{ preview.body }}</pre>
+  </section>
+{% endblock %}
+
+{% block scripts %}
   <script>
   (function () {
     const nodes = document.querySelectorAll('.preview-frame .story-time[data-story-timestamp]');
@@ -94,5 +101,4 @@
     });
   })();
   </script>
-</body>
-</html>
+{% endblock %}

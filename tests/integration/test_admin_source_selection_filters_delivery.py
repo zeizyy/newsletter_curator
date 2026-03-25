@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime, timedelta
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
@@ -60,6 +61,11 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     config = main.load_config()
+    recent_base = datetime.now(UTC) - timedelta(hours=2)
+    macro_published_at = recent_base.isoformat()
+    macro_summarized_at = (recent_base + timedelta(minutes=5)).isoformat()
+    ai_published_at = (recent_base - timedelta(minutes=30)).isoformat()
+    ai_summarized_at = (recent_base - timedelta(minutes=25)).isoformat()
 
     repository = get_repository_from_config(config)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
@@ -72,7 +78,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
             "anchor_text": "Rates reset changes software valuations",
             "context": "Repository context for rates reset",
             "category": "Markets / stocks / macro / economy",
-            "published_at": "2026-03-21T07:30:00+00:00",
+            "published_at": macro_published_at,
             "summary": "Rates reset summary",
         },
         ingestion_run_id=ingestion_run_id,
@@ -84,7 +90,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
         summary_headline="Rates reset changes software valuations",
         summary_body="Rates reset changes software valuations and reprices growth names.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T07:35:00+00:00",
+        summarized_at=macro_summarized_at,
     )
     repository.upsert_story(
         {
@@ -95,7 +101,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
             "anchor_text": "Open model pricing changed",
             "context": "Repository context for pricing",
             "category": "AI & ML industry developments",
-            "published_at": "2026-03-21T06:00:00+00:00",
+            "published_at": ai_published_at,
             "summary": "Pricing summary",
         },
         ingestion_run_id=ingestion_run_id,
@@ -107,7 +113,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
         summary_headline="Open model pricing changed",
         summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T06:05:00+00:00",
+        summarized_at=ai_summarized_at,
     )
     sources = repository.list_sources_with_selection()
     source_id_by_name = {row["source_name"]: row["id"] for row in sources}

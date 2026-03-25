@@ -202,15 +202,16 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
     for category, entries in grouped.items():
         total_entries += len(entries)
         cards = []
-        for entry in entries:
+        count_label = "1 signal" if len(entries) == 1 else f"{len(entries)} signals"
+        for index, entry in enumerate(entries, start=1):
             title = str(entry.get("title", "")).strip() or "Untitled"
             url = str(entry.get("url", "")).strip()
             body = str(entry.get("body", "")).strip()
             source_name = str(entry.get("source_name", "")).strip()
             timestamp = str(entry.get("display_timestamp", "")).strip()
-            body_html = render_summary_body_html(body)
+            takeaways, why_matters, other = split_summary_sections(body)
             link_html = (
-                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#7be0bc;text-decoration:none;">Read original</a>'
+                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#22496f;text-decoration:none;font-weight:700;">Read original</a>'
                 if url
                 else ""
             )
@@ -224,27 +225,77 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                 if timestamp
                 else ""
             )
+            intro_html = "".join(
+                (
+                    '<p class="summary-paragraph" style="margin:0 0 10px 0;color:#2a3547;line-height:1.65;">'
+                    f"{html.escape(paragraph)}"
+                    "</p>"
+                )
+                for paragraph in other
+            )
+            takeaways_html = ""
+            if takeaways:
+                items_html = "".join(
+                    (
+                        '<li class="summary-list-item" style="margin:0 0 8px 0;">'
+                        f"{html.escape(item)}"
+                        "</li>"
+                    )
+                    for item in takeaways
+                )
+                takeaways_html = (
+                    '<div class="summary-block" style="margin:0 0 14px 0;">'
+                    '<div class="summary-heading" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;'
+                    'text-transform:uppercase;color:#8f6731;margin:0 0 8px 0;">Key Signals</div>'
+                    '<ul class="summary-list" style="margin:0 0 0 18px;padding:0;color:#243244;line-height:1.65;">'
+                    f"{items_html}"
+                    "</ul>"
+                    "</div>"
+                )
+            why_html = ""
+            if why_matters:
+                why_text = " ".join(why_matters)
+                why_html = (
+                    '<div class="summary-note" style="margin:0 0 12px 0;padding:12px 14px;background:#eef2f7;'
+                    'border:1px solid rgba(34,73,111,0.12);border-radius:16px;">'
+                    '<div class="summary-heading" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;'
+                    'text-transform:uppercase;color:#22496f;margin:0 0 6px 0;">Why It Matters</div>'
+                    f'<div class="summary-note-copy" style="margin:0;color:#2a3547;line-height:1.65;">{html.escape(why_text)}</div>'
+                    '</div>'
+                )
+            if not intro_html and not takeaways_html and not why_html:
+                intro_html = (
+                    '<p class="summary-paragraph" style="margin:0 0 10px 0;color:#2a3547;line-height:1.65;">'
+                    "No summary."
+                    "</p>"
+                )
             cards.append(
                 (
-                    '<div class="story-card" style="background:#ffffff;border:1px solid rgba(19,91,72,0.18);border-radius:22px;'
-                    'padding:22px;margin:0 0 14px 0;">'
+                    '<div class="story-card" style="background:#fffdf9;border:1px solid rgba(24,37,58,0.1);border-radius:24px;'
+                    'padding:22px;margin:0 0 16px 0;box-shadow:0 10px 24px rgba(24,37,58,0.05);">'
                     '<div class="story-meta" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px 0;">'
-                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#ddf3eb;color:#0c7a5b;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">{html.escape(category)}</span>'
+                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#dbe7f5;color:#22496f;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Lead {index:02d}</span>'
                     f"{time_html}"
                     f"{source_html}"
                     "</div>"
-                    f'<div class="story-title" style="font-size:32px;font-weight:700;line-height:1.08;letter-spacing:-0.03em;color:#16222f;margin:0;max-width:22ch;overflow-wrap:anywhere;">{html.escape(title)}</div>'
-                    f'<div class="story-body" style="font-size:15px;line-height:1.65;color:#223240;margin:16px 0 10px 0;max-width:38rem;">{body_html}</div>'
+                    f'<div class="story-title" style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:34px;font-weight:700;line-height:1.02;letter-spacing:-0.04em;color:#16222f;margin:0;max-width:24ch;overflow-wrap:anywhere;">{html.escape(title)}</div>'
+                    '<div class="story-body" style="font-size:15px;line-height:1.65;color:#223240;margin:16px 0 12px 0;max-width:40rem;">'
+                    f"{intro_html}"
+                    f"{takeaways_html}"
+                    f"{why_html}"
+                    "</div>"
                     f'<div class="story-cta" style="font-size:14px;font-weight:600;">{link_html}</div>'
                     "</div>"
                 )
             )
         category_sections.append(
             (
-                '<div class="category-section" style="margin:0 0 20px 0;">'
-                f'<div class="category-title" style="font-size:15px;font-weight:700;line-height:1.3;color:#5b6a78;'
-                'letter-spacing:0.1em;text-transform:uppercase;'
-                f'margin:0 0 10px 2px;">{html.escape(category)}</div>'
+                '<div class="category-section" style="margin:0 0 24px 0;">'
+                '<div class="category-head" style="display:flex;justify-content:space-between;gap:14px;align-items:flex-end;'
+                'margin:0 0 12px 2px;padding:0 4px;">'
+                f'<div class="category-title" style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:28px;font-weight:700;line-height:1.05;color:#16222f;letter-spacing:-0.03em;">{html.escape(category)}</div>'
+                f'<div class="category-count" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:#8f6731;">{count_label}</div>'
+                "</div>"
                 f"{''.join(cards)}"
                 "</div>"
             )
@@ -262,7 +313,8 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
     for category, entries in grouped.items():
         total_entries += len(entries)
         cards = []
-        for entry in entries:
+        count_label = "1 signal" if len(entries) == 1 else f"{len(entries)} signals"
+        for index, entry in enumerate(entries, start=1):
             title = str(entry.get("title", "")).strip() or "Untitled"
             url = str(entry.get("url", "")).strip()
             body = str(entry.get("body", "")).strip()
@@ -322,28 +374,30 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                     )
                     for paragraph in other
                 )
+            if not takeaways_html and not why_html and not other_html:
+                other_html = '<p style="margin:0 0 10px 0;font-size:14px;line-height:1.6;color:#223240;">No summary.</p>'
 
             cards.append(
                 (
                     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-                    'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:16px;margin:0 0 14px 0;">'
+                    'style="border-collapse:separate;background:#fffdf9;border:1px solid #d6d6d9;border-radius:18px;margin:0 0 14px 0;">'
                     '<tr><td style="padding:14px 14px 12px 14px;">'
+                    f'<div style="margin:0 0 10px 0;font-size:11px;line-height:1.4;color:#8f6731;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;">Lead {index:02d}</div>'
                     f"{metadata_html}"
-                    f'<div style="margin:0 0 12px 0;font-size:22px;line-height:1.12;font-weight:700;color:#16222f;">{html.escape(title)}</div>'
+                    f'<div style="margin:0 0 12px 0;font-size:24px;line-height:1.08;font-weight:700;color:#16222f;font-family:Georgia,\'Times New Roman\',Times,serif;">{html.escape(title)}</div>'
+                    f"{other_html}"
                     f"{takeaways_html}"
                     f"{why_html}"
-                    f"{other_html}"
                     f'<div style="margin-top:12px;font-size:14px;line-height:1.5;">{link_html}</div>'
                     "</td></tr></table>"
                 )
             )
-        story_count_label = "story" if len(entries) == 1 else "stories"
         category_sections.append(
             (
                 '<div style="margin:0 0 18px 0;">'
-                f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#0c7a5b;'
+                f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#8f6731;'
                 'font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">'
-                f'{html.escape(category)} <span style="color:#6f7f87;font-weight:600;">({len(entries)} {story_count_label})</span>'
+                f'{html.escape(category)} <span style="color:#736755;font-weight:600;">({count_label})</span>'
                 '</div>'
                 f"{''.join(cards)}"
                 '</div>'

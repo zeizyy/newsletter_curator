@@ -1,218 +1,288 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Newsletter Curator Config</title>
-  <style>
-    body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; background: #f7f9fc; color: #172b4d; }
-    .wrap { max-width: 960px; margin: 0 auto; }
-    .card { background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
-    h1 { margin: 0 0 10px 0; }
-    h2 { margin: 0 0 10px 0; font-size: 18px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    label { display: block; font-size: 13px; margin-bottom: 4px; color: #42526e; }
-    input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c5d0e0; border-radius: 6px; font-size: 14px; }
-    textarea { min-height: 92px; resize: vertical; }
-    .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 22px; }
-    .checkbox input { width: auto; }
-    .banner-ok { background: #e8f7ee; border: 1px solid #b7e4c7; color: #1b6b3a; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
-    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
-    button { background: #0b57d0; color: #fff; border: 0; border-radius: 7px; padding: 10px 14px; font-size: 14px; cursor: pointer; }
-    .button-link { display: inline-block; background: #edf3ff; color: #0b57d0; border: 1px solid #cbd9f4; border-radius: 7px; padding: 10px 14px; font-size: 14px; text-decoration: none; }
-    .muted { font-size: 12px; color: #6b778c; }
-    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Newsletter Curator Config</h1>
-    <p class="muted">Editing <code>{{ config_path }}</code></p>
+{% extends "admin_base.html" %}
 
-    {% if message %}
-      <div class="banner-ok">{{ message }}</div>
-    {% endif %}
+{% block title %}Control Room{% endblock %}
+{% block eyebrow %}Operations Console{% endblock %}
+{% block page_title %}Control Room{% endblock %}
+{% block page_lead %}Tune sourcing, ranking, summary, and delivery rules from one editorial desk instead of bouncing between disconnected utility pages.{% endblock %}
+{% block page_meta %}
+  Editing <code>{{ config_path }}</code>
+  {% if token_note %}
+    <span style="margin-left:8px;">{{ token_note }}</span>
+  {% endif %}
+{% endblock %}
+{% block page_actions %}
+  <a class="button-link ghost" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
+  <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+{% endblock %}
 
-    {% if token_note %}
-      <div class="muted" style="margin-bottom:10px;">{{ token_note }}</div>
-    {% endif %}
+{% block alerts %}
+  {% if message %}
+    <div class="banner-ok">{{ message }}</div>
+  {% endif %}
 
-    {% if errors %}
-      <div class="banner-err">
-        {% for err in errors %}
-          <div>{{ err }}</div>
-        {% endfor %}
+  {% if errors %}
+    <div class="banner-err">
+      {% for err in errors %}
+        <div>{{ err }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  {% set enabled_source_count = available_sources | selectattr("enabled") | list | length %}
+  <div class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Operational Snapshot</div>
+        <h2>What this config is driving right now</h2>
       </div>
-    {% endif %}
-
-    <form method="post">
-      {% if token %}
-      <input type="hidden" name="token" value="{{ token }}" />
-      {% endif %}
-
-      <div class="card">
-        <h2>Gmail</h2>
-        <div class="grid">
-          <div>
-            <label for="gmail_label">gmail.label</label>
-            <input id="gmail_label" name="gmail_label" value="{{ config.gmail.label }}" />
-          </div>
-          <div>
-            <label for="gmail_query_time_window">gmail.query_time_window</label>
-            <input id="gmail_query_time_window" name="gmail_query_time_window" value="{{ config.gmail.query_time_window }}" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Additional Sources</h2>
-        <div class="grid">
-          <div class="checkbox">
-            <input id="additional_enabled" type="checkbox" name="additional_enabled" {% if config.additional_sources.enabled %}checked{% endif %} />
-            <label for="additional_enabled">Enable additional_sources</label>
-          </div>
-          <div></div>
-          <div>
-            <label for="additional_script_path">additional_sources.script_path</label>
-            <input id="additional_script_path" name="additional_script_path" value="{{ config.additional_sources.script_path }}" />
-          </div>
-          <div>
-            <label for="additional_feeds_file">additional_sources.feeds_file</label>
-            <input id="additional_feeds_file" name="additional_feeds_file" value="{{ config.additional_sources.feeds_file }}" />
-          </div>
-          <div>
-            <label for="additional_hours">additional_sources.hours</label>
-            <input id="additional_hours" name="additional_hours" value="{{ config.additional_sources.hours }}" />
-          </div>
-          <div>
-            <label for="additional_top_per_category">additional_sources.top_per_category</label>
-            <input id="additional_top_per_category" name="additional_top_per_category" value="{{ config.additional_sources.top_per_category }}" />
-          </div>
-          <div>
-            <label for="additional_max_total">additional_sources.max_total</label>
-            <input id="additional_max_total" name="additional_max_total" value="{{ config.additional_sources.max_total }}" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Limits & Quotas</h2>
-        <div class="grid">
-          <div>
-            <label for="limit_max_links_per_email">limits.max_links_per_email</label>
-            <input id="limit_max_links_per_email" name="limit_max_links_per_email" value="{{ config.limits.max_links_per_email }}" />
-          </div>
-          <div>
-            <label for="limit_select_top_stories">limits.select_top_stories</label>
-            <input id="limit_select_top_stories" name="limit_select_top_stories" value="{{ config.limits.select_top_stories }}" />
-          </div>
-          <div>
-            <label for="limit_max_per_category">limits.max_per_category</label>
-            <input id="limit_max_per_category" name="limit_max_per_category" value="{{ config.limits.max_per_category }}" />
-          </div>
-          <div>
-            <label for="limit_final_top_stories">limits.final_top_stories</label>
-            <input id="limit_final_top_stories" name="limit_final_top_stories" value="{{ config.limits.final_top_stories }}" />
-          </div>
-          <div>
-            <label for="quota_gmail">limits.source_quotas.gmail</label>
-            <input id="quota_gmail" name="quota_gmail" value="{{ config.limits.source_quotas.gmail }}" />
-          </div>
-          <div>
-            <label for="quota_additional_source">limits.source_quotas.additional_source</label>
-            <input id="quota_additional_source" name="quota_additional_source" value="{{ config.limits.source_quotas.additional_source }}" />
-          </div>
-          <div>
-            <label for="limit_max_article_chars">limits.max_article_chars</label>
-            <input id="limit_max_article_chars" name="limit_max_article_chars" value="{{ config.limits.max_article_chars }}" />
-          </div>
-          <div>
-            <label for="limit_max_summary_workers">limits.max_summary_workers</label>
-            <input id="limit_max_summary_workers" name="limit_max_summary_workers" value="{{ config.limits.max_summary_workers }}" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>OpenAI Models</h2>
-        <div class="grid">
-          <div>
-            <label for="openai_reasoning_model">openai.reasoning_model</label>
-            <input id="openai_reasoning_model" name="openai_reasoning_model" value="{{ config.openai.reasoning_model }}" />
-          </div>
-          <div>
-            <label for="openai_summary_model">openai.summary_model</label>
-            <input id="openai_summary_model" name="openai_summary_model" value="{{ config.openai.summary_model }}" />
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Persona</h2>
-        <div>
-          <label for="persona_text">persona.text</label>
-          <textarea id="persona_text" name="persona_text">{{ config.persona.text }}</textarea>
-          <div class="muted" style="margin-top:8px;">This text influences ingest scoring, final ranking, and the “why this matters to me” section.</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Email</h2>
-        <div class="grid">
-          <div>
-            <label for="email_digest_subject">email.digest_subject</label>
-            <input id="email_digest_subject" name="email_digest_subject" value="{{ config.email.digest_subject }}" />
-          </div>
-          <div>
-            <label for="email_alert_recipient">email.alert_recipient</label>
-            <input id="email_alert_recipient" name="email_alert_recipient" value="{{ config.email.alert_recipient }}" />
-          </div>
-          <div>
-            <label for="email_alert_subject_prefix">email.alert_subject_prefix</label>
-            <input id="email_alert_subject_prefix" name="email_alert_subject_prefix" value="{{ config.email.alert_subject_prefix }}" />
-          </div>
-          <div>
-            <label for="email_digest_recipients">email.digest_recipients (one per line)</label>
-            <textarea id="email_digest_recipients" name="email_digest_recipients">{% for r in config.email.digest_recipients %}{{ r }}
-{% endfor %}</textarea>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Source Selection</h2>
-        {% if available_sources %}
-          <div class="muted" style="margin-bottom:10px;">These toggles control which centrally fetched repository sources are eligible during delivery.</div>
-          {% for source in available_sources %}
-            <div class="checkbox" style="margin-top:10px;">
-              <input
-                id="source_enabled_{{ source.id }}"
-                type="checkbox"
-                name="source_enabled_{{ source.id }}"
-                {% if source.enabled %}checked{% endif %}
-              />
-              <label for="source_enabled_{{ source.id }}">
-                {{ source.source_name }} <span class="muted">({{ source.source_type }})</span>
-              </label>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="muted">No centrally fetched sources are stored yet. Run the fetch job first.</div>
-        {% endif %}
-      </div>
-
-      <div class="actions">
-        <div class="muted">On save, a timestamped backup of config is created.</div>
-        <div style="display:flex; gap:10px;">
-          <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Past Newsletters</a>
-          <a class="button-link" href="{{ url_for('analytics_dashboard', token=token or None) }}">View Analytics</a>
-          <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
-          <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Newsletter</a>
-          <button type="submit">Save Config</button>
-        </div>
-      </div>
-    </form>
+      <div class="section-copy">The counts below pull the most important live settings into one scan line so it is obvious how today&apos;s digest will behave before you touch the form.</div>
+    </div>
+    <div class="stat-grid">
+      <article class="stat-card">
+        <div class="stat-label">Repository Sources</div>
+        <div class="stat-value">{{ available_sources|length }}</div>
+        <div class="stat-sub">{{ enabled_source_count }} currently eligible during delivery.</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Digest Recipients</div>
+        <div class="stat-value">{{ config.email.digest_recipients|length }}</div>
+        <div class="stat-sub">{{ config.email.digest_subject }}</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Story Budget</div>
+        <div class="stat-value">{{ config.limits.final_top_stories }}</div>
+        <div class="stat-sub">with {{ config.limits.max_per_category }} max per category and {{ config.limits.max_summary_workers }} summary workers.</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Editorial Lens</div>
+        <div class="stat-value">{% if config.persona.text %}On{% else %}Off{% endif %}</div>
+        <div class="stat-sub">{{ config.openai.reasoning_model }} + {{ config.openai.summary_model }}</div>
+      </article>
+    </div>
   </div>
-</body>
-</html>
+
+  <form method="post" class="stack">
+    {% if token %}
+    <input type="hidden" name="token" value="{{ token }}" />
+    {% endif %}
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Intake</div>
+          <h2>Gmail intake</h2>
+        </div>
+        <div class="section-copy">Define the mailbox slice that contributes candidate links to the repository before ranking begins.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field-label" for="gmail_label">gmail.label</label>
+          <input id="gmail_label" name="gmail_label" value="{{ config.gmail.label }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="gmail_query_time_window">gmail.query_time_window</label>
+          <input id="gmail_query_time_window" name="gmail_query_time_window" value="{{ config.gmail.query_time_window }}" />
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Ingestion</div>
+          <h2>Additional sources</h2>
+        </div>
+        <div class="section-copy">These settings control the centrally fetched feed pipeline that fills the repository before delivery chooses winners.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field field-span-full">
+          <label class="field-label" for="additional_enabled">Pipeline status</label>
+          <label class="checkbox-row" for="additional_enabled">
+            <input id="additional_enabled" type="checkbox" name="additional_enabled" {% if config.additional_sources.enabled %}checked{% endif %} />
+            <span>Enable additional_sources during the scheduled fetch run</span>
+          </label>
+        </div>
+        <div class="field">
+          <label class="field-label" for="additional_script_path">additional_sources.script_path</label>
+          <input id="additional_script_path" name="additional_script_path" value="{{ config.additional_sources.script_path }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="additional_feeds_file">additional_sources.feeds_file</label>
+          <input id="additional_feeds_file" name="additional_feeds_file" value="{{ config.additional_sources.feeds_file }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="additional_hours">additional_sources.hours</label>
+          <input id="additional_hours" name="additional_hours" value="{{ config.additional_sources.hours }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="additional_top_per_category">additional_sources.top_per_category</label>
+          <input id="additional_top_per_category" name="additional_top_per_category" value="{{ config.additional_sources.top_per_category }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="additional_max_total">additional_sources.max_total</label>
+          <input id="additional_max_total" name="additional_max_total" value="{{ config.additional_sources.max_total }}" />
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Selection</div>
+          <h2>Limits and quotas</h2>
+        </div>
+        <div class="section-copy">These knobs decide how much raw inventory comes in, how much is summarized, and how aggressively each source type can take over the final digest.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field-label" for="limit_max_links_per_email">limits.max_links_per_email</label>
+          <input id="limit_max_links_per_email" name="limit_max_links_per_email" value="{{ config.limits.max_links_per_email }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="limit_select_top_stories">limits.select_top_stories</label>
+          <input id="limit_select_top_stories" name="limit_select_top_stories" value="{{ config.limits.select_top_stories }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="limit_max_per_category">limits.max_per_category</label>
+          <input id="limit_max_per_category" name="limit_max_per_category" value="{{ config.limits.max_per_category }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="limit_final_top_stories">limits.final_top_stories</label>
+          <input id="limit_final_top_stories" name="limit_final_top_stories" value="{{ config.limits.final_top_stories }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="quota_gmail">limits.source_quotas.gmail</label>
+          <input id="quota_gmail" name="quota_gmail" value="{{ config.limits.source_quotas.gmail }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="quota_additional_source">limits.source_quotas.additional_source</label>
+          <input id="quota_additional_source" name="quota_additional_source" value="{{ config.limits.source_quotas.additional_source }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="limit_max_article_chars">limits.max_article_chars</label>
+          <input id="limit_max_article_chars" name="limit_max_article_chars" value="{{ config.limits.max_article_chars }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="limit_max_summary_workers">limits.max_summary_workers</label>
+          <input id="limit_max_summary_workers" name="limit_max_summary_workers" value="{{ config.limits.max_summary_workers }}" />
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Inference</div>
+          <h2>Model pairing</h2>
+        </div>
+        <div class="section-copy">Keep the reasoning model and summarizer visible together so cost and quality choices read as one decision instead of two disconnected fields.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field-label" for="openai_reasoning_model">openai.reasoning_model</label>
+          <input id="openai_reasoning_model" name="openai_reasoning_model" value="{{ config.openai.reasoning_model }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="openai_summary_model">openai.summary_model</label>
+          <input id="openai_summary_model" name="openai_summary_model" value="{{ config.openai.summary_model }}" />
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Editorial Direction</div>
+          <h2>Persona lens</h2>
+        </div>
+        <div class="section-copy">This guidance influences ingest scoring, final ranking, and the why-this-matters framing that readers see in the digest.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field field-span-full">
+          <label class="field-label" for="persona_text">persona.text</label>
+          <textarea id="persona_text" name="persona_text">{{ config.persona.text }}</textarea>
+          <div class="field-note">Write the operator or investor perspective you want the system to favor when it compresses the day.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Delivery</div>
+          <h2>Email output</h2>
+        </div>
+        <div class="section-copy">Set the subject line, alert fallback, and the final recipient list that receives the published briefing.</div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field-label" for="email_digest_subject">email.digest_subject</label>
+          <input id="email_digest_subject" name="email_digest_subject" value="{{ config.email.digest_subject }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="email_alert_recipient">email.alert_recipient</label>
+          <input id="email_alert_recipient" name="email_alert_recipient" value="{{ config.email.alert_recipient }}" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="email_alert_subject_prefix">email.alert_subject_prefix</label>
+          <input id="email_alert_subject_prefix" name="email_alert_subject_prefix" value="{{ config.email.alert_subject_prefix }}" />
+        </div>
+        <div class="field field-span-full">
+          <label class="field-label" for="email_digest_recipients">email.digest_recipients</label>
+          <textarea id="email_digest_recipients" name="email_digest_recipients">{% for r in config.email.digest_recipients %}{{ r }}
+{% endfor %}</textarea>
+          <div class="field-note">Enter one recipient per line.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Eligibility</div>
+          <h2>Repository source selection</h2>
+        </div>
+        <div class="section-copy">These switches decide which centrally fetched sources are allowed into the final delivery query after ingest has already stored them.</div>
+      </div>
+      {% if available_sources %}
+        <div class="toggle-grid">
+          {% for source in available_sources %}
+            <label class="toggle-card" for="source_enabled_{{ source.id }}">
+              <div>
+                <div style="font-size:18px;font-weight:700;line-height:1.3;color:inherit;">{{ source.source_name }}</div>
+                <div class="muted" style="margin-top:6px;">{{ source.source_type }}</div>
+              </div>
+              <div style="display:grid;justify-items:end;gap:8px;">
+                <span class="pill {% if not source.enabled %}muted-pill{% endif %}">{% if source.enabled %}Eligible{% else %}Muted{% endif %}</span>
+                <input
+                  id="source_enabled_{{ source.id }}"
+                  type="checkbox"
+                  name="source_enabled_{{ source.id }}"
+                  {% if source.enabled %}checked{% endif %}
+                />
+              </div>
+            </label>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="muted">No centrally fetched sources are stored yet. Run the fetch job first.</div>
+      {% endif %}
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Publish</div>
+          <h2>Save the current operating profile</h2>
+        </div>
+        <div class="section-copy">Saving writes a timestamped backup before the new config becomes the live admin state.</div>
+      </div>
+      <div class="button-row" style="justify-content:space-between;align-items:center;">
+        <div class="muted">A timestamped backup of the previous config is created on every save.</div>
+        <button type="submit">Save Config</button>
+      </div>
+    </section>
+  </form>
+{% endblock %}

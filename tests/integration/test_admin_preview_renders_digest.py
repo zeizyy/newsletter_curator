@@ -95,7 +95,8 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "Newsletter Preview" in page
+    assert "Briefing Desk" in page
+    assert "Command Rail" in page
     assert "Preview Digest" in page
     assert "Market Tape Preview" in page
     assert "Rates reset changes software valuations" in page
@@ -111,6 +112,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert email_safe_response.status_code == 200
     email_safe_page = email_safe_response.get_data(as_text=True)
     assert "Email-Safe Preview" in email_safe_page
+    assert "Briefing Desk" in email_safe_page
     assert "Preview Digest" in email_safe_page
     assert "Rates reset changes software valuations" in email_safe_page
     assert 'role="presentation"' in email_safe_page
@@ -122,6 +124,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert gmail_lab_response.status_code == 200
     gmail_lab_page = gmail_lab_response.get_data(as_text=True)
     assert "Gmail App Lab" in gmail_lab_page
+    assert "Briefing Desk" in gmail_lab_page
     assert "This is a local Gmail-focused approximation" in gmail_lab_page
     assert "Actual Sent Template" in gmail_lab_page
     assert "Email-Safe Candidate" in gmail_lab_page

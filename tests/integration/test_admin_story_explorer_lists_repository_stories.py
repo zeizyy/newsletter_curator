@@ -61,7 +61,9 @@ def test_admin_story_explorer_lists_repository_stories(monkeypatch, tmp_path):
     response = client.get("/stories")
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "Repository Stories" in page
+    assert "Signal Repository" in page
+    assert "Repository Inventory" in page
+    assert "Command Rail" in page
     assert "Rates reset changes software valuations" in page
     assert "Cloud budgets reset" in page
     assert "Infra Letter" in page

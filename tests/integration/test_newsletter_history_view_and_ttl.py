@@ -95,7 +95,8 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     history_response = client.get("/newsletters")
     assert history_response.status_code == 200
     history_page = history_response.get_data(as_text=True)
-    assert "Past Newsletters" in history_page
+    assert "Archive Ledger" in history_page
+    assert "Command Rail" in history_page
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
     assert "Old Digest" not in history_page
@@ -106,3 +107,4 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Recent Digest" in detail_page
     assert "Recent digest body" in detail_page
     assert "Back To History" in detail_page
+    assert "Stored Newsletter" in detail_page

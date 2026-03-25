@@ -1,153 +1,238 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="supported-color-schemes" content="light dark" />
+{% extends "admin_base.html" %}
+
+{% block title %}Briefing Desk{% endblock %}
+{% block eyebrow %}
+  {% if preview_template == "email_safe" %}
+    Email-Safe Preview
+  {% elif preview_template == "gmail_lab" %}
+    Gmail App Lab
+  {% else %}
+    Market Tape Preview
+  {% endif %}
+{% endblock %}
+{% block page_title %}Briefing Desk{% endblock %}
+{% block page_lead %}Inspect the exact digest payload the system will send, compare the web-first and email-safe renderings, and catch layout problems before delivery.{% endblock %}
+{% block page_meta %}Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code>{% endblock %}
+{% block page_actions %}
+  <a class="button-link {% if preview_template == 'market_tape' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='market_tape') }}">Web Template</a>
+  <a class="button-link {% if preview_template == 'email_safe' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='email_safe') }}">Email-Safe Template</a>
+  <a class="button-link {% if preview_template == 'gmail_lab' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='gmail_lab') }}">Gmail Lab</a>
+{% endblock %}
+{% block head_extra %}
   {% if generation_in_progress %}
   <meta http-equiv="refresh" content="4" />
   {% endif %}
-  <title>Newsletter Preview</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: linear-gradient(180deg,#eef4f3,#f8fbfb); color: #16222f; }
-    .wrap { max-width: 1160px; margin: 0 auto; padding: 24px 16px 40px; }
-    .card { background: rgba(255,255,255,0.88); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 22px; margin-bottom: 16px; box-shadow: 0 18px 44px rgba(17,27,45,0.08); }
-    .banner-err { background: #ffeceb; border: 1px solid #ffb3ad; color: #8a1f17; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-    .banner-info { background: #eef5ff; border: 1px solid #c6dafd; color: #174ea6; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
-    .muted { font-size: 12px; color: #5b6a78; }
-    .button-link { display: inline-block; background: #ddf3eb; color: #0c7a5b; border: 1px solid rgba(12,122,91,0.18); border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 700; text-decoration: none; }
-    .preview-frame { background: rgba(255,255,255,0.5); border: 1px solid rgba(19,91,72,0.18); border-radius: 22px; padding: 14px; }
-    .preview-label { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5b6a78; margin-bottom: 8px; }
-    .gmail-lab-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-    .gmail-lab-card { background: rgba(255,255,255,0.72); border: 1px solid rgba(19,91,72,0.18); border-radius: 18px; padding: 14px; }
-    .gmail-shell { border-radius: 28px; border: 1px solid rgba(18,32,47,0.16); padding: 12px 10px 16px; background: #1f1f22; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); }
-    .gmail-shell-header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px; color:#d6d8dc; font-size:12px; letter-spacing:0.04em; text-transform:uppercase; }
-    .gmail-shell-screen { width: 100%; max-width: 390px; margin: 0 auto; background: #ffffff; border-radius: 22px; overflow: hidden; }
-    .gmail-shell-screen.dark { background: #202124; }
-    .gmail-shell iframe { width: 100%; height: 760px; border: 0; display: block; background: transparent; }
-    .gmail-note { font-size: 12px; line-height: 1.5; color: #5b6a78; margin: 0 0 14px 0; }
-    pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-    h1 { margin: 0 0 6px 0; font-size: 44px; line-height: 1.02; letter-spacing: -0.04em; font-family: Trebuchet MS, Arial Narrow, Arial, sans-serif; }
-
-    @media (max-width: 680px) {
-      .wrap { padding: 16px 10px 24px; }
-      .card { padding: 18px; border-radius: 18px; }
-      .preview-frame { padding: 10px; border-radius: 18px; }
-      .gmail-lab-grid { grid-template-columns: 1fr; }
-      h1 { font-size: 34px; }
+    .preview-frame {
+      padding: 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(24, 37, 58, 0.1);
+      background: rgba(255, 255, 255, 0.42);
     }
 
-    @media (prefers-color-scheme: dark) {
-      body { background: linear-gradient(180deg,#07110f,#0b1815); color: #edf7f4; }
-      .card { background: rgba(12,20,18,0.96); border-color: rgba(73,134,112,0.26); }
-      .preview-frame { background: rgba(10,17,15,0.7); border-color: rgba(73,134,112,0.26); }
-      .gmail-lab-card { background: rgba(10,17,15,0.78); border-color: rgba(73,134,112,0.26); }
-      .muted, .preview-label { color: #b2c7c0; }
-      .gmail-note { color: #b2c7c0; }
-      .button-link { background: rgba(103,211,172,0.16); color: #7be0bc; border-color: rgba(103,211,172,0.2); }
+    .preview-viewport {
+      width: 100%;
+      min-height: 1080px;
+      border: 0;
+      display: block;
+      border-radius: 18px;
+      background: #ffffff;
+    }
+
+    .preview-label {
+      margin: 0 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--soft);
+    }
+
+    .gmail-lab-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .gmail-lab-card {
+      padding: 16px;
+      border-radius: 22px;
+      border: 1px solid rgba(24, 37, 58, 0.09);
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .gmail-shell {
+      border-radius: 30px;
+      border: 1px solid rgba(12, 18, 30, 0.2);
+      padding: 12px 10px 16px;
+      background: #1f2024;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .gmail-shell-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      color: #dde0e5;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .gmail-shell-screen {
+      width: 100%;
+      max-width: 390px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 24px;
+      overflow: hidden;
+    }
+
+    .gmail-shell iframe {
+      width: 100%;
+      height: 760px;
+      border: 0;
+      display: block;
+      background: transparent;
+    }
+
+    .gmail-note {
+      margin: 0 0 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    @media (max-width: 860px) {
+      .gmail-lab-grid { grid-template-columns: 1fr; }
+      .preview-frame { padding: 10px; }
+      .preview-viewport { min-height: 880px; }
     }
   </style>
-</head>
-<body>
-  <div class="wrap">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
-      <div>
-        <div class="preview-label">
-          {% if preview_template == "email_safe" %}
-            Email-Safe Preview
-          {% elif preview_template == "gmail_lab" %}
-            Gmail App Lab
-          {% else %}
-            Market Tape Preview
-          {% endif %}
-        </div>
-        <h1>Newsletter Preview</h1>
-        <div class="muted">Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code></div>
-      </div>
-      <div style="display:flex; gap:10px;">
-        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None, template='market_tape') }}">Web Template</a>
-        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None, template='email_safe') }}">Email-Safe Template</a>
-        <a class="button-link" href="{{ url_for('preview_newsletter', token=token or None, template='gmail_lab') }}">Gmail Lab</a>
-        <a class="button-link" href="{{ url_for('newsletter_history', token=token or None) }}">Past Newsletters</a>
-        <a class="button-link" href="{{ url_for('analytics_dashboard', token=token or None) }}">View Analytics</a>
-        <a class="button-link" href="{{ url_for('story_explorer', token=token or None) }}">Browse Stories</a>
-        <a class="button-link" href="{{ url_for('config_editor', token=token or None) }}">Back To Admin</a>
-      </div>
+{% endblock %}
+
+{% block alerts %}
+  {% if error %}
+    <div class="banner-err">{{ error }}</div>
+  {% endif %}
+
+  {% if generation_in_progress %}
+    <div class="banner-info">
+      {% if generation_started %}
+        Newsletter generation has started. This page will refresh automatically in a few seconds while the digest is being built.
+      {% else %}
+        Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
+      {% endif %}
+      {% if generation_state and generation_state.started_at %}
+        <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
+      {% endif %}
     </div>
+  {% endif %}
+{% endblock %}
 
-    {% if error %}
-      <div class="banner-err">{{ error }}</div>
-    {% endif %}
-
-    {% if generation_in_progress %}
-      <div class="banner-info">
-        {% if generation_started %}
-          Newsletter generation has started. This page will refresh automatically in a few seconds while the digest is being built.
-        {% else %}
-          Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
-        {% endif %}
-        {% if generation_state and generation_state.started_at %}
-          <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
-        {% endif %}
-      </div>
-    {% endif %}
-
-    {% if preview %}
-      <div class="card">
-        <div class="preview-label">Subject</div>
-        <div style="font-size:28px; font-weight:700; color:inherit; line-height:1.1;">{{ preview.subject }}</div>
+{% block content %}
+  {% if preview %}
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Delivery Subject</div>
+          <h2>{{ preview.subject }}</h2>
+        </div>
         {% if result %}
-          <div class="muted" style="margin-top:8px;">
-            ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}
-          </div>
+          <div class="section-copy">ranked={{ result.ranked_candidates }} selected={{ result.selected }} accepted={{ result.accepted_items }}{% if result.cached_preview %} from cached daily newsletter{% endif %}</div>
         {% endif %}
       </div>
+      <div class="stat-grid">
+        <article class="stat-card">
+          <div class="stat-label">Render Mode</div>
+          <div class="stat-value">
+            {% if preview_template == "email_safe" %}
+              Email
+            {% elif preview_template == "gmail_lab" %}
+              Gmail
+            {% else %}
+              Web
+            {% endif %}
+          </div>
+          <div class="stat-sub">
+            {% if preview_template == "gmail_lab" %}
+              Side-by-side mobile approximation.
+            {% elif preview_template == "email_safe" %}
+              Table-safe HTML candidate.
+            {% else %}
+              Browser-first market tape layout.
+            {% endif %}
+          </div>
+        </article>
+        <article class="stat-card">
+          <div class="stat-label">Body Format</div>
+          <div class="stat-value">Dual</div>
+          <div class="stat-sub">HTML preview plus the plain-text fallback sit on the same review surface.</div>
+        </article>
+      </div>
+    </section>
 
-      <div class="card">
-        <div class="preview-label">HTML Preview</div>
-        {% if preview_template == "gmail_lab" %}
-          <p class="gmail-note">
-            This is a local Gmail-focused approximation: it constrains the newsletter to a mobile viewport and lets you compare the current sent template against the email-safe version before sending.
-            It does not perfectly reproduce Gmail app dark-mode rewriting.
-          </p>
-          <div class="gmail-lab-grid">
-            <div class="gmail-lab-card">
-              <div class="preview-label">Actual Sent Template</div>
-              <div class="gmail-shell">
-                <div class="gmail-shell-header">
-                  <span>Gmail Mobile</span>
-                  <span>390px</span>
-                </div>
-                <div class="gmail-shell-screen">
-                  <iframe title="Actual sent template" srcdoc="{{ preview.market_tape_html | e }}"></iframe>
-                </div>
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Rendered Output</div>
+          <h2>HTML preview</h2>
+        </div>
+        <div class="section-copy">Check the full rendering, not just the stored markup, so hierarchy and wrapping problems are visible before send time.</div>
+      </div>
+      {% if preview_template == "gmail_lab" %}
+        <p class="gmail-note">
+          This is a local Gmail-focused approximation: it constrains the newsletter to a mobile viewport and lets you compare the current sent template against the email-safe version before sending.
+          It does not perfectly reproduce Gmail app dark-mode rewriting.
+        </p>
+        <div class="gmail-lab-grid">
+          <div class="gmail-lab-card">
+            <div class="preview-label">Actual Sent Template</div>
+            <div class="gmail-shell">
+              <div class="gmail-shell-header">
+                <span>Gmail Mobile</span>
+                <span>390px</span>
               </div>
-            </div>
-            <div class="gmail-lab-card">
-              <div class="preview-label">Email-Safe Candidate</div>
-              <div class="gmail-shell">
-                <div class="gmail-shell-header">
-                  <span>Gmail Mobile</span>
-                  <span>390px</span>
-                </div>
-                <div class="gmail-shell-screen">
-                  <iframe title="Email-safe template" srcdoc="{{ preview.email_safe_html | e }}"></iframe>
-                </div>
+              <div class="gmail-shell-screen">
+                <iframe title="Actual sent template" srcdoc="{{ preview.market_tape_html | e }}"></iframe>
               </div>
             </div>
           </div>
-        {% else %}
-          <div class="preview-frame">{{ preview.html_body | safe }}</div>
-        {% endif %}
-      </div>
+          <div class="gmail-lab-card">
+            <div class="preview-label">Email-Safe Candidate</div>
+            <div class="gmail-shell">
+              <div class="gmail-shell-header">
+                <span>Gmail Mobile</span>
+                <span>390px</span>
+              </div>
+              <div class="gmail-shell-screen">
+                <iframe title="Email-safe template" srcdoc="{{ preview.email_safe_html | e }}"></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="preview-frame">
+          <iframe class="preview-viewport" title="Rendered newsletter preview" srcdoc='{{ preview.html_body | replace("'", "&#39;") | safe }}'></iframe>
+        </div>
+      {% endif %}
+    </section>
 
-      <div class="card">
-        <div class="preview-label">Plain Text</div>
-        <pre>{{ preview.body }}</pre>
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Fallback</div>
+          <h2>Plain-text body</h2>
+        </div>
+        <div class="section-copy">Keep the text version visible so the hierarchy still makes sense when rich HTML is stripped.</div>
       </div>
-    {% endif %}
-  </div>
+      <pre>{{ preview.body }}</pre>
+    </section>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
   <script>
   (function () {
     const nodes = document.querySelectorAll('.preview-frame .story-time[data-story-timestamp]');
@@ -176,5 +261,4 @@
     });
   })();
   </script>
-</body>
-</html>
+{% endblock %}
