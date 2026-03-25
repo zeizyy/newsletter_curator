@@ -195,7 +195,7 @@ def score_gmail_stories_for_fetch(
 
     max_fetch_after_score = max(
         1,
-        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 15) or 15),
+        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 12) or 12),
     )
     persona_text = str(config.get("persona", {}).get("text", "")).strip()
     development_cfg = config.get("development", {})

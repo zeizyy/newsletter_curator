@@ -43,7 +43,7 @@ def test_gmail_prefetch_scoring_limits_article_fetches(tmp_path):
             "additional_sources": {"enabled": False},
             "limits": {
                 "max_links_per_email": 20,
-                "max_gmail_fetch_after_score": 15,
+                "max_gmail_fetch_after_score": 12,
                 "max_ingest_summaries": 10,
             },
         },
@@ -56,8 +56,7 @@ def test_gmail_prefetch_scoring_limits_article_fetches(tmp_path):
 
     assert result["status"] == "completed"
     assert result["stories_seen"] == 20
-    assert result["stories_selected_for_fetch"] == 15
-    assert len(article_fetcher.calls) == 15
-    assert len(stories) == 15
+    assert result["stories_selected_for_fetch"] == 12
+    assert len(article_fetcher.calls) == 12
+    assert len(stories) == 12
     assert "https://example.com/story-16" not in {story["url"] for story in stories}
-
