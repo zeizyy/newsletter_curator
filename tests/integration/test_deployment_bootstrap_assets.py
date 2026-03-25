@@ -35,6 +35,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
             "test-admin-token",
             "--openai-api-key",
             "test-openai-key",
+            "--buttondown-api-key",
+            "test-buttondown-key",
             "--public-base-url",
             "https://curator.example.com",
         ],
@@ -69,6 +71,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "CURATOR_ADMIN_PORT=9090" in env_text
     assert "CURATOR_ADMIN_TOKEN=test-admin-token" in env_text
     assert "OPENAI_API_KEY=test-openai-key" in env_text
+    assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "CURATOR_PUBLIC_BASE_URL=https://curator.example.com" in env_text
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
 

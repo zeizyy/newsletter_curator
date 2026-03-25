@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock
 
 from openai import OpenAI
+import requests
 
 from .config import BASE_DIR
 from .content import (
@@ -49,6 +50,18 @@ from .telemetry import (
     rewrite_newsletter_html_for_tracking,
 )
 
+BUTTONDOWN_SUBSCRIBERS_URL = "https://api.buttondown.com/v1/subscribers"
+BUTTONDOWN_API_VERSION = "2025-06-01"
+BUTTONDOWN_PAGE_SIZE = 100
+BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
+    "blocked",
+    "complained",
+    "removed",
+    "unactivated",
+    "undeliverable",
+    "unsubscribed",
+)
+
 
 def current_newsletter_date() -> str:
     return datetime.now(UTC).date().isoformat()
@@ -65,6 +78,108 @@ def get_repository_from_config(config: dict) -> SQLiteRepository:
     ).strip().lower() in {"1", "true", "yes", "on"}
     repository.initialize(allow_schema_reset=allow_schema_reset)
     return repository
+
+
+def normalize_digest_recipients(raw_recipients: list[str] | tuple[str, ...] | None) -> list[str]:
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_recipients or []:
+        normalized = str(raw).strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        recipients.append(normalized)
+        seen.add(normalized)
+    return recipients
+
+
+def _buttondown_subscriber_email(subscriber: dict) -> str:
+    return str(subscriber.get("email_address") or "").strip().lower()
+
+
+def fetch_buttondown_recipients(
+    *,
+    api_key: str,
+    requests_get=None,
+) -> list[str]:
+    requests_get = requests_get or requests.get
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "X-API-Version": BUTTONDOWN_API_VERSION,
+    }
+    params: list[tuple[str, str | int]] | None = [("per_page", BUTTONDOWN_PAGE_SIZE)]
+    params.extend(("-type", subscriber_type) for subscriber_type in BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES)
+    recipients: list[str] = []
+    seen: set[str] = set()
+    next_url: str | None = BUTTONDOWN_SUBSCRIBERS_URL
+    while next_url:
+        response = requests_get(
+            next_url,
+            headers=headers,
+            params=params,
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Buttondown subscribers response did not return a paginated object.")
+        results = payload.get("results", [])
+        if not isinstance(results, list):
+            raise ValueError("Buttondown subscribers response did not contain a list of results.")
+        for subscriber in results:
+            if not isinstance(subscriber, dict):
+                continue
+            email_address = _buttondown_subscriber_email(subscriber)
+            if not email_address or email_address in seen:
+                continue
+            recipients.append(email_address)
+            seen.add(email_address)
+        next_value = payload.get("next")
+        next_url = str(next_value).strip() if next_value else None
+        params = None
+    return recipients
+
+
+def resolve_digest_recipients(
+    config: dict,
+    *,
+    requests_get=None,
+) -> tuple[list[str], str]:
+    requests_get = requests_get or requests.get
+    configured_recipients = normalize_digest_recipients(
+        config.get("email", {}).get("digest_recipients", [])
+    )
+    buttondown_api_key = os.getenv("BUTTONDOWN_API_KEY", "").strip()
+    if not buttondown_api_key:
+        return configured_recipients, "config"
+    try:
+        buttondown_recipients = fetch_buttondown_recipients(
+            api_key=buttondown_api_key,
+            requests_get=requests_get,
+        )
+    except (requests.RequestException, ValueError) as exc:
+        print(
+            json.dumps(
+                {
+                    "event": "buttondown_subscribers_fallback",
+                    "reason": str(exc),
+                    "fallback_recipient_count": len(configured_recipients),
+                },
+                sort_keys=True,
+            )
+        )
+        return configured_recipients, "config_fallback"
+    if buttondown_recipients:
+        return buttondown_recipients, "buttondown"
+    print(
+        json.dumps(
+            {
+                "event": "buttondown_subscribers_empty_fallback",
+                "fallback_recipient_count": len(configured_recipients),
+            },
+            sort_keys=True,
+        )
+    )
+    return configured_recipients, "config_fallback"
 
 
 def summarize_for_ingest(
@@ -1086,6 +1201,7 @@ def run_delivery_job(
     group_summaries_by_category_fn=group_summaries_by_category,
     render_digest_html_fn=render_digest_html,
     send_email_fn=send_email,
+    resolve_digest_recipients_fn=resolve_digest_recipients,
     telemetry_enabled: bool = True,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
@@ -1093,9 +1209,20 @@ def run_delivery_job(
     cached_newsletter = repository.get_daily_newsletter(newsletter_date)
     newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
+    resolved_recipients, recipient_source = resolve_digest_recipients_fn(config)
     print(
         json.dumps(
             {"event": "delivery_readiness", "readiness": readiness},
+            sort_keys=True,
+        )
+    )
+    print(
+        json.dumps(
+            {
+                "event": "delivery_recipients",
+                "recipient_count": len(resolved_recipients),
+                "recipient_source": recipient_source,
+            },
             sort_keys=True,
         )
     )
@@ -1164,7 +1291,7 @@ def run_delivery_job(
             else html_body
         )
         sent_count = 0
-        for recipient in config["email"]["digest_recipients"]:
+        for recipient in resolved_recipients:
             send_email_fn(
                 service,
                 to_address=recipient,
@@ -1239,6 +1366,7 @@ def run_delivery_job(
                 "skipped_count": int(
                     cached_newsletter["metadata"].get("skipped_count", 0) or 0
                 ),
+                "recipient_source": recipient_source,
                 "sent_recipients": sent_recipients,
                 "digest_subject": cached_newsletter["subject"],
                 "digest_body": cached_newsletter["body"],
@@ -1309,6 +1437,7 @@ def run_delivery_job(
                 selected_items=list(pipeline_result.get("accepted_story_items", [])),
                 daily_newsletter_id=daily_newsletter_id,
             )
+            pipeline_result["recipient_source"] = recipient_source
             pipeline_result["content"] = newsletter_content
             pipeline_result["delivery_digest_html"] = delivery_html
         repository.complete_delivery_run(

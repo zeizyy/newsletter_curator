@@ -45,7 +45,11 @@ uv sync
 ```bash
 export OPENAI_API_KEY="your_key_here"
 ```
-4) Review and edit `config.yaml`.
+4) Optional: if you want delivery recipients to come from Buttondown first, set:
+```bash
+export BUTTONDOWN_API_KEY="your_buttondown_api_key_here"
+```
+5) Review and edit `config.yaml`.
 
 ## Run
 Production default:
@@ -90,6 +94,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --admin-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
+  --buttondown-api-key 'your_buttondown_api_key' \
   --enable-linger \
   --install-crontab
 ```
@@ -113,8 +118,9 @@ What the script installs when flags are passed:
 Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
+- The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
 - Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels.
-- The generated env file stores the admin token and OpenAI key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
+- The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedule defaults to:
   - `30 14 * * *` run `daily_pipeline.py`
 - The default cron output now uses fixed UTC times instead of `CRON_TZ`, because some cron daemons ignore `CRON_TZ`.
@@ -173,6 +179,10 @@ Default URL is `http://127.0.0.1:8080`.
 Optional security token:
 - Set `CURATOR_ADMIN_TOKEN` on the server.
 - Access with `?token=...` or header `X-Admin-Token: ...`.
+
+Optional Buttondown recipient sync:
+- Set `BUTTONDOWN_API_KEY` on the server.
+- Delivery will fetch active subscribers from Buttondown first and fall back to `email.digest_recipients` if the API key is missing, the API request fails, or Buttondown returns no deliverable subscribers.
 
 Optional host/port overrides:
 - `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
