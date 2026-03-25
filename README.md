@@ -2,6 +2,12 @@
 
 Personal newsletter curator with a repository-first architecture: Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
 
+Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter>
+
+Example newsletter render:
+
+![Example newsletter render](docs/readme-assets/newsletter-example.png)
+
 ## Features
 - Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
 - Single daily orchestrator for production cron scheduling
