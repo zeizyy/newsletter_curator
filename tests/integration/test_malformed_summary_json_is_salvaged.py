@@ -17,14 +17,14 @@ class RankingOnlyOpenAI:
     def create(self, *, model: str, messages: list[dict]):
         user_message = next(message["content"] for message in messages if message["role"] == "user")
         if "Select the top stories." not in user_message:
-            raise AssertionError("Preview should not call the summary model when ingest summaries exist.")
+            raise AssertionError("Preview should reuse the salvaged ingest summary.")
         content = json.dumps(
             [
                 {
                     "index": 1,
-                    "category": "Markets / stocks / macro / economy",
-                    "score": 9.5,
-                    "rationale": "Ranking-only test selection.",
+                    "category": "Science / space / frontier tech",
+                    "score": 9.7,
+                    "rationale": "Malformed-summary regression selection.",
                 }
             ]
         )
@@ -35,18 +35,18 @@ class RankingOnlyOpenAI:
         )
 
 
-def test_preview_uses_ingest_summaries_without_summary_llm(monkeypatch, tmp_path):
+def test_malformed_summary_json_is_salvaged_for_persistence_and_preview(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
 
     config_path = write_temp_config(
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
-            "development": {"fake_inference": True},
-            "persona": {"text": "Macro investor focused on rates and valuations."},
+            "development": {"fake_inference": False},
             "email": {
                 "digest_recipients": ["preview@example.com"],
-                "digest_subject": "Ingest Summary Preview",
+                "digest_subject": "Malformed Summary Regression",
             },
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
@@ -63,25 +63,43 @@ def test_preview_uses_ingest_summaries_without_summary_llm(monkeypatch, tmp_path
     source_fetcher = FakeSourceFetcher(
         [
             {
-                "subject": "[markets] Rates reset",
-                "from": "Macro Wire",
-                "source_name": "Macro Wire",
+                "subject": "[space] Moon base roadmap",
+                "from": "NYTimes Home",
+                "source_name": "NYTimes Home",
                 "source_type": "additional_source",
                 "date": recent_iso,
-                "url": "https://example.com/markets/rates-reset",
-                "anchor_text": "Rates reset changes software valuations",
-                "context": "Rates reset context",
-                "category": "Markets / stocks / macro / economy",
+                "url": "https://example.com/space/moon-base",
+                "anchor_text": "NASA unveils moon base roadmap",
+                "context": "Moon base roadmap context",
+                "category": "Science / space / frontier tech",
             }
         ]
     )
     article_fetcher = FakeArticleFetcher(
         {
-            "https://example.com/markets/rates-reset": (
-                "Rates reset changes software valuations and reprices growth names."
+            "https://example.com/space/moon-base": (
+                "NASA unveils a decade roadmap for a permanent Moon base and suspends Gateway."
             )
         }
     )
+    malformed_summary = (
+        '{"headline":"NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended",'
+        '"body":"Key takeaways:\\n- NASA commits ~$20B over the next 7 years and another ~\\$10B later.\\n\\n'
+        'Why this matters to me: Procurement demand will widen across autonomy, power, and logistics."}'
+    )
+
+    monkeypatch.setattr(
+        jobs,
+        "score_story_candidates",
+        lambda items, usage_by_model, top_stories, reasoning_model, **kwargs: [
+            {
+                **dict(items[0]),
+                "score": 9.7,
+                "rationale": "Malformed-summary regression selection.",
+            }
+        ],
+    )
+    monkeypatch.setattr(jobs, "summarize_article_with_llm", lambda *args, **kwargs: malformed_summary)
 
     fetch_result = run_fetch_sources_job(
         config,
@@ -95,13 +113,20 @@ def test_preview_uses_ingest_summaries_without_summary_llm(monkeypatch, tmp_path
     preview_config["development"] = dict(config["development"])
     preview_config["development"]["fake_inference"] = False
     monkeypatch.setattr(main, "OpenAI", RankingOnlyOpenAI)
-
     preview_result = main.preview_job(preview_config)
 
     assert fetch_result["status"] == "completed"
-    assert fetch_result["usage_by_model"]["gpt-5-mini"]["total"] > 0
-    assert stories[0]["summary_headline"]
-    assert stories[0]["summary_body"]
+    assert len(stories) == 1
+    assert stories[0]["summary_headline"] == (
+        "NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended"
+    )
+    assert "~$10B later." in stories[0]["summary_body"]
+    assert "\\$10B" not in stories[0]["summary_body"]
+    assert stories[0]["summary_body"].startswith("Key takeaways:")
     assert preview_result["status"] == "completed"
     assert preview_result["preview"] is not None
-    assert "Rates reset changes software valuations" in preview_result["preview"]["body"]
+    assert "Untitled" not in preview_result["preview"]["body"]
+    assert '{"headline"' not in preview_result["preview"]["body"]
+    assert "NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended" in (
+        preview_result["preview"]["body"]
+    )

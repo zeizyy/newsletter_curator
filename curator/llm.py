@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from openai import OpenAI
 
@@ -50,6 +51,57 @@ def parse_selection_items(text: str) -> list[dict]:
         except json.JSONDecodeError:
             return []
     return []
+
+
+def _extract_json_object(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
+    return text
+
+
+def _repair_invalid_json_escapes(text: str) -> str:
+    # Strip stray backslashes before characters that are not valid JSON escapes, e.g. "\$".
+    return re.sub(r"\\(?![\"\\/bfnrtu])", "", text)
+
+
+def _parse_summary_payload(summary: str) -> dict | None:
+    candidates = [summary, _extract_json_object(summary)]
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            return payload
+
+    repaired_candidates = [_repair_invalid_json_escapes(candidate) for candidate in candidates]
+    for candidate in repaired_candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            return payload
+
+    for candidate in repaired_candidates:
+        headline_match = re.search(r'"headline"\s*:\s*"(?P<value>(?:[^"\\]|\\.)*)"', candidate)
+        body_match = re.search(
+            r'"body"\s*:\s*"(?P<value>(?:[^"\\]|\\.)*)"',
+            candidate,
+            flags=re.DOTALL,
+        )
+        if not headline_match and not body_match:
+            continue
+        headline = bytes((headline_match.group("value") if headline_match else "").strip(), "utf-8").decode(
+            "unicode_escape"
+        ) if headline_match else ""
+        body = bytes((body_match.group("value") if body_match else "").strip(), "utf-8").decode(
+            "unicode_escape"
+        ) if body_match else ""
+        return {"headline": headline, "body": body}
+    return None
 
 
 def select_top_stories(
@@ -192,12 +244,9 @@ def score_story_candidates(
 
 
 def extract_summary_json(summary: str) -> tuple[str, str]:
-    try:
-        data = json.loads(summary)
-        if isinstance(data, dict):
-            headline = data.get("headline", "").strip() or "Untitled"
-            body = data.get("body", "").strip()
-            return headline, body or summary
-    except json.JSONDecodeError:
-        pass
+    data = _parse_summary_payload(summary)
+    if isinstance(data, dict):
+        headline = str(data.get("headline", "") or "").strip() or "Untitled"
+        body = str(data.get("body", "") or "").strip()
+        return headline, body or summary
     return "Untitled", summary
