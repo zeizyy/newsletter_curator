@@ -52,11 +52,17 @@ def test_fetch_gmail_logs_progress(tmp_path, capsys):
         "fetch_selection_complete",
         "article_fetch_started",
         "article_fetch_finished",
+        "checkpoint_finished",
         "article_fetch_progress",
         "article_fetch_complete",
         "prepared_candidates",
+        "scoring_started",
         "scoring_complete",
+        "summaries_started",
+        "summary_started",
+        "summary_finished",
         "summaries_complete",
+        "persist_started",
         "persist_complete",
     ]
     started = next(event for event in progress_events if event["stage"] == "article_fetch_started")

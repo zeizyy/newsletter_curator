@@ -382,6 +382,17 @@ def _prepare_ingest_snapshot_candidates(
             )
             stats["checkpointed_stories"] += 1
             stats["checkpointed_snapshots"] += 1
+            _log_ingest_progress(
+                job_name,
+                "checkpoint_finished",
+                index=index + 1,
+                total=len(stories),
+                story_id=prepared_item.get("story_id"),
+                source_name=prepared_item.get("story", {}).get("source_name", ""),
+                subject=prepared_item.get("story", {}).get("subject", ""),
+                url=prepared_item.get("story", {}).get("url", ""),
+                paywall_detected=result.get("paywall_detected", False),
+            )
             if result.get("paywall_detected"):
                 stats["paywall_stories"] += 1
         if completed == len(stories) or completed % 5 == 0:
@@ -425,6 +436,7 @@ def _run_parallel_ingest_summaries(
     repository: SQLiteRepository,
     usage_by_model: dict,
     lock: Lock,
+    job_name: str,
 ) -> int:
     summarizable = [
         item for item in prepared if item.get("summary_selected") and not item["paywall_detected"]
@@ -435,15 +447,33 @@ def _run_parallel_ingest_summaries(
         return 0
 
     def summarize(item: dict) -> tuple[str, str, str]:
+        _log_ingest_progress(
+            job_name,
+            "summary_started",
+            story_id=item.get("story_id"),
+            source_name=item.get("story", {}).get("source_name", ""),
+            subject=item.get("story", {}).get("subject", ""),
+            url=item.get("story", {}).get("url", ""),
+        )
         article_text = str(item.get("article_text", "") or "")
         if not article_text:
             article_text = repository.get_article_text_for_story(int(item["story_id"]))
-        return summarize_for_ingest(
+        summary_raw, summary_headline, summary_body = summarize_for_ingest(
             config,
             article_text,
             usage_by_model,
             lock,
         )
+        _log_ingest_progress(
+            job_name,
+            "summary_finished",
+            story_id=item.get("story_id"),
+            source_name=item.get("story", {}).get("source_name", ""),
+            subject=item.get("story", {}).get("subject", ""),
+            url=item.get("story", {}).get("url", ""),
+            summary_chars=len(summary_body),
+        )
+        return summary_raw, summary_headline, summary_body
 
     if worker_count == 1:
         results = [summarize(item) for item in summarizable]
@@ -634,6 +664,7 @@ def run_fetch_sources_job(
             run_id=run_id,
         )
         _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
+        _log_ingest_progress(job_name, "scoring_started", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
             config,
             prepared,
@@ -647,14 +678,26 @@ def run_fetch_sources_job(
             scored_candidates=stats["scored_candidates"],
             summary_candidates=stats["summary_candidates"],
         )
+        _log_ingest_progress(
+            job_name,
+            "summaries_started",
+            summary_candidates=stats["summary_candidates"],
+        )
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
             repository=repository,
             usage_by_model=usage_by_model,
             lock=lock,
+            job_name=job_name,
         )
         _log_ingest_progress(job_name, "summaries_complete", summary_workers=stats["summary_workers"])
+        _log_ingest_progress(
+            job_name,
+            "persist_started",
+            prepared_candidates=len(prepared),
+            summary_candidates=stats["summary_candidates"],
+        )
         _persist_ingest_snapshots(
             prepared,
             config=config,
@@ -780,6 +823,7 @@ def run_fetch_gmail_job(
             run_id=run_id,
         )
         _log_ingest_progress(job_name, "prepared_candidates", prepared_candidates=len(prepared))
+        _log_ingest_progress(job_name, "scoring_started", prepared_candidates=len(prepared))
         selected_candidates = score_for_ingest(
             config,
             prepared,
@@ -793,14 +837,26 @@ def run_fetch_gmail_job(
             scored_candidates=stats["scored_candidates"],
             summary_candidates=stats["summary_candidates"],
         )
+        _log_ingest_progress(
+            job_name,
+            "summaries_started",
+            summary_candidates=stats["summary_candidates"],
+        )
         stats["summary_workers"] = _run_parallel_ingest_summaries(
             prepared,
             config=config,
             repository=repository,
             usage_by_model=usage_by_model,
             lock=lock,
+            job_name=job_name,
         )
         _log_ingest_progress(job_name, "summaries_complete", summary_workers=stats["summary_workers"])
+        _log_ingest_progress(
+            job_name,
+            "persist_started",
+            prepared_candidates=len(prepared),
+            summary_candidates=stats["summary_candidates"],
+        )
         _persist_ingest_snapshots(
             prepared,
             config=config,
