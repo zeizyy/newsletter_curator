@@ -211,17 +211,17 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
             timestamp = str(entry.get("display_timestamp", "")).strip()
             takeaways, why_matters, other = split_summary_sections(body)
             link_html = (
-                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#22496f;text-decoration:none;font-weight:700;">Read original</a>'
+                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#0c7a5b;text-decoration:none;font-weight:700;">Read original</a>'
                 if url
                 else ""
             )
             source_html = (
-                f'<span class="story-source" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(source_name)}</span>'
+                f'<span class="story-source" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(12,122,91,0.08);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(source_name)}</span>'
                 if source_name
                 else ""
             )
             time_html = (
-                f'<span class="story-time" data-story-timestamp="{html.escape(str(entry.get("timestamp_iso", "")).strip())}" data-story-timestamp-fallback="{html.escape(timestamp)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(18,32,47,0.06);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
+                f'<span class="story-time" data-story-timestamp="{html.escape(str(entry.get("timestamp_iso", "")).strip())}" data-story-timestamp-fallback="{html.escape(timestamp)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(12,122,91,0.08);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
                 if timestamp
                 else ""
             )
@@ -246,7 +246,7 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                 takeaways_html = (
                     '<div class="summary-block" style="margin:0 0 14px 0;">'
                     '<div class="summary-heading" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;'
-                    'text-transform:uppercase;color:#8f6731;margin:0 0 8px 0;">Key Signals</div>'
+                    'text-transform:uppercase;color:#0f8661;margin:0 0 8px 0;">Key Signals</div>'
                     '<ul class="summary-list" style="margin:0 0 0 18px;padding:0;color:#243244;line-height:1.65;">'
                     f"{items_html}"
                     "</ul>"
@@ -256,10 +256,10 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
             if why_matters:
                 why_text = " ".join(why_matters)
                 why_html = (
-                    '<div class="summary-note" style="margin:0 0 12px 0;padding:12px 14px;background:#eef2f7;'
-                    'border:1px solid rgba(34,73,111,0.12);border-radius:16px;">'
+                    '<div class="summary-note" style="margin:0 0 12px 0;padding:12px 14px;background:#eef8f4;'
+                    'border:1px solid rgba(12,122,91,0.14);border-radius:16px;">'
                     '<div class="summary-heading" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;'
-                    'text-transform:uppercase;color:#22496f;margin:0 0 6px 0;">Why It Matters</div>'
+                    'text-transform:uppercase;color:#0c7a5b;margin:0 0 6px 0;">Why It Matters</div>'
                     f'<div class="summary-note-copy" style="margin:0;color:#2a3547;line-height:1.65;">{html.escape(why_text)}</div>'
                     '</div>'
                 )
@@ -271,10 +271,10 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                 )
             cards.append(
                 (
-                    '<div class="story-card" style="background:#fffdf9;border:1px solid rgba(24,37,58,0.1);border-radius:24px;'
+                    '<div class="story-card" style="background:#ffffff;border:1px solid rgba(19,91,72,0.12);border-radius:24px;'
                     'padding:22px;margin:0 0 16px 0;box-shadow:0 10px 24px rgba(24,37,58,0.05);">'
                     '<div class="story-meta" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px 0;">'
-                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#dbe7f5;color:#22496f;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Lead {index:02d}</span>'
+                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#ddf3eb;color:#0c7a5b;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Lead {index:02d}</span>'
                     f"{time_html}"
                     f"{source_html}"
                     "</div>"
@@ -294,7 +294,7 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                 '<div class="category-head" style="display:flex;justify-content:space-between;gap:14px;align-items:flex-end;'
                 'margin:0 0 12px 2px;padding:0 4px;">'
                 f'<div class="category-title" style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:28px;font-weight:700;line-height:1.05;color:#16222f;letter-spacing:-0.03em;">{html.escape(category)}</div>'
-                f'<div class="category-count" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:#8f6731;">{count_label}</div>'
+                f'<div class="category-count" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:#0f8661;">{count_label}</div>'
                 "</div>"
                 f"{''.join(cards)}"
                 "</div>"
@@ -322,7 +322,7 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
             timestamp = str(entry.get("display_timestamp", "")).strip()
             takeaways, why_matters, other = split_summary_sections(body)
             link_html = (
-                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0b57d0;text-decoration:underline;font-weight:700;">Read original</a>'
+                f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
                 if url
                 else ""
             )
@@ -356,8 +356,8 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
             if why_matters:
                 why_text = " ".join(why_matters)
                 why_html = (
-                    '<div style="margin:0 0 12px 0;padding:10px 12px;background:#f5f9ff;'
-                    'border:1px solid #dbe7f5;border-radius:12px;">'
+                    '<div style="margin:0 0 12px 0;padding:10px 12px;background:#eef8f4;'
+                    'border:1px solid #d7efe6;border-radius:12px;">'
                     '<div style="margin:0 0 4px 0;font-size:12px;line-height:1.4;color:#5b6a78;'
                     'font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Why this matters</div>'
                     f'<div style="font-size:14px;line-height:1.6;color:#223240;">{html.escape(why_text)}</div>'
@@ -380,9 +380,9 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
             cards.append(
                 (
                     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-                    'style="border-collapse:separate;background:#fffdf9;border:1px solid #d6d6d9;border-radius:18px;margin:0 0 14px 0;">'
+                    'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:18px;margin:0 0 14px 0;">'
                     '<tr><td style="padding:14px 14px 12px 14px;">'
-                    f'<div style="margin:0 0 10px 0;font-size:11px;line-height:1.4;color:#8f6731;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;">Lead {index:02d}</div>'
+                    f'<div style="margin:0 0 10px 0;font-size:11px;line-height:1.4;color:#0f8661;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;">Lead {index:02d}</div>'
                     f"{metadata_html}"
                     f'<div style="margin:0 0 12px 0;font-size:24px;line-height:1.08;font-weight:700;color:#16222f;font-family:Georgia,\'Times New Roman\',Times,serif;">{html.escape(title)}</div>'
                     f"{other_html}"
@@ -395,9 +395,9 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
         category_sections.append(
             (
                 '<div style="margin:0 0 18px 0;">'
-                f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#8f6731;'
+                f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#0f8661;'
                 'font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">'
-                f'{html.escape(category)} <span style="color:#736755;font-weight:600;">({count_label})</span>'
+                f'{html.escape(category)} <span style="color:#6f7f87;font-weight:600;">({count_label})</span>'
                 '</div>'
                 f"{''.join(cards)}"
                 '</div>'

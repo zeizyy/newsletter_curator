@@ -467,3 +467,11 @@ Add new entries below this line.
 - Outcome: Summary parsing now salvages near-valid JSON, including invalid escapes like `\$`, before falling back to raw text, so malformed model output no longer ships as `Untitled` with a raw `{"headline": ...}` body. The regression test covers both ingest persistence and preview reuse.
 - Open risks: Truly malformed summaries that cannot be recovered structurally still fall back to raw text; that is safer than the previous behavior, but a later hardening pass could add stricter rejection or retry behavior.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-03-25 - Visual rollback restored the earlier green palette without changing IA
+- Context: User requested the newer beige/blue editorial palette be reverted while keeping the improved information architecture from the recent UX work intact.
+- Files changed: `agent_progress.md`, `curator/rendering.py`, `templates/admin_base.html`, `templates/digest.html`, `templates/digest_email_safe.html`
+- Tests run: `uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py -q`; `uv run pytest tests/integration/test_admin_config_page_uses_shared_shell.py tests/integration/test_admin_newsletter_analytics_page.py tests/integration/test_newsletter_history_view_and_ttl.py -q`
+- Outcome: The admin shell, browser digest, and email-safe digest now use the earlier green palette again while preserving the current layout, hierarchy, empty states, and preview behavior.
+- Open risks: This rollback targets the primary palette only; if further visual tuning is needed, the remaining typography and spacing decisions still reflect the newer editorial UX pass.
+- Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
