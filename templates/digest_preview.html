@@ -113,22 +113,6 @@
 {% endblock %}
 
 {% block alerts %}
-  {% if error %}
-    <div class="banner-err">{{ error }}</div>
-  {% endif %}
-
-  {% if generation_in_progress %}
-    <div class="banner-info">
-      {% if generation_started %}
-        Newsletter generation has started. This page will refresh automatically in a few seconds while the digest is being built.
-      {% else %}
-        Newsletter generation is already in progress for today. This page will refresh automatically in a few seconds instead of starting another generation.
-      {% endif %}
-      {% if generation_state and generation_state.started_at %}
-        <div class="muted" style="margin-top:6px;">started_at={{ generation_state.started_at }}</div>
-      {% endif %}
-    </div>
-  {% endif %}
 {% endblock %}
 
 {% block content %}
@@ -228,6 +212,62 @@
         <div class="section-copy">Keep the text version visible so the hierarchy still makes sense when rich HTML is stripped.</div>
       </div>
       <pre>{{ preview.body }}</pre>
+    </section>
+  {% else %}
+    <section class="surface surface-section">
+      <div class="state-shell {% if generation_in_progress %}is-info{% elif error %}is-warning{% else %}is-empty{% endif %}">
+        <div class="section-kicker">
+          {% if generation_in_progress %}
+            Generation Status
+          {% elif error %}
+            Preview Status
+          {% else %}
+            Briefing Status
+          {% endif %}
+        </div>
+        <div class="state-head">
+          <div>
+            <h2 class="state-title">
+              {% if generation_in_progress %}
+                Stand by for the next refresh
+              {% elif error %}
+                Preview unavailable right now
+              {% else %}
+                No briefing is ready yet
+              {% endif %}
+            </h2>
+            <p class="state-copy">
+              {% if generation_in_progress %}
+                {% if generation_started %}
+                  Newsletter generation has started. This desk will refresh automatically in a few seconds while the digest is being built.
+                {% else %}
+                  Newsletter generation is already in progress for today. This desk will refresh automatically in a few seconds instead of starting another run.
+                {% endif %}
+              {% elif error %}
+                {{ error }}
+              {% else %}
+                This view will populate once a daily digest has been generated or a cached issue is available to inspect.
+              {% endif %}
+            </p>
+          </div>
+          <span class="pill">
+            {% if generation_in_progress %}
+              Auto refresh on
+            {% elif error %}
+              Action needed
+            {% else %}
+              Waiting
+            {% endif %}
+          </span>
+        </div>
+        {% if generation_state and generation_state.started_at %}
+          <div class="state-meta">Generation started at <code>{{ generation_state.started_at }}</code>.</div>
+        {% endif %}
+        <div class="state-actions">
+          <a class="button-link primary" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
+          <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+        </div>
+      </div>
     </section>
   {% endif %}
 {% endblock %}

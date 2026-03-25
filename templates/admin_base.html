@@ -16,7 +16,7 @@
       --line: rgba(24, 37, 58, 0.12);
       --line-strong: rgba(24, 37, 58, 0.2);
       --ink: #182235;
-      --muted: #5d6677;
+      --muted: #495365;
       --soft: #84765c;
       --signal: #22496f;
       --signal-soft: #dbe7f5;
@@ -233,6 +233,85 @@
       color: var(--info-text);
     }
 
+    .state-shell {
+      display: grid;
+      gap: 12px;
+      padding: 20px 22px;
+      border-radius: 24px;
+      border: 1px solid rgba(24, 37, 58, 0.1);
+      background: rgba(255, 255, 255, 0.54);
+    }
+
+    .state-shell.is-success {
+      background: linear-gradient(180deg, rgba(237, 246, 239, 0.92), rgba(255, 255, 255, 0.72));
+      border-color: var(--success-line);
+    }
+
+    .state-shell.is-warning {
+      background: linear-gradient(180deg, rgba(255, 240, 237, 0.95), rgba(255, 255, 255, 0.72));
+      border-color: var(--error-line);
+    }
+
+    .state-shell.is-info {
+      background: linear-gradient(180deg, rgba(238, 244, 251, 0.96), rgba(255, 255, 255, 0.72));
+      border-color: var(--info-line);
+    }
+
+    .state-shell.is-empty {
+      background: linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(255, 255, 255, 0.7));
+      border-color: rgba(24, 37, 58, 0.11);
+    }
+
+    .state-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .state-title {
+      margin: 0;
+      font-family: var(--display-font);
+      font-size: clamp(28px, 3.6vw, 40px);
+      line-height: 1;
+      letter-spacing: -0.04em;
+    }
+
+    .state-copy {
+      margin: 0;
+      max-width: 48rem;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    .state-meta {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .state-meta code {
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(24, 37, 58, 0.06);
+      font-size: 12px;
+    }
+
+    .state-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .state-list {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
     .stack { display: grid; gap: 16px; }
 
     .surface-section {
@@ -447,6 +526,87 @@
       .masthead,
       .surface-section { padding: 18px; border-radius: 22px; }
       .section-head { flex-direction: column; }
+      .button-row,
+      .action-row { justify-content: stretch !important; }
+      .button-row > *,
+      .action-row > * {
+        flex: 1 1 220px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .table-wrap {
+        overflow: visible;
+        border: 0;
+        background: transparent;
+      }
+
+      table,
+      tbody,
+      tr,
+      td {
+        display: block;
+        width: 100%;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tbody {
+        display: grid;
+        gap: 12px;
+      }
+
+      tr {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+        border-radius: 20px;
+        border: 1px solid rgba(24, 37, 58, 0.08);
+        background: rgba(255, 255, 255, 0.58);
+      }
+
+      td {
+        padding: 0;
+        border-bottom: 0;
+      }
+
+      td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--soft);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav-pills,
+      .action-row,
+      .button-row,
+      .state-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .nav-pill,
+      .button-link,
+      button {
+        width: 100%;
+      }
+
+      .utility-panel,
+      .state-shell {
+        padding: 16px;
+      }
+
+      .state-head {
+        flex-direction: column;
+      }
     }
 
     @media (prefers-color-scheme: dark) {
@@ -458,7 +618,7 @@
         --line: rgba(203, 213, 225, 0.1);
         --line-strong: rgba(203, 213, 225, 0.18);
         --ink: #edf1f7;
-        --muted: #c7d0dc;
+        --muted: #d9e1ec;
         --soft: #d7bf93;
         --signal: #9dc1ec;
         --signal-soft: rgba(59, 91, 128, 0.34);
@@ -502,6 +662,31 @@
       button.primary-button,
       button[type="submit"] {
         background: linear-gradient(135deg, #315d88, #21496f);
+      }
+
+      .state-shell {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(203, 213, 225, 0.12);
+      }
+
+      .state-shell.is-success {
+        background: linear-gradient(180deg, rgba(43, 70, 56, 0.82), rgba(24, 28, 35, 0.88));
+        border-color: rgba(104, 154, 127, 0.52);
+      }
+
+      .state-shell.is-warning {
+        background: linear-gradient(180deg, rgba(99, 38, 31, 0.84), rgba(28, 24, 24, 0.9));
+        border-color: rgba(226, 141, 128, 0.48);
+      }
+
+      .state-shell.is-info {
+        background: linear-gradient(180deg, rgba(31, 56, 82, 0.86), rgba(21, 27, 37, 0.9));
+        border-color: rgba(120, 159, 201, 0.46);
+      }
+
+      .state-shell.is-empty {
+        background: linear-gradient(180deg, rgba(48, 42, 34, 0.86), rgba(24, 28, 35, 0.9));
+        border-color: rgba(203, 213, 225, 0.14);
       }
     }
   </style>

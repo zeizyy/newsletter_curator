@@ -100,6 +100,7 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
     assert "Old Digest" not in history_page
+    assert 'data-label="Subject"' in history_page
 
     detail_response = client.get("/newsletters/2026-03-21")
     assert detail_response.status_code == 200
@@ -108,3 +109,24 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Recent digest body" in detail_page
     assert "Back To History" in detail_page
     assert "Stored Newsletter" in detail_page
+
+
+def test_newsletter_history_empty_state_uses_editorial_shell(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    client = admin_app.app.test_client()
+    response = client.get("/newsletters")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "No stored newsletters yet" in html
+    assert "Preview Today" in html
+    assert "Open Control Room" in html

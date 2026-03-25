@@ -79,19 +79,19 @@
         <tbody>
           {% for story in stories %}
           <tr>
-            <td>
+            <td data-label="Story">
               <div style="font-weight:700; color:inherit;">
                 <a class="title-link" href="{{ story.url }}" target="_blank" rel="noreferrer">{{ story.anchor_text or story.subject or story.url }}</a>
               </div>
               <div class="muted" style="margin-top:4px;">{{ story.context }}</div>
             </td>
-            <td>
+            <td data-label="Source">
               <div>{{ story.source_name }}</div>
               <div class="muted">{{ story.source_type }}</div>
             </td>
-            <td>{{ story.category or "Uncategorized" }}</td>
-            <td>{{ story.published_at or story.first_seen_at }}</td>
-            <td>
+            <td data-label="Category">{{ story.category or "Uncategorized" }}</td>
+            <td data-label="Published">{{ story.published_at or story.first_seen_at }}</td>
+            <td data-label="Snapshot">
               <div class="status-stack">
                 {% if story.article_text %}
                   <span class="pill">snapshot stored</span>
@@ -109,7 +109,19 @@
       </table>
     </div>
     {% else %}
-    <div class="muted">No stories match the current filters.</div>
+    <div class="state-shell is-empty">
+      <div class="section-kicker">Inventory Empty</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">No stories match this view</h2>
+          <p class="state-copy">Broaden the filters or run another ingest pass. This repository view is meant to answer whether the pipeline captured enough useful depth before ranking begins.</p>
+        </div>
+      </div>
+      <div class="state-actions">
+        <a class="button-link ghost" href="{{ url_for('story_explorer', token=token or None) }}">Clear Filters</a>
+        <a class="button-link primary" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
+      </div>
+    </div>
     {% endif %}
   </section>
 {% endblock %}

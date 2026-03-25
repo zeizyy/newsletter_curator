@@ -126,7 +126,9 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     )
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "Saved" in page
+    assert "Configuration saved" in page
+    assert "Review Today&apos;s Digest" in page
+    assert "No repository sources to tune yet" not in page
 
     selections = repository.list_sources_with_selection()
     selection_map = {row["source_name"]: row["enabled"] for row in selections}

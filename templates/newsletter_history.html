@@ -6,7 +6,7 @@
 {% block page_lead %}Browse the stored daily briefings as a coherent record of what the system actually published, not just what today&apos;s config says it might do.{% endblock %}
 {% block page_meta %}Browsing stored daily newsletters in <code>{{ config_path }}</code>{% endblock %}
 {% block page_actions %}
-  <a class="button-link ghost" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
+  <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
 {% endblock %}
 
 {% block content %}
@@ -33,14 +33,14 @@
         <tbody>
           {% for newsletter in newsletters %}
           <tr>
-            <td>
+            <td data-label="Date">
               <div style="font-weight:700;">{{ newsletter.newsletter_date }}</div>
               <div class="muted">{{ newsletter.created_at }}</div>
             </td>
-            <td>{{ newsletter.subject }}</td>
-            <td><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
-            <td>{{ newsletter.updated_at }}</td>
-            <td>
+            <td data-label="Subject">{{ newsletter.subject }}</td>
+            <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td data-label="Updated">{{ newsletter.updated_at }}</td>
+            <td data-label="Action">
               <a class="button-link ghost" href="{{ url_for('newsletter_history_detail', newsletter_date=newsletter.newsletter_date, token=token or None) }}">Open</a>
             </td>
           </tr>
@@ -49,7 +49,19 @@
       </table>
     </div>
     {% else %}
-    <div class="muted">No generated newsletters are currently stored.</div>
+    <div class="state-shell is-empty">
+      <div class="section-kicker">Archive Empty</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">No stored newsletters yet</h2>
+          <p class="state-copy">The archive fills in only after a digest has been generated and persisted. Preview today&apos;s issue or let the scheduled run publish the first stored briefing.</p>
+        </div>
+      </div>
+      <div class="state-actions">
+        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
+        <a class="button-link ghost" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
+      </div>
+    </div>
     {% endif %}
   </section>
 {% endblock %}

@@ -1263,7 +1263,7 @@
     {
       "id": "T55",
       "title": "Polish admin empty, loading, and narrow-screen states under the new shell",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T53"],
       "scope": [
         "Refine the empty, loading, saved, and error states so they feel native to the new editorial shell",

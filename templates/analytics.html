@@ -60,22 +60,22 @@
         <tbody>
           {% for newsletter in recent_newsletters %}
           <tr>
-            <td>
+            <td data-label="Date">
               <div style="font-weight:700;">{{ newsletter.newsletter_date }}</div>
               <div class="muted">{{ newsletter.created_at }}</div>
             </td>
-            <td>{{ newsletter.subject }}</td>
-            <td><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
-            <td>
+            <td data-label="Subject">{{ newsletter.subject }}</td>
+            <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td data-label="Opens">
               <div>{{ newsletter.total_opens }} opens</div>
               <div class="muted">{{ newsletter.unique_opens }} unique</div>
             </td>
-            <td>
+            <td data-label="Clicks">
               <div>{{ newsletter.total_clicks }} clicks</div>
               <div class="muted">{{ newsletter.unique_clicks }} unique</div>
             </td>
-            <td>{{ "%.1f"|format(newsletter.click_through_rate) if newsletter.click_through_rate is not none else "n/a" }}%</td>
-            <td>
+            <td data-label="CTR">{{ "%.1f"|format(newsletter.click_through_rate) if newsletter.click_through_rate is not none else "n/a" }}%</td>
+            <td data-label="Top Story">
               {% if newsletter.top_story_url %}
                 <a class="title-link" href="{{ newsletter.top_story_url }}" target="_blank" rel="noreferrer">{{ newsletter.top_story_title or newsletter.top_story_url }}</a>
                 <div class="muted">{{ newsletter.top_story_clicks or 0 }} clicks</div>
@@ -89,7 +89,19 @@
       </table>
     </div>
     {% else %}
-    <div class="muted">No persisted newsletters have telemetry yet.</div>
+    <div class="state-shell is-empty">
+      <div class="section-kicker">Telemetry Queue Empty</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">No measured issues yet</h2>
+          <p class="state-copy">Analytics appear only after persisted newsletters collect open and click telemetry. Ship or inspect an issue first, then come back here for comparative evidence.</p>
+        </div>
+      </div>
+      <div class="state-actions">
+        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
+        <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+      </div>
+    </div>
     {% endif %}
   </section>
 
@@ -116,18 +128,26 @@
         <tbody>
           {% for story in top_clicked_stories %}
           <tr>
-            <td><a class="title-link" href="{{ story.target_url }}" target="_blank" rel="noreferrer">{{ story.story_title or story.target_url }}</a></td>
-            <td>{{ story.total_clicks }}</td>
-            <td>{{ story.unique_clicks }}</td>
-            <td>{{ story.newsletters_clicked }}</td>
-            <td>{{ story.last_newsletter_date }}</td>
+            <td data-label="Story"><a class="title-link" href="{{ story.target_url }}" target="_blank" rel="noreferrer">{{ story.story_title or story.target_url }}</a></td>
+            <td data-label="Clicks">{{ story.total_clicks }}</td>
+            <td data-label="Unique Clicks">{{ story.unique_clicks }}</td>
+            <td data-label="Newsletters">{{ story.newsletters_clicked }}</td>
+            <td data-label="Last Seen">{{ story.last_newsletter_date }}</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="muted">No tracked clicks yet.</div>
+    <div class="state-shell is-empty">
+      <div class="section-kicker">No Winners Yet</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">Top clicks will appear here</h2>
+          <p class="state-copy">Once readers interact with tracked links, this leaderboard will surface the stories that actually pulled attention.</p>
+        </div>
+      </div>
+    </div>
     {% endif %}
   </section>
 {% endblock %}

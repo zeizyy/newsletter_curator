@@ -11,21 +11,44 @@
   {% endif %}
 {% endblock %}
 {% block page_actions %}
-  <a class="button-link ghost" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
+  <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
   <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
 {% endblock %}
 
 {% block alerts %}
   {% if message %}
-    <div class="banner-ok">{{ message }}</div>
+    <section class="state-shell is-success">
+      <div class="section-kicker">Saved State</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">Configuration saved</h2>
+          <p class="state-copy">The editorial desk is now using the updated operating profile. Review today&apos;s digest while the changes are still fresh.</p>
+        </div>
+        <span class="pill">Ready to verify</span>
+      </div>
+      <div class="state-meta">{{ message }}</div>
+      <div class="state-actions">
+        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
+        <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+      </div>
+    </section>
   {% endif %}
 
   {% if errors %}
-    <div class="banner-err">
-      {% for err in errors %}
-        <div>{{ err }}</div>
-      {% endfor %}
-    </div>
+    <section class="state-shell is-warning">
+      <div class="section-kicker">Configuration Error</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">Fix the form before saving</h2>
+          <p class="state-copy">The admin app rejected one or more fields. Correct the highlighted values, then save again.</p>
+        </div>
+      </div>
+      <ul class="state-list">
+        {% for err in errors %}
+          <li>{{ err }}</li>
+        {% endfor %}
+      </ul>
+    </section>
   {% endif %}
 {% endblock %}
 
@@ -267,7 +290,19 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="muted">No centrally fetched sources are stored yet. Run the fetch job first.</div>
+        <div class="state-shell is-empty">
+          <div class="section-kicker">Selection Queue Empty</div>
+          <div class="state-head">
+            <div>
+              <h2 class="state-title">No repository sources to tune yet</h2>
+              <p class="state-copy">This control fills in after a fetch pass stores centrally sourced feeds. Until then, the desk can still edit scoring and delivery settings, but there are no repository sources to mute or elevate.</p>
+            </div>
+          </div>
+          <div class="state-actions">
+            <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
+            <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+          </div>
+        </div>
       {% endif %}
     </section>
 
