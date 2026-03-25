@@ -1240,7 +1240,7 @@
     {
       "id": "T54",
       "title": "Restore true browser-first cached previews and harden screenshot QA for digest variants",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T53"],
       "scope": [
         "Make cached admin previews show the browser-first market-tape rendering directly from stored render groups instead of falling back to the cached delivery HTML",

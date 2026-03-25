@@ -127,12 +127,15 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     admin_preview_page = admin_preview.get_data(as_text=True)
     assert "Market Tape Preview" in admin_preview_page
     assert "Rates reset changes software valuations" in admin_preview_page
+    assert 'font-family:Georgia' in admin_preview_page
+    assert 'role="presentation"' not in admin_preview_page
 
     admin_email_safe_preview = client.get("/preview?template=email_safe")
     assert admin_email_safe_preview.status_code == 200
     admin_email_safe_page = admin_email_safe_preview.get_data(as_text=True)
     assert "Email-Safe Preview" in admin_email_safe_page
     assert 'role="presentation"' in admin_email_safe_page
+    assert 'font-family:Georgia' in admin_email_safe_page
 
     with repository.connect() as connection:
         connection.execute("DELETE FROM fetched_stories")

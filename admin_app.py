@@ -90,13 +90,18 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
     content = newsletter.get("content", {}) or {}
     metadata = newsletter.get("metadata", {}) or {}
     render_groups = content.get("render_groups") or metadata.get("render_groups", {})
-    market_tape_html = str(newsletter.get("html_body", "") or "")
-    email_safe_html = market_tape_html
-    if render_groups and rerender_stored_newsletters_enabled():
+    stored_html = str(newsletter.get("html_body", "") or "")
+    market_tape_html = stored_html
+    email_safe_html = stored_html
+    # Stored render_groups are the canonical cached content when they exist.
+    if render_groups:
         from curator.rendering import render_digest_html, render_email_safe_digest_html
 
         market_tape_html = render_digest_html(render_groups)
         email_safe_html = render_email_safe_digest_html(render_groups)
+    elif rerender_stored_newsletters_enabled():
+        market_tape_html = stored_html
+        email_safe_html = stored_html
     html_body = email_safe_html if preview_template == "email_safe" else market_tape_html
     return {
         "subject": str(newsletter.get("subject", "") or ""),

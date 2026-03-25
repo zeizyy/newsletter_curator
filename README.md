@@ -178,7 +178,16 @@ Optional host/port overrides:
 - `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
 - `CURATOR_ADMIN_PORT` (default `8080`)
 - `CURATOR_ADMIN_ENABLE_PREVIEW=1` enables live `/preview` generation. By default the admin app runs in lightweight debug mode and only serves read-only repository views plus any already-stored newsletter for today.
-- `CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS=1` forces stored newsletters to be rerendered through the current templates. By default the lightweight admin app reuses persisted HTML directly.
+- `CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS=1` is now only a legacy fallback for stored newsletters that do not have cached `render_groups`. When `render_groups` exist, cached admin previews render from stored content automatically.
+
+Local screenshot review pack for a stored newsletter:
+```bash
+uv run python scripts/render_preview_review_pack.py \
+  --config-path config.yaml \
+  --newsletter-date 2026-03-25
+```
+
+This is a macOS-only inspection helper that uses Quick Look (`qlmanage`) to write HTML fixtures plus PNG screenshots into a temp or explicit output directory.
 
 ## Configuration
 Edit `config.yaml`:
