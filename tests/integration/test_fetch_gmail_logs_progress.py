@@ -49,6 +49,7 @@ def test_fetch_gmail_logs_progress(tmp_path, capsys):
     stages = [event["stage"] for event in progress_events]
     assert stages == [
         "stories_collected",
+        "fetch_selection_complete",
         "article_fetch_started",
         "article_fetch_finished",
         "article_fetch_progress",

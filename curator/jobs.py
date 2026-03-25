@@ -185,6 +185,71 @@ def score_for_ingest(
     return selected_candidates
 
 
+def score_gmail_stories_for_fetch(
+    config: dict,
+    stories: list[dict],
+    usage_by_model: dict,
+) -> list[dict]:
+    if not stories:
+        return []
+
+    max_fetch_after_score = max(
+        1,
+        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 15) or 15),
+    )
+    persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    development_cfg = config.get("development", {})
+    scoring_model = config["openai"]["reasoning_model"]
+
+    scoring_items = []
+    for position, story in enumerate(stories):
+        scoring_items.append(
+            {
+                "_candidate_position": position,
+                "anchor_text": story.get("anchor_text", ""),
+                "subject": story.get("subject", ""),
+                "source_name": story.get("source_name", ""),
+                "category": story.get("category", ""),
+                "context": story.get("context", ""),
+                "article_excerpt": "",
+                "url": story.get("url", ""),
+            }
+        )
+
+    if development_cfg.get("fake_inference", False):
+        ranked = fake_score_story_candidates(
+            scoring_items,
+            usage_by_model,
+            max_fetch_after_score,
+            scoring_model,
+            persona_text=persona_text,
+        )
+    else:
+        ranked = score_story_candidates(
+            scoring_items,
+            usage_by_model,
+            max_fetch_after_score,
+            scoring_model,
+            persona_text=persona_text,
+            client_factory=OpenAI,
+        )
+
+    if not ranked:
+        ranked = scoring_items[:max_fetch_after_score]
+
+    selected: list[dict] = []
+    seen_positions = set()
+    for ranked_item in ranked:
+        position = ranked_item.get("_candidate_position")
+        if not isinstance(position, int) or position in seen_positions:
+            continue
+        selected.append(dict(stories[position]))
+        seen_positions.add(position)
+        if len(selected) >= max_fetch_after_score:
+            break
+    return selected
+
+
 def _prepare_ingest_snapshot_candidates(
     stories: list[dict],
     *,
@@ -538,6 +603,7 @@ def run_fetch_sources_job(
         "run_id": run_id,
         "ttl_cleanup": cleanup_result,
         "stories_seen": 0,
+        "stories_selected_for_fetch": 0,
         "stories_persisted": 0,
         "snapshots_persisted": 0,
         "article_failures": 0,
@@ -691,8 +757,20 @@ def run_fetch_gmail_job(
         stories = collect_gmail_links_fn(service, config)
         stats["stories_seen"] = len(stories)
         _log_ingest_progress(job_name, "stories_collected", stories_seen=stats["stories_seen"])
-        prepared = _prepare_ingest_snapshot_candidates(
+        stories_to_fetch = score_gmail_stories_for_fetch(
+            config,
             stories,
+            usage_by_model,
+        )
+        stats["stories_selected_for_fetch"] = len(stories_to_fetch)
+        _log_ingest_progress(
+            job_name,
+            "fetch_selection_complete",
+            stories_seen=stats["stories_seen"],
+            stories_selected_for_fetch=stats["stories_selected_for_fetch"],
+        )
+        prepared = _prepare_ingest_snapshot_candidates(
+            stories_to_fetch,
             config=config,
             article_fetcher=article_fetcher,
             stats=stats,
@@ -764,6 +842,7 @@ def run_fetch_gmail_job(
                 "job": job_name,
                 "ttl_cleanup": cleanup_result,
                 "stories_seen": stats["stories_seen"],
+                "stories_selected_for_fetch": stats["stories_selected_for_fetch"],
                 "stories_persisted": stats["stories_persisted"],
                 "snapshots_persisted": stats["snapshots_persisted"],
                 "article_failures": stats["article_failures"],

@@ -46,6 +46,7 @@ DEFAULT_CONFIG = {
         "max_fetch_workers": 5,
         "max_summary_workers": 5,
         "max_ingest_summaries": 20,
+        "max_gmail_fetch_after_score": 15,
     },
     "email": {
         "digest_recipients": ["zeizyy@gmail.com", "maisongting@gmail.com"],
