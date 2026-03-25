@@ -7,11 +7,13 @@ import threading
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
 
-from curator.jobs import assess_delivery_readiness, current_newsletter_date, get_repository_from_config
+from curator import config as config_module
 from curator.gmail import normalize_gmail_source_name
-from curator.rendering import render_digest_html, render_email_safe_digest_html
+from curator.repository import SQLiteRepository
 from curator.telemetry import strip_tracking_pixel
-from main import CONFIG_PATH, DEFAULT_CONFIG, merge_dicts, preview_job
+
+CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
+DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 
 
 app = Flask(__name__)
@@ -28,12 +30,49 @@ def load_config_file() -> dict:
 
 
 def load_merged_config() -> dict:
-    return merge_dicts(DEFAULT_CONFIG, load_config_file())
+    return config_module.merge_dicts(DEFAULT_CONFIG, load_config_file())
+
+
+def merge_dicts(base: dict, override: dict) -> dict:
+    return config_module.merge_dicts(base, override)
+
+
+def current_newsletter_date() -> str:
+    return dt.datetime.now(dt.UTC).date().isoformat()
+
+
+def preview_generation_enabled() -> bool:
+    return parse_bool(os.getenv("CURATOR_ADMIN_ENABLE_PREVIEW", ""))
+
+
+def rerender_stored_newsletters_enabled() -> bool:
+    return parse_bool(os.getenv("CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS", ""))
+
+
+def assess_readiness(config: dict, repository) -> dict:
+    from curator.jobs import assess_delivery_readiness
+
+    return assess_delivery_readiness(config, repository)
+
+
+def run_preview_job(config: dict) -> dict:
+    from main import preview_job
+
+    return preview_job(config)
 
 
 def load_repository(config: dict):
     try:
-        return get_repository_from_config(config)
+        database_cfg = config.get("database", {})
+        database_path = database_cfg.get("path", "data/newsletter_curator.sqlite3")
+        if not Path(database_path).is_absolute():
+            database_path = config_module.BASE_DIR / database_path
+        repository = SQLiteRepository(Path(database_path))
+        allow_schema_reset = bool(database_cfg.get("allow_schema_reset", False)) or str(
+            os.getenv("CURATOR_ALLOW_SCHEMA_RESET", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        repository.initialize(allow_schema_reset=allow_schema_reset)
+        return repository
     except Exception:
         return None
 
@@ -53,7 +92,9 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
     render_groups = content.get("render_groups") or metadata.get("render_groups", {})
     market_tape_html = str(newsletter.get("html_body", "") or "")
     email_safe_html = market_tape_html
-    if render_groups:
+    if render_groups and rerender_stored_newsletters_enabled():
+        from curator.rendering import render_digest_html, render_email_safe_digest_html
+
         market_tape_html = render_digest_html(render_groups)
         email_safe_html = render_email_safe_digest_html(render_groups)
     html_body = email_safe_html if preview_template == "email_safe" else market_tape_html
@@ -81,7 +122,7 @@ def start_preview_generation(config: dict, newsletter_date: str, generation_toke
         if repository is None:
             return
         try:
-            result = preview_job(config)
+            result = run_preview_job(config)
             preview = result.get("preview")
             if preview is None:
                 repository.complete_preview_generation(
@@ -371,7 +412,6 @@ def preview_newsletter():
         error = "Repository is unavailable. Check the server logs for configuration or schema issues."
         status_code = 200
     else:
-        readiness = assess_delivery_readiness(merged, repository)
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
             preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
@@ -383,31 +423,39 @@ def preview_newsletter():
                 "accepted_items": len(cached_newsletter.get("selected_items", []) or []),
                 "cached_preview": True,
             }
-        elif not readiness["ok"]:
-            required_source_types = readiness.get("required_source_types", [])
-            if required_source_types:
-                source_hint = ", ".join(required_source_types)
-                error = (
-                    "No delivery-ready stories are available yet. "
-                    f"Run the fetch job to populate the repository for: {source_hint}."
-                )
-            else:
-                error = "No delivery-ready stories are available yet. Run the fetch job and try again."
+        elif not preview_generation_enabled():
+            error = (
+                "Live preview generation is disabled in lightweight debug mode. "
+                "Set CURATOR_ADMIN_ENABLE_PREVIEW=1 to enable it."
+            )
             status_code = 200
         else:
-            lock_state = repository.acquire_preview_generation(newsletter_date)
-            if not lock_state.get("acquired", True):
-                generation_in_progress = True
-                generation_state = lock_state
-                status_code = 202
+            readiness = assess_readiness(merged, repository)
+            if not readiness["ok"]:
+                required_source_types = readiness.get("required_source_types", [])
+                if required_source_types:
+                    source_hint = ", ".join(required_source_types)
+                    error = (
+                        "No delivery-ready stories are available yet. "
+                        f"Run the fetch job to populate the repository for: {source_hint}."
+                    )
+                else:
+                    error = "No delivery-ready stories are available yet. Run the fetch job and try again."
+                status_code = 200
             else:
-                generation_token = str(lock_state.get("generation_token", ""))
-                if generation_token:
-                    start_preview_generation(merged, newsletter_date, generation_token)
-                generation_in_progress = True
-                generation_state = lock_state
-                generation_started = True
-                status_code = 202
+                lock_state = repository.acquire_preview_generation(newsletter_date)
+                if not lock_state.get("acquired", True):
+                    generation_in_progress = True
+                    generation_state = lock_state
+                    status_code = 202
+                else:
+                    generation_token = str(lock_state.get("generation_token", ""))
+                    if generation_token:
+                        start_preview_generation(merged, newsletter_date, generation_token)
+                    generation_in_progress = True
+                    generation_state = lock_state
+                    generation_started = True
+                    status_code = 202
 
     if generation_in_progress and repository:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)

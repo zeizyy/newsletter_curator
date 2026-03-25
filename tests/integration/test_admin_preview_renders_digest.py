@@ -29,6 +29,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_ADMIN_ENABLE_PREVIEW", "1")
     config = main.load_config()
 
     repository = get_repository_from_config(config)

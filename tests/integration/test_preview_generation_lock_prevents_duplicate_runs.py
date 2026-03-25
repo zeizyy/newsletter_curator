@@ -20,11 +20,12 @@ def test_preview_generation_lock_prevents_duplicate_runs(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_ADMIN_ENABLE_PREVIEW", "1")
     config = main.load_config()
     repository = get_repository_from_config(config)
     monkeypatch.setattr(
         admin_app,
-        "assess_delivery_readiness",
+        "assess_readiness",
         lambda _config, _repository: {"ok": True, "required_source_types": [], "ready_source_types": []},
     )
 
@@ -50,7 +51,7 @@ def test_preview_generation_lock_prevents_duplicate_runs(monkeypatch, tmp_path):
             "accepted_items": 1,
         }
 
-    monkeypatch.setattr(admin_app, "preview_job", fake_preview_job)
+    monkeypatch.setattr(admin_app, "run_preview_job", fake_preview_job)
 
     def run_first_request():
         client = admin_app.app.test_client()

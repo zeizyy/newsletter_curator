@@ -177,6 +177,8 @@ Optional security token:
 Optional host/port overrides:
 - `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
 - `CURATOR_ADMIN_PORT` (default `8080`)
+- `CURATOR_ADMIN_ENABLE_PREVIEW=1` enables live `/preview` generation. By default the admin app runs in lightweight debug mode and only serves read-only repository views plus any already-stored newsletter for today.
+- `CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS=1` forces stored newsletters to be rerendered through the current templates. By default the lightweight admin app reuses persisted HTML directly.
 
 ## Configuration
 Edit `config.yaml`:
