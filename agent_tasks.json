@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-25",
+  "updated_at": "2026-03-26",
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -1281,6 +1281,31 @@
         "The new shell remains legible and intentional in empty, loading, and saved states",
         "Primary actions stay obvious on narrow screens",
         "The targeted state-coverage tests pass"
+      ]
+    },
+    {
+      "id": "T56",
+      "title": "Add a CLI dry-run delivery mode that sends the digest only to an explicit test recipient",
+      "status": "pending",
+      "depends_on": ["T52"],
+      "scope": [
+        "Add a command-line option to the delivery entrypoint or generated wrapper for a dry-run recipient override",
+        "Ensure dry-run delivery bypasses Buttondown and config recipients and sends only to the CLI-provided address",
+        "Keep the normal production path unchanged when the flag is absent",
+        "Make the behavior usable for server-side end-to-end verification without editing config files"
+      ],
+      "artifacts": [
+        "delivery CLI argument plumbing and recipient-resolution override",
+        "bootstrap or generated runner support for passing the dry-run recipient",
+        "integration coverage for dry-run recipient override behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deliver_digest_dry_run_recipient_override.py -q",
+      "integration_test": "tests/integration/test_deliver_digest_dry_run_recipient_override.py",
+      "done_when": [
+        "deliver_digest.py accepts an explicit dry-run recipient input",
+        "A dry run sends to exactly that address and to no Buttondown or config recipients",
+        "The normal delivery path is unchanged when dry-run mode is not requested",
+        "The integration test passes offline"
       ]
     }
   ]

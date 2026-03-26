@@ -1,10 +1,24 @@
 from __future__ import annotations
 
 import html
+import os
 from urllib.parse import quote
 
 
 TRACKING_PIXEL_TAG_MARKER = "newsletter-tracking-pixel"
+
+
+def telemetry_enabled(config: dict) -> bool:
+    tracking_cfg = config.get("tracking", {})
+    raw_enabled = tracking_cfg.get("enabled")
+    if isinstance(raw_enabled, bool):
+        return raw_enabled
+    if isinstance(raw_enabled, str) and raw_enabled.strip():
+        return raw_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    env_enabled = os.getenv("CURATOR_ENABLE_TELEMETRY", "").strip()
+    if env_enabled:
+        return env_enabled.lower() in {"1", "true", "yes", "on"}
+    return False
 
 
 def resolve_tracking_base_url(config: dict) -> str:
@@ -12,8 +26,6 @@ def resolve_tracking_base_url(config: dict) -> str:
     base_url = str(tracking_cfg.get("base_url", "")).strip()
     if base_url:
         return base_url.rstrip("/")
-
-    import os
 
     env_base_url = os.getenv("CURATOR_PUBLIC_BASE_URL", "").strip()
     if env_base_url:

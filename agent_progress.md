@@ -475,3 +475,11 @@ Add new entries below this line.
 - Outcome: The admin shell, browser digest, and email-safe digest now use the earlier green palette again while preserving the current layout, hierarchy, empty states, and preview behavior.
 - Open risks: This rollback targets the primary palette only; if further visual tuning is needed, the remaining typography and spacing decisions still reflect the newer editorial UX pass.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-03-26 - Telemetry defaults now require explicit opt-in for redirect tracking
+- Context: Disabled delivery-time click/open tracking by default so server-side digest sends no longer emit broken `/track/*` redirects when the admin app is not publicly serving telemetry endpoints.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `config.yaml`, `curator/config.py`, `curator/telemetry.py`, `main.py`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`, `tests/integration/test_delivery_tracking_disabled_by_default.py`, `tests/integration/test_newsletter_telemetry_tracking_endpoints.py`, `tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py tests/integration/test_newsletter_telemetry_tracking_endpoints.py tests/integration/test_delivery_tracking_disabled_by_default.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py -q`
+- Outcome: Tracking is now disabled unless explicitly enabled through config or bootstrap-generated env, generated server assets carry `CURATOR_ENABLE_TELEMETRY`, and delivery leaves original article URLs untouched by default while still supporting tracked redirects when opted in.
+- Open risks: Operators who do want tracking must rerun bootstrap or update the generated env to set `CURATOR_ENABLE_TELEMETRY=1`, otherwise analytics endpoints will remain inactive for sent digests.
+- Next recommended task: `T56` Add a CLI dry-run delivery mode that sends the digest only to an explicit test recipient.

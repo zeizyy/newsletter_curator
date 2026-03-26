@@ -99,6 +99,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --buttondown-api-key 'your_buttondown_api_key' \
+  --enable-telemetry \
   --enable-linger \
   --install-crontab
 ```
@@ -123,7 +124,8 @@ Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
-- Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels.
+- Telemetry tracking is now disabled by default. Pass `--enable-telemetry` only when the `/track/*` endpoints are publicly reachable.
+- Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels when telemetry is enabled.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedule defaults to:
   - `30 14 * * *` run `daily_pipeline.py`
@@ -225,6 +227,7 @@ Edit `config.yaml`:
 - `limits.max_summary_workers`
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
+- `tracking.enabled` (default `false`)
 - `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
 - `email.digest_recipients` and `email.alert_recipient`
 

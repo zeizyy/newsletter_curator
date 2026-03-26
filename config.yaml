@@ -64,3 +64,6 @@ email:
   digest_subject: Daily Newsletter Digest
   alert_recipient: ""
   alert_subject_prefix: "[ALERT] Newsletter Curator Failure"
+
+tracking:
+  enabled: false

@@ -25,6 +25,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
     jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
 
     config_path = write_temp_config(
         tmp_path,
@@ -34,6 +35,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
                 "digest_recipients": ["cached@example.com"],
                 "digest_subject": "Cached Daily Digest",
             },
+            "tracking": {"enabled": True},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -45,6 +47,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedDateTime)
     monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
     config = main.load_config()
 

@@ -5,6 +5,7 @@ from openai import OpenAI
 
 from curator import config as config_module
 from curator import content, dev, gmail, llm, pipeline, rendering, sources
+from curator.telemetry import telemetry_enabled as telemetry_enabled_for_config
 
 
 CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
@@ -204,7 +205,7 @@ def _run_delivery(config: dict, service, *, send_email_fn) -> dict:
         group_summaries_by_category_fn=group_summaries_by_category,
         render_digest_html_fn=render_digest_html,
         send_email_fn=send_email_fn,
-        telemetry_enabled=service is not None,
+        telemetry_enabled=service is not None and telemetry_enabled_for_config(config),
     )
 
 

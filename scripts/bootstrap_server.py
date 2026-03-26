@@ -24,6 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--buttondown-api-key", default=os.getenv("BUTTONDOWN_API_KEY", ""))
     parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
+    parser.add_argument(
+        "--enable-telemetry",
+        action="store_true",
+        default=str(os.getenv("CURATOR_ENABLE_TELEMETRY", "")).strip().lower()
+        in {"1", "true", "yes", "on"},
+    )
     parser.add_argument("--cron-timezone", default="")
     parser.add_argument("--daily-schedule", default="30 14 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
@@ -59,6 +65,7 @@ def build_env_file(
     openai_api_key: str,
     buttondown_api_key: str,
     public_base_url: str,
+    enable_telemetry: bool,
 ) -> str:
     return "\n".join(
         [
@@ -70,6 +77,7 @@ def build_env_file(
             f"OPENAI_API_KEY={openai_api_key}",
             f"BUTTONDOWN_API_KEY={buttondown_api_key}",
             f"CURATOR_PUBLIC_BASE_URL={public_base_url}",
+            f"CURATOR_ENABLE_TELEMETRY={'1' if enable_telemetry else '0'}",
             f"PATH={os.getenv('PATH', '/usr/local/bin:/usr/bin:/bin')}",
             "",
         ]
@@ -194,6 +202,7 @@ def main() -> None:
             openai_api_key=args.openai_api_key,
             buttondown_api_key=args.buttondown_api_key,
             public_base_url=args.public_base_url,
+            enable_telemetry=args.enable_telemetry,
         ),
         mode=0o600,
     )
