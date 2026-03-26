@@ -49,9 +49,9 @@ DEFAULT_CONFIG = {
         "max_gmail_fetch_after_score": 12,
     },
     "email": {
-        "digest_recipients": ["zeizyy@gmail.com", "maisongting@gmail.com"],
+        "digest_recipients": [],
         "digest_subject": "Daily Newsletter Digest",
-        "alert_recipient": "zeizyy@gmail.com",
+        "alert_recipient": "",
         "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
     },
     "tracking": {

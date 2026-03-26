@@ -217,11 +217,12 @@ def main():
     except Exception:
         error_details = traceback.format_exc()
         print(error_details)
-        if service:
+        alert_recipient = str(config.get("email", {}).get("alert_recipient", "")).strip()
+        if service and alert_recipient:
             try:
                 send_email(
                     service,
-                    to_address=config["email"]["alert_recipient"],
+                    to_address=alert_recipient,
                     subject=f"{config['email']['alert_subject_prefix']}",
                     body=error_details,
                 )
