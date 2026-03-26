@@ -1,144 +1,1311 @@
 {
-  "version": 2,
-  "project": "newsletter-curator-subscriber-personalization",
+  "version": 1,
+  "project": "newsletter-curator",
   "updated_at": "2026-03-26",
-  "agent_roles": {
-    "planner": "Owns agent_spec.md and keeps the sprint aligned with subscriber personalization.",
-    "generator": "Implements exactly one approved task per session.",
-    "evaluator": "Reviews the sprint contract, runs QA, and blocks completion until the task passes."
-  },
-  "evaluation_criteria": [
-    "Subscriber personalization preserves current behavior when no overrides exist.",
-    "Per-subscriber persona and preferred-source overrides are applied deterministically.",
-    "Each task ends with an integration test and a clean commit."
-  ],
   "session_contract": [
-    "Run `pwd`, read `agent_progress.md`, read `agent_spec.md`, read `agent_tasks.json`, and run `./init.sh`.",
+    "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
-    "Draft or update the task contract, then get evaluator review before coding.",
-    "Implement only that task plus minimal prerequisite refactors.",
-    "Add or update the task's integration test before asking for evaluation.",
-    "Run the task's test command and any needed regression tests.",
-    "Get evaluator sign-off, then update task status, append progress, and commit."
+    "Implement only that task plus minimal prerequisite refactors required to finish it cleanly.",
+    "Add or update the task's integration test before marking the task complete.",
+    "Run the task's listed test command and any necessary regression tests.",
+    "Commit the completed task to the git repository with a descriptive non-interactive commit message.",
+    "Update `agent_tasks.json` status fields and append a concise entry to `agent_progress.md`.",
+    "Leave the repository in a clean state with the next recommended task called out explicitly."
   ],
   "tasks": [
     {
       "id": "T0",
-      "title": "Initialize the subscriber-personalization harness",
+      "title": "Initialize the long-running agent harness",
       "status": "completed",
       "depends_on": [],
       "scope": [
-        "Create agent_spec.md for subscriber personalization",
-        "Replace the unrelated harness files in this worktree with a feature-specific task stream",
-        "Create the first sprint contract under agent_contracts/"
+        "Add pytest and test configuration",
+        "Create tests/integration and fixture directories",
+        "Add deterministic fake adapters for Gmail, source fetch, article fetch, and OpenAI",
+        "Create temp-config and temp-database test helpers",
+        "Keep all test runs offline by default"
       ],
       "artifacts": [
-        "agent_spec.md",
-        "agent_tasks.json",
-        "agent_progress.md",
-        "agent_contracts/"
+        "pyproject.toml",
+        "tests/",
+        "tests/integration/",
+        "tests/fixtures/"
       ],
-      "contract_file": "agent_contracts/T1.md",
-      "test_command": "python3 -c \"import json, pathlib; json.loads(pathlib.Path('agent_tasks.json').read_text())\"",
-      "integration_test": "artifact validation only",
-      "evaluator_checks": [
-        "Harness artifacts match the subscriber-personalization workstream",
-        "The first implementation task is explicit and testable"
-      ],
+      "test_command": "uv run pytest tests/integration/test_smoke_offline_pipeline.py",
+      "integration_test": "tests/integration/test_smoke_offline_pipeline.py",
       "done_when": [
-        "The branch has a durable harness for subscriber personalization",
-        "The next task can implement the runtime feature directly"
-      ]
+        "The repo has a repeatable offline smoke test",
+        "A fake-service based pipeline run completes without network access",
+        "Test scaffolding is ready for later tasks"
+      ],
+      "notes": "This is the initializer task. Do not start architectural work before this exists."
     },
     {
       "id": "T1",
-      "title": "Add subscriber-profile resolution and grouped personalized delivery",
+      "title": "Refactor the monolith into modules behind interfaces with no behavior change",
       "status": "completed",
-      "depends_on": [
-        "T0"
-      ],
+      "depends_on": ["T0"],
       "scope": [
-        "Add config support for subscriber-level persona and preferred_sources overrides",
-        "Normalize resolved recipients into subscriber profile objects",
-        "Group recipients by effective profile during delivery",
-        "Apply per-subscriber preferred_sources filtering on top of globally enabled sources",
-        "Expose delivery_groups metadata so grouped generation is observable in tests",
-        "Keep cached newsletter reuse only for the non-personalized default path"
+        "Split main.py responsibilities into config, Gmail ingestion, source ingestion, ranking, summarization, rendering, delivery, and repository interfaces",
+        "Preserve the current CLI entry behavior",
+        "Keep runtime behavior unchanged aside from module boundaries"
       ],
       "artifacts": [
-        "curator/config.py",
-        "curator/jobs.py",
         "main.py",
-        "config.yaml",
-        "tests/integration/test_delivery_personalizes_by_subscriber_profile.py"
+        "new module files under the project root or a package directory"
       ],
-      "contract_file": "agent_contracts/T1.md",
-      "test_command": "uv run pytest tests/integration/test_delivery_personalizes_by_subscriber_profile.py -q",
-      "integration_test": "tests/integration/test_delivery_personalizes_by_subscriber_profile.py",
-      "evaluator_checks": [
-        "Legacy recipient-only configs still deliver one digest as before",
-        "Different subscriber profiles can produce different delivered digests",
-        "Subscribers with the same effective profile share one generated digest group",
-        "preferred_sources narrowing works without bypassing the global source allowlist"
-      ],
+      "test_command": "uv run pytest tests/integration/test_legacy_equivalent_delivery.py",
+      "integration_test": "tests/integration/test_legacy_equivalent_delivery.py",
       "done_when": [
-        "Operators can configure persona and preferred_sources per subscriber in config",
-        "Delivery sends profile-specific digests end to end",
-        "A dedicated integration test proves the personalized behavior"
+        "The previous single-run flow still works through a thin composition layer",
+        "The new boundaries are explicit enough for later storage and job split work",
+        "The legacy-equivalent integration test passes"
       ]
     },
     {
       "id": "T2",
-      "title": "Add audience-aware newsletter persistence for personalized delivery",
-      "status": "pending",
-      "depends_on": [
-        "T1"
-      ],
+      "title": "Add persistence and migrations for the central content repository",
+      "status": "completed",
+      "depends_on": ["T1"],
       "scope": [
-        "Persist multiple newsletters per date when profile inputs differ",
-        "Reuse cached newsletters for matching personalized groups",
-        "Extend telemetry/tracking persistence to audience-aware newsletters"
+        "Introduce SQLite as the default repository backend",
+        "Add schema or migrations for sources, fetched stories, article snapshots, ingestion runs, delivery runs, user source selections, and optional persona metadata",
+        "Expose repository methods for upsert, dedupe, and query patterns needed by later jobs"
       ],
       "artifacts": [
-        "curator/repository.py",
-        "curator/jobs.py",
-        "tests/integration/test_personalized_newsletter_cache_keys_by_profile.py"
+        "repository module",
+        "migration files or schema bootstrap code",
+        "config defaults for database path"
       ],
-      "contract_file": "agent_contracts/T2.md",
-      "test_command": "uv run pytest tests/integration/test_personalized_newsletter_cache_keys_by_profile.py -q",
-      "integration_test": "tests/integration/test_personalized_newsletter_cache_keys_by_profile.py",
-      "evaluator_checks": [
-        "Different profile groups do not reuse the same persisted newsletter",
-        "Matching profile groups do reuse persisted output"
-      ],
+      "test_command": "uv run pytest tests/integration/test_repository_upsert_and_dedupe.py",
+      "integration_test": "tests/integration/test_repository_upsert_and_dedupe.py",
       "done_when": [
-        "Personalized delivery can safely reuse persisted newsletters"
+        "Stories can be inserted idempotently",
+        "Repository queries can filter by source and recency",
+        "A repeated ingest does not duplicate data"
       ]
     },
     {
       "id": "T3",
-      "title": "Document subscriber personalization and operator caveats",
-      "status": "pending",
-      "depends_on": [
-        "T1"
-      ],
+      "title": "Build the centralized source-fetch job",
+      "status": "completed",
+      "depends_on": ["T2"],
       "scope": [
-        "Document the new config shape",
-        "Call out the current preview and persistence caveats",
-        "Document source-filter semantics for preferred_sources"
+        "Replace on-demand RSS source retrieval with a standalone fetch job",
+        "Normalize fetched stories and store them in the repository",
+        "Store article snapshots or equivalent delivery-ready text for centrally fetched stories",
+        "Record ingestion runs and partial failures"
+      ],
+      "artifacts": [
+        "CLI entrypoint for fetch-sources",
+        "source ingestion job modules",
+        "repository writes for fetched content"
+      ],
+      "test_command": "uv run pytest tests/integration/test_fetch_sources_job_writes_repository.py",
+      "integration_test": "tests/integration/test_fetch_sources_job_writes_repository.py",
+      "done_when": [
+        "fetch-sources populates the repository without attempting newsletter delivery",
+        "The job is idempotent over repeated runs",
+        "Canned feed and article fixtures can drive the full ingest path offline"
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Switch newsletter delivery to use the central repository for non-Gmail sources",
+      "status": "completed",
+      "depends_on": ["T3"],
+      "scope": [
+        "Remove live direct-source fetching from the delivery path",
+        "Read centrally fetched stories and article snapshots from the repository",
+        "Preserve current Gmail live ingestion behavior for now"
+      ],
+      "artifacts": [
+        "delivery pipeline modules",
+        "ranking and summarization inputs sourced from repository data"
+      ],
+      "test_command": "uv run pytest tests/integration/test_delivery_uses_repository_not_live_fetch.py",
+      "integration_test": "tests/integration/test_delivery_uses_repository_not_live_fetch.py",
+      "done_when": [
+        "Delivery succeeds with outbound source fetching disabled",
+        "Repository-backed stories participate in ranking, selection, and summarization",
+        "The old on-the-fly direct-source path is no longer needed by delivery"
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Add repository-backed source selection in the admin app",
+      "status": "completed",
+      "depends_on": ["T4"],
+      "scope": [
+        "Add source selection UI to the admin app",
+        "Persist source eligibility in the repository instead of static YAML",
+        "Apply source selection during newsletter delivery queries"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "templates/admin_config.html",
+        "repository-backed source selection logic"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_source_selection_filters_delivery.py",
+      "integration_test": "tests/integration/test_admin_source_selection_filters_delivery.py",
+      "done_when": [
+        "Users can enable or disable centrally fetched sources in the admin app",
+        "Selections persist across runs",
+        "Disabled sources do not appear in delivered digests"
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Add canned central-fetch mode for development",
+      "status": "completed",
+      "depends_on": ["T3"],
+      "scope": [
+        "Add a dev or test mode that seeds the repository from canned fetched stories",
+        "Add deterministic fake ranker and summarizer implementations",
+        "Ensure local development does not require live domains or live LLM calls"
+      ],
+      "artifacts": [
+        "fixture loading code",
+        "offline mode config knobs",
+        "fake inference adapters"
+      ],
+      "test_command": "uv run pytest tests/integration/test_offline_canned_repository_mode.py",
+      "integration_test": "tests/integration/test_offline_canned_repository_mode.py",
+      "done_when": [
+        "A full local run can complete entirely offline",
+        "Canned data drives both ingestion-derived content and delivery",
+        "Digest output is deterministic under test"
+      ]
+    },
+    {
+      "id": "T7",
+      "title": "Add persona-aware ranking and summarization",
+      "status": "completed",
+      "depends_on": ["T1", "T4", "T6"],
+      "scope": [
+        "Add persona.text to config and admin editing surface",
+        "Centralize prompt construction for ranking and summarization",
+        "Make ranking and the summary's why-this-matters section persona-conditioned"
+      ],
+      "artifacts": [
+        "config schema",
+        "admin UI fields",
+        "prompt builder modules"
+      ],
+      "test_command": "uv run pytest tests/integration/test_persona_changes_ranking_and_summary.py",
+      "integration_test": "tests/integration/test_persona_changes_ranking_and_summary.py",
+      "done_when": [
+        "Persona text is configurable",
+        "Ranking and summary prompts include persona context",
+        "Two personas produce different deterministic outputs under test"
+      ]
+    },
+    {
+      "id": "T8",
+      "title": "Ingest Gmail into the same repository for full delivery decoupling",
+      "status": "completed",
+      "depends_on": ["T2"],
+      "scope": [
+        "Move Gmail extraction into a standalone ingest job",
+        "Store extracted Gmail links in the repository",
+        "Allow delivery to run without live Gmail reads"
+      ],
+      "artifacts": [
+        "CLI entrypoint for Gmail ingest",
+        "repository writes for Gmail-derived candidates",
+        "delivery path that can read Gmail candidates from storage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_gmail_ingest_then_delivery_from_db.py",
+      "integration_test": "tests/integration/test_gmail_ingest_then_delivery_from_db.py",
+      "done_when": [
+        "Delivery can run from repository data only",
+        "Gmail candidate ingestion is separated from newsletter send time",
+        "No live Gmail reads are required during delivery when this path is enabled"
+      ]
+    },
+    {
+      "id": "T9",
+      "title": "Finalize the two-job production flow and remove obsolete paths",
+      "status": "completed",
+      "depends_on": ["T5", "T6", "T7", "T8"],
+      "scope": [
+        "Document and wire cron-friendly fetch and deliver jobs",
+        "Add structured logging and run records",
+        "Add stale-data and partial-failure handling",
+        "Remove dead on-the-fly source-fetch code",
+        "Include the Gmail ingest job in the final documented flow"
       ],
       "artifacts": [
         "README.md",
-        "config.yaml"
+        "final CLI entrypoints",
+        "production logging and alerting paths"
       ],
-      "contract_file": "agent_contracts/T3.md",
-      "test_command": "uv run pytest tests/integration/test_delivery_personalizes_by_subscriber_profile.py -q",
-      "integration_test": "documentation plus regression confirmation",
-      "evaluator_checks": [
-        "Docs match the shipped behavior"
-      ],
+      "test_command": "uv run pytest tests/integration/test_full_two_job_pipeline.py",
+      "integration_test": "tests/integration/test_full_two_job_pipeline.py",
       "done_when": [
-        "Operators can configure the feature without reading code"
+        "The documented production architecture matches the implemented job split",
+        "All obsolete direct-fetch delivery paths are removed",
+        "A full two-job integration test passes end to end"
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Add an on-demand web preview for the newsletter",
+      "status": "completed",
+      "depends_on": ["T9"],
+      "scope": [
+        "Add an admin route that renders the current repository-backed newsletter on demand",
+        "Reuse the delivery pipeline without sending email",
+        "Expose the preview from the admin UI"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "preview template files",
+        "delivery preview helpers"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "A user can open a web page and see the current newsletter on demand",
+        "Preview rendering uses repository-backed digest generation",
+        "The preview integration test passes"
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Add an admin story explorer for centrally fetched stories",
+      "status": "completed",
+      "depends_on": ["T10"],
+      "scope": [
+        "Add an admin page to browse centrally fetched stories",
+        "Include source, category, publish time, and snapshot status",
+        "Keep the first version simple and readable"
+      ],
+      "artifacts": [
+        "admin_app.py",
+        "story explorer template files",
+        "repository query helpers if needed"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "integration_test": "tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "done_when": [
+        "Admins can view centrally fetched stories in the web UI",
+        "The page shows enough metadata to inspect repository contents",
+        "The story explorer integration test passes"
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Add a seven-day TTL cleanup for centrally fetched stories",
+      "status": "completed",
+      "depends_on": ["T11"],
+      "scope": [
+        "Delete centrally fetched stories older than seven days",
+        "Remove associated article snapshots safely",
+        "Expose cleanup through the scheduled job flow"
+      ],
+      "artifacts": [
+        "repository cleanup methods",
+        "job wiring for TTL cleanup",
+        "integration tests for retention behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_ttl_cleanup_removes_old_stories.py",
+      "integration_test": "tests/integration/test_repository_ttl_cleanup_removes_old_stories.py",
+      "done_when": [
+        "Stories older than seven days are removed from the repository",
+        "Recent stories remain available for delivery and admin views",
+        "The TTL cleanup integration test passes"
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "Add token-efficient paywall detection and exclude paywalled stories from the newsletter",
+      "status": "completed",
+      "depends_on": ["T12"],
+      "scope": [
+        "Detect likely paywalled content during ingestion or delivery without using LLM calls",
+        "Store or derive paywall status in a reusable way",
+        "Exclude paywalled stories from preview and delivered newsletters"
+      ],
+      "artifacts": [
+        "content or ingestion heuristics",
+        "repository metadata for paywall status if needed",
+        "integration tests for paywall filtering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "done_when": [
+        "Likely paywalled stories are identified without LLM inference",
+        "Paywalled stories do not appear in the newsletter or preview",
+        "The paywall filtering integration test passes"
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Move per-article summarization into the centralized fetch pipeline",
+      "status": "completed",
+      "depends_on": ["T13"],
+      "scope": [
+        "Generate persona-aware per-article summaries during centralized fetch",
+        "Persist summary snapshots in the repository",
+        "Make preview and delivery reuse stored summaries instead of calling the summary LLM"
+      ],
+      "artifacts": [
+        "repository summary snapshot fields",
+        "fetch job summary generation",
+        "preview and delivery reuse of stored summaries"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py",
+      "integration_test": "tests/integration/test_preview_uses_ingest_summaries_without_summary_llm.py",
+      "done_when": [
+        "Per-article summaries are generated during centralized fetch",
+        "Preview and delivery no longer need summary-model calls when summaries are stored",
+        "The integration test passes"
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Parallelize centralized summarization during fetch",
+      "status": "completed",
+      "depends_on": ["T14"],
+      "scope": [
+        "Run centralized per-article summary generation concurrently",
+        "Respect configured concurrency limits",
+        "Preserve deterministic behavior in tests"
+      ],
+      "artifacts": [
+        "fetch job concurrency logic",
+        "tests for concurrent summary generation"
+      ],
+      "test_command": "uv run pytest tests/integration/test_fetch_summarization_runs_concurrently.py",
+      "integration_test": "tests/integration/test_fetch_summarization_runs_concurrently.py",
+      "done_when": [
+        "Centralized summarization can run concurrently",
+        "Concurrency is bounded by config",
+        "The concurrency integration test passes"
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Adopt a battle-tested URL extraction library for robust title and article metadata parsing",
+      "status": "completed",
+      "depends_on": ["T14"],
+      "scope": [
+        "Integrate Trafilatura as the primary extraction library for article title, metadata, and body parsing instead of relying only on custom heuristics",
+        "Prevent generic anchors like Read More from becoming the story title by preferring extracted document metadata",
+        "Keep story explorer and digest displays readable while retaining safe fallbacks when extraction fails"
+      ],
+      "artifacts": [
+        "Trafilatura-backed extraction adapter",
+        "repository title normalization if needed",
+        "integration coverage for broken title cases and metadata fallback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
+      "integration_test": "tests/integration/test_title_extraction_avoids_generic_read_more_titles.py",
+      "done_when": [
+        "Trafilatura is used as the primary URL metadata and body extractor in the ingest path",
+        "Generic CTA anchors are not used as primary story titles when better document metadata is available",
+        "Story explorer and digest displays use more reliable titles for newsletter-derived links",
+        "The title extraction integration test passes"
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Collapse repository migrations into a rebuilt baseline schema",
+      "status": "completed",
+      "depends_on": ["T15", "T16"],
+      "scope": [
+        "Replace incremental schema migrations with a single current-schema creation path",
+        "Recreate repository tables in one pass for this pre-production project state",
+        "Keep integration tests aligned with the new baseline schema setup"
+      ],
+      "artifacts": [
+        "baseline schema initializer",
+        "removed legacy migration chain",
+        "integration coverage for repository initialization after schema reset"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py",
+      "integration_test": "tests/integration/test_repository_schema_bootstrap_after_reset.py",
+      "done_when": [
+        "Repository initialization recreates the current schema without applying a long migration chain",
+        "Legacy migration steps are removed or collapsed into a single baseline schema definition",
+        "The schema bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Remove the temporary 48-hour test config path and restore 24-hour testing defaults",
+      "status": "completed",
+      "depends_on": ["T17"],
+      "scope": [
+        "Delete the ad hoc 48-hour config artifact used for manual testing",
+        "Keep the project on the standard 24-hour testing window for faster local validation",
+        "Add a regression test that locks the default testing window back to 24 hours"
+      ],
+      "artifacts": [
+        "cleanup of temporary config.48h.yaml usage",
+        "24-hour default config regression coverage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_config_uses_24h_window.py",
+      "integration_test": "tests/integration/test_default_config_uses_24h_window.py",
+      "done_when": [
+        "The temporary 48-hour config artifact is removed from the repo",
+        "The default config continues to use a 24-hour Gmail/source window",
+        "The 24-hour config regression test passes"
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Add a lightweight LLM scoring gate so only the top 20 articles are summarized per run",
+      "status": "completed",
+      "depends_on": ["T18"],
+      "scope": [
+        "Introduce a cheaper LLM scoring step over fetched article candidates",
+        "Only run the expensive summary-generation model for the top 20 scored articles per ingest run",
+        "Persist any scoring metadata needed for debugging or operator visibility"
+      ],
+      "artifacts": [
+        "lightweight ingest scoring layer",
+        "top-20 summary gating in fetch jobs",
+        "integration coverage for score-then-summarize behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py",
+      "integration_test": "tests/integration/test_ingest_only_summarizes_top_twenty_scored_articles.py",
+      "done_when": [
+        "Fetched articles are scored with a lightweight LLM step before expensive summarization",
+        "At most 20 articles are summarized per ingest run",
+        "The ingest score-gating integration test passes"
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "Persist only servable summarized articles in the repository",
+      "status": "completed",
+      "depends_on": ["T19"],
+      "scope": [
+        "Write only scored-and-summarized articles into the repository",
+        "Avoid persisting lower-ranked unsummarized candidates so the repository contains only servable content",
+        "Update ingest stats and tests to reflect summarized-only persistence"
+      ],
+      "artifacts": [
+        "servable-only ingest persistence path",
+        "updated repository write semantics",
+        "integration coverage for top-20-only persistence"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py",
+      "integration_test": "tests/integration/test_ingest_only_persists_top_twenty_summarized_articles.py",
+      "done_when": [
+        "Only articles with stored LLM summaries are written into the repository",
+        "Lower-ranked unsummarized candidates are not persisted as stories or snapshots",
+        "The summarized-only persistence integration test passes"
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "Switch default OpenAI models to the latest comparable low-cost tier and document pricing deltas",
+      "status": "completed",
+      "depends_on": ["T20"],
+      "scope": [
+        "Move the remaining legacy `gpt-4o-mini` default to the latest low-cost GPT-5 tier",
+        "Keep legacy configs working by upgrading the old default at config-load time",
+        "Document before-and-after input and output token prices for the switch"
+      ],
+      "artifacts": [
+        "updated config defaults for OpenAI models",
+        "legacy default model upgrade logic",
+        "pricing documentation and regression coverage"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_openai_models_use_gpt5_mini.py",
+      "integration_test": "tests/integration/test_default_openai_models_use_gpt5_mini.py",
+      "done_when": [
+        "The default reasoning model uses the latest comparable GPT-5 mini tier",
+        "Legacy configs pinned to the old default are upgraded automatically at load time",
+        "Before-and-after token pricing is documented in the repo and the model-default regression test passes"
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "Persist the generated daily newsletter in the repository and reuse it for preview and delivery",
+      "status": "completed",
+      "depends_on": ["T21"],
+      "scope": [
+        "Add repository storage for generated daily newsletter artifacts, including the selected stories, rendered body, and metadata keyed by day",
+        "Write the generated newsletter into the repository when preview or delivery produces a digest for that day",
+        "Update /preview and the email delivery path to reuse the stored newsletter for the current day when it already exists instead of regenerating it"
+      ],
+      "artifacts": [
+        "repository schema and accessors for persisted daily newsletters",
+        "preview and delivery read-through cache behavior for generated digests",
+        "integration coverage for persisted newsletter reuse"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "A generated newsletter is persisted in the repository under a stable per-day key",
+        "/preview returns the stored daily newsletter when one already exists for the day",
+        "Email delivery reuses the stored daily newsletter for that day instead of regenerating it",
+        "The persisted-newsletter integration test passes"
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Improve the newsletter UX across preview and delivered output",
+      "status": "completed",
+      "depends_on": ["T22"],
+      "scope": [
+        "Refine newsletter information hierarchy, typography, spacing, and section treatment for both web preview and email HTML",
+        "Improve scannability of story summaries, source metadata, and why-this-matters blocks without changing the core content contract",
+        "Preserve compatibility with both local preview and email rendering"
+      ],
+      "artifacts": [
+        "updated digest template and rendering styles",
+        "preview UX improvements aligned with delivered email output",
+        "integration or snapshot coverage for the improved newsletter rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_ux_improvements.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_ux_improvements.py",
+      "done_when": [
+        "The newsletter preview and delivered HTML share the improved rendering treatment",
+        "Story summaries and metadata are more readable and scannable",
+        "The newsletter UX regression test passes"
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Add one-shot deployment instructions and server bootstrap script",
+      "status": "completed",
+      "depends_on": ["T23"],
+      "scope": [
+        "Document how to deploy the curator on a server with the admin app and daily cron jobs",
+        "Provide a bootstrap script that can be run once to install dependencies, write service or cron assets, and print next-step verification commands",
+        "Cover admin server startup plus scheduled fetch and delivery jobs with minimal manual follow-up"
+      ],
+      "artifacts": [
+        "server deployment guide",
+        "one-shot bootstrap or install script",
+        "verification instructions for admin server and daily cron execution"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The repo includes concrete deployment instructions for a hosted server",
+        "A one-shot script can generate or install the admin server and cron assets",
+        "The deployment bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T25",
+      "title": "Add Pacific-time cron support and afternoon default schedules to the deployment bootstrap",
+      "status": "completed",
+      "depends_on": ["T24"],
+      "scope": [
+        "Add an explicit cron timezone option to the deployment bootstrap script",
+        "Default generated cron assets to Pacific time rather than server-local UTC",
+        "Shift the default Gmail, source, and delivery schedules to late afternoon Pacific"
+      ],
+      "artifacts": [
+        "bootstrap script cron-timezone option",
+        "updated deployment docs for Pacific-time scheduling",
+        "integration coverage for generated cron timezone and schedule defaults"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The generated cron file includes CRON_TZ=America/Los_Angeles by default",
+        "The default schedules are 16:15 PST for Gmail, 16:25 PST for sources, and 17:00 PST for delivery",
+        "The deployment bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T26",
+      "title": "Revert the newsletter UX redesign to the previous rendering",
+      "status": "completed",
+      "depends_on": ["T25"],
+      "scope": [
+        "Restore the pre-T23 digest template and preview shell",
+        "Remove the richer UX-specific rendering changes while preserving the later daily-newsletter caching and deployment work",
+        "Keep preview and delivery behavior unchanged apart from the visual rollback"
+      ],
+      "artifacts": [
+        "restored pre-redesign digest template and preview shell",
+        "reverted shared rendering structure",
+        "regression verification for preview and persisted-newsletter behavior after the rollback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "The digest and preview UI match the pre-T23 rendering again",
+        "The preview and persisted-newsletter flows still pass after the visual rollback",
+        "The UX-revert regression tests pass"
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Create high-fidelity newsletter theme explorations that clear the aesthetic and rendering bar",
+      "status": "completed",
+      "depends_on": ["T26"],
+      "scope": [
+        "Replace the low-fidelity SVG concept pass with five higher-fidelity HTML or template-backed explorations that use email-safe typography, proper line wrapping, and intentional spacing",
+        "Demonstrate each option in both preview and email-safe constraints, including dark or light-mode compatibility guidance and mobile-safe width behavior",
+        "Capture the user's feedback about ugly fonts and broken wrapping directly in the acceptance bar so the next design pass is visibly more polished"
+      ],
+      "artifacts": [
+        "five high-fidelity newsletter theme mockups",
+        "documented rendering constraints for font choice, wrapping, spacing, and dark-light compatibility",
+        "integration or snapshot coverage for the theme exploration artifacts"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_theme_options_render.py",
+      "integration_test": "tests/integration/test_newsletter_theme_options_render.py",
+      "done_when": [
+        "There are five concrete theme options the user can review in-repo",
+        "The mockups avoid the previous font and wrapping failures",
+        "The theme exploration regression test passes"
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Implement the chosen newsletter UX across preview and delivered email and add article timestamps",
+      "status": "completed",
+      "depends_on": ["T27"],
+      "scope": [
+        "Implement the selected high-fidelity theme in the shared digest rendering path",
+        "Add article timestamp display for each story using stored published metadata and degrade gracefully when timestamps are missing",
+        "Keep the template compatible across dark and light mode, mobile and desktop widths, and preview and email surfaces"
+      ],
+      "artifacts": [
+        "updated shared digest template and rendering logic",
+        "timestamp display in newsletter story cards",
+        "regression coverage for the selected theme on preview and email HTML"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "The selected newsletter theme is implemented in the real rendering path",
+        "Each story displays a timestamp when one is available",
+        "The selected-theme rendering integration test passes"
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Consolidate fetch and delivery into a single daily orchestrator and update bootstrap scheduling",
+      "status": "completed",
+      "depends_on": ["T25"],
+      "scope": [
+        "Add one daily entrypoint that runs Gmail ingest, source ingest, and digest delivery sequentially with clear logging and failure status",
+        "Keep the existing individual job entrypoints for debugging while switching deployment bootstrap and cron generation to the single orchestrator",
+        "Update the startup and deployment assets so a hosted server installs one daily cron job instead of three separate ones"
+      ],
+      "artifacts": [
+        "daily orchestrator CLI entrypoint",
+        "updated deployment bootstrap and cron generation",
+        "integration coverage for orchestrated fetch-plus-deliver execution"
+      ],
+      "test_command": "uv run pytest tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py",
+      "integration_test": "tests/integration/test_daily_orchestrator_runs_fetch_and_delivery.py",
+      "done_when": [
+        "One daily command can fetch Gmail stories, fetch additional sources, and deliver the digest in order",
+        "Bootstrap-generated deployment assets schedule the single orchestrator job",
+        "The daily-orchestrator integration test passes"
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Add newsletter open and click telemetry foundations",
+      "status": "completed",
+      "depends_on": ["T22", "T29"],
+      "scope": [
+        "Add repository storage for delivered-newsletter telemetry, tracked links, open events, and click events",
+        "Add a tracked redirect path for article links and an open-tracking pixel or equivalent endpoint tied to persisted daily newsletters",
+        "Record the telemetry in a way that supports aggregate admin reporting while keeping delivery generation compatible with the cached daily newsletter path"
+      ],
+      "artifacts": [
+        "repository telemetry schema and accessors",
+        "tracking endpoints for opens and clicks",
+        "integration coverage for telemetry event recording"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_telemetry_tracking_endpoints.py",
+      "integration_test": "tests/integration/test_newsletter_telemetry_tracking_endpoints.py",
+      "done_when": [
+        "Newsletter opens and tracked article clicks are recorded against persisted newsletters",
+        "Tracked links redirect correctly while recording click events",
+        "The telemetry-tracking integration test passes"
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Add an admin analytics page for aggregated newsletter open and click stats",
+      "status": "completed",
+      "depends_on": ["T30"],
+      "scope": [
+        "Add an admin page that shows aggregate newsletter opens, unique opens, clicks, click-through rates, and top-clicked stories",
+        "Present analytics by newsletter day and over useful trailing windows while keeping open-rate caveats visible",
+        "Keep the page lightweight and repository-backed so it works in the same admin app as preview and story explorer"
+      ],
+      "artifacts": [
+        "admin analytics route and template",
+        "repository aggregation queries for telemetry reporting",
+        "integration coverage for rendered analytics stats"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_newsletter_analytics_page.py",
+      "integration_test": "tests/integration/test_admin_newsletter_analytics_page.py",
+      "done_when": [
+        "The admin app exposes aggregate newsletter telemetry stats",
+        "Open and click counts are grouped into useful operator-facing summaries",
+        "The admin-analytics integration test passes"
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Harden and document how persona influences ingest scoring, ranking, and summary framing",
+      "status": "completed",
+      "depends_on": ["T28"],
+      "scope": [
+        "Add explicit regression coverage that persona affects ingest-time scoring, final ranking, and the why-this-matters summary framing",
+        "Document the current persona behavior in operator-facing docs or admin help text so it is easy to reason about",
+        "Verify the current prompts are aligned rather than silently drifting across ingest and delivery stages"
+      ],
+      "artifacts": [
+        "persona behavior regression tests",
+        "persona documentation in repo or admin UI",
+        "prompt-path consistency checks if needed"
+      ],
+      "test_command": "uv run pytest tests/integration/test_persona_influences_ranking_scoring_and_summary.py",
+      "integration_test": "tests/integration/test_persona_influences_ranking_scoring_and_summary.py",
+      "done_when": [
+        "Persona influence is explicitly covered in tests for scoring, ranking, and summary framing",
+        "The repo documents how persona changes the newsletter output",
+        "The persona-behavior integration test passes"
+      ]
+    },
+    {
+      "id": "T33",
+      "title": "Add preview-generation locking and an in-progress preview state",
+      "status": "completed",
+      "depends_on": ["T22"],
+      "scope": [
+        "Add repository-backed preview generation state so concurrent /preview requests do not kick off duplicate newsletter generations",
+        "Return an explicit in-progress page or status from /preview while a generation is already running",
+        "Keep cached daily newsletter reuse intact once generation completes"
+      ],
+      "artifacts": [
+        "preview generation state in the repository",
+        "updated /preview admin route and template",
+        "integration coverage for concurrent preview requests"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "integration_test": "tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "done_when": [
+        "A second /preview request shows generation in progress instead of starting another generation",
+        "Only one preview generation runs for a given day at a time",
+        "The preview-lock integration test passes"
+      ]
+    },
+    {
+      "id": "T34",
+      "title": "Make the server bootstrap idempotent and resilient to service updates and logout",
+      "status": "completed",
+      "depends_on": ["T24", "T25"],
+      "scope": [
+        "Make rerunning the bootstrap safe when generated scripts or unit files change",
+        "Ensure the installed admin service restarts cleanly to pick up updated wrapper scripts and env changes",
+        "Add an explicit lingering option or equivalent guidance so the admin service can survive SSH logout"
+      ],
+      "artifacts": [
+        "updated bootstrap_server.py install behavior",
+        "deployment bootstrap regression coverage",
+        "README deployment notes if behavior changes"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The bootstrap can be rerun safely without manual cleanup",
+        "Service updates are picked up on rerun",
+        "The deployment bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T35",
+      "title": "Refine preview and newsletter chrome with immediate generation feedback and updated CTA copy",
+      "status": "completed",
+      "depends_on": ["T28", "T33"],
+      "scope": [
+        "Change the hero copy back to Newsletter Digest with the requested subtitle and selected-story count",
+        "Make the first /preview visit show generation feedback immediately rather than appearing stalled",
+        "Rename the story CTA to Read original and open links in a new tab by default on web surfaces"
+      ],
+      "artifacts": [
+        "digest and preview template updates",
+        "rendering helpers for selected-story count and CTA behavior",
+        "integration coverage for preview and newsletter chrome"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py tests/integration/test_preview_generation_lock_prevents_duplicate_runs.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "The newsletter hero matches the requested copy and shows story count",
+        "Preview shows immediate generation feedback on first load",
+        "Story CTAs say Read original and open in a new tab on web preview"
+      ]
+    },
+    {
+      "id": "T36",
+      "title": "Render story timestamps in local time with Pacific fallback",
+      "status": "completed",
+      "depends_on": ["T28"],
+      "scope": [
+        "Format newsletter timestamps in the viewer's local timezone where possible",
+        "Use Pacific time as the default fallback for server-rendered or email surfaces",
+        "Keep timestamp rendering consistent across preview, delivered HTML, and history views"
+      ],
+      "artifacts": [
+        "timestamp formatting helpers",
+        "template updates for timezone-aware display",
+        "integration coverage for timestamp rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_rendering_selected_theme.py",
+      "integration_test": "tests/integration/test_newsletter_rendering_selected_theme.py",
+      "done_when": [
+        "Timestamps are no longer hard-coded to UTC in the newsletter",
+        "Pacific fallback is applied when client-local rendering is unavailable",
+        "The timestamp rendering regression test passes"
+      ]
+    },
+    {
+      "id": "T37",
+      "title": "Add a newsletter history view and apply retention to generated newsletters",
+      "status": "completed",
+      "depends_on": ["T22", "T12"],
+      "scope": [
+        "Add an admin entry point to browse previously generated newsletters",
+        "Apply TTL cleanup to stored daily newsletters and related telemetry",
+        "Keep history browsing lightweight and repository-backed"
+      ],
+      "artifacts": [
+        "newsletter history admin route and template",
+        "repository retention logic for daily newsletters",
+        "integration coverage for history listing and TTL cleanup"
+      ],
+      "test_command": "uv run pytest tests/integration/test_newsletter_history_view_and_ttl.py",
+      "integration_test": "tests/integration/test_newsletter_history_view_and_ttl.py",
+      "done_when": [
+        "Admins can browse previously generated newsletters",
+        "Generated newsletters do not accumulate indefinitely",
+        "The history and TTL integration test passes"
+      ]
+    },
+    {
+      "id": "T38",
+      "title": "Harden paywall detection and exclude JavaScript-blocked placeholder content",
+      "status": "completed",
+      "depends_on": ["T13", "T16"],
+      "scope": [
+        "Catch stronger paywall and JavaScript-required placeholder patterns before summaries are generated",
+        "Exclude those blocked pages from repository persistence and newsletter selection",
+        "Keep the detection token-efficient and deterministic"
+      ],
+      "artifacts": [
+        "improved paywall detection heuristics",
+        "integration coverage for blocked-placeholder exclusion",
+        "tests that prove those stories do not reach the newsletter"
+      ],
+      "test_command": "uv run pytest tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_paywalled_stories_are_excluded_from_digest.py",
+      "done_when": [
+        "JavaScript-blocked placeholder pages are treated as unservable content",
+        "Those stories do not get summarized or delivered",
+        "The paywall/placeholder exclusion test passes"
+      ]
+    },
+    {
+      "id": "T39",
+      "title": "Commit the supplied AI strategy persona as the checked-in default config",
+      "status": "completed",
+      "depends_on": ["T32"],
+      "scope": [
+        "Update the checked-in persona.text in config.yaml to the supplied AI value-capture profile",
+        "Add regression coverage that the repo default config now includes the committed persona",
+        "Commit the config change so fresh deployments inherit the intended default reader profile"
+      ],
+      "artifacts": [
+        "config.yaml",
+        "integration coverage for the checked-in default persona",
+        "harness metadata"
+      ],
+      "test_command": "uv run pytest tests/integration/test_default_config_includes_repo_persona.py",
+      "integration_test": "tests/integration/test_default_config_includes_repo_persona.py",
+      "done_when": [
+        "The checked-in config carries the supplied default persona text",
+        "A regression test locks in that default persona",
+        "The persona config change is committed to the repo"
+      ]
+    },
+    {
+      "id": "T40",
+      "title": "Add an email-safe template preview surface in the admin UI",
+      "status": "completed",
+      "depends_on": ["T35", "T37"],
+      "scope": [
+        "Add a second admin preview mode for an email-safe digest template",
+        "Persist enough structured digest metadata to rerender that alternate template from cached newsletters",
+        "Keep the existing richer web preview available alongside the email-safe mode"
+      ],
+      "artifacts": [
+        "email-safe digest template",
+        "admin preview template toggle",
+        "integration coverage for alternate preview rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "Admins can switch between the existing web preview and an email-safe preview",
+        "Cached daily newsletters can be rerendered in the email-safe mode without reranking",
+        "The admin preview integration test passes for both modes"
+      ]
+    },
+    {
+      "id": "T41",
+      "title": "Implement a structured multi-signal access classifier and evaluate it on the live repository corpus",
+      "status": "completed",
+      "depends_on": ["T38"],
+      "scope": [
+        "Add standards-based paywall detection from structured data when present",
+        "Combine DOM, placeholder, and text signals into a deterministic access classifier",
+        "Evaluate the new classifier against the currently stored repository stories and tune out false positives on that live corpus"
+      ],
+      "artifacts": [
+        "content classifier helpers",
+        "ingest wiring for classifier signals",
+        "integration coverage for structured-data paywalls"
+      ],
+      "test_command": "uv run pytest tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py",
+      "integration_test": "tests/integration/test_structured_data_paywalls_are_excluded_from_digest.py",
+      "done_when": [
+        "Structured-data paywalls are blocked without relying on raw phrase matching alone",
+        "Blocked-placeholder and paywall signals are persisted through ingest",
+        "The current live repository corpus evaluates with zero false positives and zero observed false negatives"
+      ]
+    },
+    {
+      "id": "T42",
+      "title": "Persist all fetched candidates for classifier evaluation while keeping delivery servable-only",
+      "status": "completed",
+      "depends_on": ["T41"],
+      "scope": [
+        "Store blocked, unsummarized, and summarized fetched candidates in the repository so the evaluation loop can inspect the full live corpus",
+        "Keep preview, readiness checks, and delivery restricted to summarized servable stories",
+        "Add integration coverage proving raw persistence expanded while user-visible delivery behavior did not"
+      ],
+      "artifacts": [
+        "repository query contract for servable-only reads",
+        "ingest persistence updates for all fetched candidates",
+        "integration coverage for full-corpus persistence"
+      ],
+      "test_command": "uv run pytest tests/integration -q",
+      "integration_test": "tests/integration/test_ingest_persists_all_candidates_for_evaluation.py",
+      "done_when": [
+        "Blocked and unsummarized stories are retained in the repository for evaluation",
+        "Delivery-facing repository readers explicitly request summarized servable items only",
+        "The full integration suite passes under the new persistence contract"
+      ]
+    },
+    {
+      "id": "T43",
+      "title": "Persist explicit servability status, blocked reasons, detector version, and classifier signals",
+      "status": "pending",
+      "depends_on": ["T42"],
+      "scope": [
+        "Add first-class servability metadata for every fetched candidate",
+        "Persist the classifier version and structured signal payload needed for later replay and error analysis",
+        "Expose that metadata to evaluation and admin-review surfaces without changing delivery behavior"
+      ],
+      "artifacts": [
+        "repository schema updates for servability metadata",
+        "classifier metadata persistence wiring",
+        "integration coverage for metadata reads and writes"
+      ],
+      "test_command": "uv run pytest tests/integration/test_ingest_persists_servability_metadata.py",
+      "integration_test": "tests/integration/test_ingest_persists_servability_metadata.py",
+      "done_when": [
+        "Each fetched candidate records whether it is servable, blocked, or ambiguous",
+        "Blocked reason, detector version, and signal payload are queryable from the repository",
+        "The servability metadata integration test passes"
+      ]
+    },
+    {
+      "id": "T44",
+      "title": "Add an agent-driven evaluation script that labels the live repository corpus",
+      "status": "pending",
+      "depends_on": ["T43"],
+      "scope": [
+        "Read recent repository candidates and have the agent evaluate whether each story should be servable or blocked",
+        "Write the agent's evaluation results back to the repository with provenance",
+        "Keep the evaluator bounded and rerunnable on the live server"
+      ],
+      "artifacts": [
+        "evaluation script or entrypoint",
+        "repository tables or fields for agent labels",
+        "integration coverage for evaluation writeback"
+      ],
+      "test_command": "uv run pytest tests/integration/test_agent_evaluation_writes_labels.py",
+      "integration_test": "tests/integration/test_agent_evaluation_writes_labels.py",
+      "done_when": [
+        "The agent can evaluate repository stories and persist its labels",
+        "Evaluation output includes enough provenance to compare runs later",
+        "The evaluation writeback integration test passes"
+      ]
+    },
+    {
+      "id": "T45",
+      "title": "Compute confusion-matrix metrics from agent labels and expose periodic evaluation results",
+      "status": "pending",
+      "depends_on": ["T44"],
+      "scope": [
+        "Compute false positives, false negatives, and uncertain counts from classifier decisions versus agent labels",
+        "Persist periodic evaluation runs for later comparison",
+        "Expose the metrics in a lightweight admin or report surface"
+      ],
+      "artifacts": [
+        "evaluation metrics repository helpers",
+        "periodic evaluation reporting entrypoint",
+        "integration coverage for confusion-matrix calculations"
+      ],
+      "test_command": "uv run pytest tests/integration/test_classifier_evaluation_metrics.py",
+      "integration_test": "tests/integration/test_classifier_evaluation_metrics.py",
+      "done_when": [
+        "False-positive and false-negative counts are computed from persisted labels",
+        "Evaluation runs can be compared over time",
+        "The evaluation-metrics integration test passes"
+      ]
+    },
+    {
+      "id": "T46",
+      "title": "Version the classifier and add a replay loop for iterative tuning against the labeled corpus",
+      "status": "pending",
+      "depends_on": ["T45"],
+      "scope": [
+        "Version classifier decisions so changes can be compared against prior behavior",
+        "Replay the labeled corpus through the current classifier to identify regressions before rollout",
+        "Support an iterative tune-rerun loop driven by the agent on the live server"
+      ],
+      "artifacts": [
+        "classifier versioning helpers",
+        "replay or diff entrypoint",
+        "integration coverage for replay comparisons"
+      ],
+      "test_command": "uv run pytest tests/integration/test_classifier_replay_loop.py",
+      "integration_test": "tests/integration/test_classifier_replay_loop.py",
+      "done_when": [
+        "Classifier output is versioned and replayable against prior labels",
+        "The agent can compare old and new classifier behavior before rollout",
+        "The replay-loop integration test passes"
+      ]
+    },
+    {
+      "id": "T48",
+      "title": "Add a local Gmail-focused preview lab for the current delivery HTML",
+      "status": "completed",
+      "depends_on": ["T40"],
+      "scope": [
+        "Add an admin preview mode that renders the current sent template in a mobile-width Gmail-style frame",
+        "Show the email-safe candidate alongside the currently sent template for side-by-side inspection",
+        "Keep this as a local approximation and avoid silently changing delivery output"
+      ],
+      "artifacts": [
+        "gmail lab preview mode in the admin UI",
+        "template support for side-by-side current-vs-email-safe rendering",
+        "integration coverage for the new preview route"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_renders_digest.py",
+      "integration_test": "tests/integration/test_admin_preview_renders_digest.py",
+      "done_when": [
+        "Admins can inspect a Gmail-focused local preview without sending a test email",
+        "The preview shows the actual sent template and the email-safe alternative side by side",
+        "The admin preview integration test passes with the Gmail lab route"
+      ]
+    },
+    {
+      "id": "T49",
+      "title": "Persist shared newsletter content and render email/web templates from the same cached payload",
+      "status": "completed",
+      "depends_on": ["T40"],
+      "scope": [
+        "Persist a template-independent newsletter content payload in the daily newsletter table",
+        "Reuse that stored content to render market-tape admin previews and email-safe delivery HTML without rerunning ranking or summaries",
+        "Keep delivery using the cached email-safe HTML while the admin preview renders the richer browser-first template from the same content"
+      ],
+      "artifacts": [
+        "daily_newsletters content payload storage",
+        "shared cached rendering logic for preview and delivery",
+        "integration coverage proving one cached newsletter feeds both templates without new OpenAI calls"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "A daily newsletter stores structured content separately from rendered HTML",
+        "Cached preview and cached delivery render different templates from the same stored content",
+        "The cached-preview-and-delivery integration test passes without new OpenAI calls"
+      ]
+    },
+    {
+      "id": "T50",
+      "title": "Require explicit opt-in before schema resets and show an empty-repository preview message",
+      "status": "completed",
+      "depends_on": ["T49"],
+      "scope": [
+        "Stop silently dropping managed tables on schema mismatches unless the operator opts in explicitly",
+        "Expose a clear empty-repository state in the admin preview without starting generation or calling the LLM",
+        "Keep the preview generation lock behavior intact when repository data is actually ready"
+      ],
+      "artifacts": [
+        "schema reset guard with explicit allow flag",
+        "empty repository preview message in admin",
+        "integration coverage for safe schema bootstrap and empty preview behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_repository_schema_bootstrap_after_reset.py tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "integration_test": "tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "done_when": [
+        "Schema drift no longer purges data without explicit operator opt-in",
+        "An empty repository preview shows a sensible message and does not start generation",
+        "The schema reset and empty preview integration tests pass"
+      ]
+    },
+    {
+      "id": "T51",
+      "title": "Normalize Gmail source names to drop raw sender email addresses",
+      "status": "completed",
+      "depends_on": ["T50"],
+      "scope": [
+        "Normalize Gmail source display names so newsletter and admin surfaces show the sender name without the angle-bracket email suffix",
+        "Apply the normalization to both live Gmail ingest and repository-backed Gmail reads",
+        "Make the story explorer render old Gmail rows without leaking the raw email address"
+      ],
+      "artifacts": [
+        "gmail source-name normalization helper",
+        "admin display normalization for Gmail source names",
+        "integration coverage for title extraction and story explorer rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_title_extraction_avoids_generic_read_more_titles.py tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "integration_test": "tests/integration/test_admin_story_explorer_lists_repository_stories.py",
+      "done_when": [
+        "Gmail sender display names no longer include the raw email address in newsletter-facing surfaces",
+        "Repository-backed Gmail reads use the normalized source name",
+        "The Gmail source-name integration tests pass"
+      ]
+    },
+    {
+      "id": "T52",
+      "title": "Default bootstrap cron generation to fixed UTC schedules instead of CRON_TZ",
+      "status": "completed",
+      "depends_on": ["T24"],
+      "scope": [
+        "Generate fixed UTC cron schedules by default because some cron daemons ignore CRON_TZ",
+        "Keep timezone-based scheduling optional for hosts that explicitly support it",
+        "Document the DST tradeoff of fixed UTC schedules"
+      ],
+      "artifacts": [
+        "updated bootstrap defaults for UTC cron output",
+        "deployment docs describing the fixed UTC schedule",
+        "integration coverage for generated cron assets"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "done_when": [
+        "The generated cron file defaults to a fixed UTC schedule without CRON_TZ",
+        "The deployment docs explain the UTC default and DST tradeoff",
+        "The bootstrap asset integration test passes"
+      ]
+    },
+    {
+      "id": "T53",
+      "title": "Introduce a shared editorial UX system across the digest and admin app",
+      "status": "completed",
+      "depends_on": ["T52"],
+      "scope": [
+        "Create one coherent visual shell for the admin control room, preview, archive, analytics, and story explorer instead of leaving each page as an isolated utility view",
+        "Refresh the browser-first and email-safe digest treatments so they share the same editorial identity while preserving delivery-safe markup",
+        "Add integration coverage for the new shell and run a screenshot-based UX review before closing the task"
+      ],
+      "artifacts": [
+        "shared admin base template and updated admin surface templates",
+        "refreshed digest rendering and digest templates",
+        "integration coverage for the shared shell and preview rendering"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_config_page_uses_shared_shell.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_admin_newsletter_analytics_page.py tests/integration/test_admin_story_explorer_lists_repository_stories.py tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_source_selection_filters_delivery.py tests/integration/test_delivery_uses_repository_not_live_fetch.py tests/integration/test_admin_preview_empty_repository_shows_message.py -q",
+      "integration_test": "tests/integration/test_admin_config_page_uses_shared_shell.py",
+      "done_when": [
+        "The admin app surfaces read as one product with a shared hierarchy, navigation, and control language",
+        "The digest and email-safe output share the same editorial direction without breaking existing delivery behavior",
+        "A screenshot-based UX review no longer finds blocking issues for this iteration"
+      ]
+    },
+    {
+      "id": "T54",
+      "title": "Restore true browser-first cached previews and harden screenshot QA for digest variants",
+      "status": "completed",
+      "depends_on": ["T53"],
+      "scope": [
+        "Make cached admin previews show the browser-first market-tape rendering directly from stored render groups instead of falling back to the cached delivery HTML",
+        "Capture stable screenshot fixtures for admin preview, browser digest, and email-safe digest as a repeatable local review pack",
+        "Tighten any remaining mobile and dark-mode issues found in that screenshot pack"
+      ],
+      "artifacts": [
+        "cached preview rendering path improvements",
+        "repeatable screenshot review fixture generation",
+        "integration coverage for cached browser-preview behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_admin_preview_renders_digest.py -q",
+      "integration_test": "tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py",
+      "done_when": [
+        "Cached admin previews render the browser-first digest from stored content without rerunning the LLM",
+        "The screenshot review pack can be regenerated locally in one step",
+        "The preview and cached-rendering integration tests pass"
+      ]
+    },
+    {
+      "id": "T55",
+      "title": "Polish admin empty, loading, and narrow-screen states under the new shell",
+      "status": "completed",
+      "depends_on": ["T53"],
+      "scope": [
+        "Refine the empty, loading, saved, and error states so they feel native to the new editorial shell",
+        "Improve narrow-screen spacing and action clarity on the control room, preview, archive, analytics, and story explorer pages",
+        "Keep the copy and control emphasis crisp without adding UI noise"
+      ],
+      "artifacts": [
+        "state-specific admin shell refinements",
+        "mobile or narrow-screen layout adjustments",
+        "integration coverage for key empty and saved states"
+      ],
+      "test_command": "uv run pytest tests/integration/test_admin_preview_empty_repository_shows_message.py tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_admin_source_selection_filters_delivery.py -q",
+      "integration_test": "tests/integration/test_admin_preview_empty_repository_shows_message.py",
+      "done_when": [
+        "The new shell remains legible and intentional in empty, loading, and saved states",
+        "Primary actions stay obvious on narrow screens",
+        "The targeted state-coverage tests pass"
+      ]
+    },
+    {
+      "id": "T56",
+      "title": "Add a CLI dry-run delivery mode that sends the digest only to an explicit test recipient",
+      "status": "completed",
+      "depends_on": ["T52"],
+      "scope": [
+        "Add a command-line option to the delivery entrypoint or generated wrapper for a dry-run recipient override",
+        "Ensure dry-run delivery bypasses Buttondown and config recipients and sends only to the CLI-provided address",
+        "Keep the normal production path unchanged when the flag is absent",
+        "Make the behavior usable for server-side end-to-end verification without editing config files"
+      ],
+      "artifacts": [
+        "delivery CLI argument plumbing and recipient-resolution override",
+        "bootstrap or generated runner support for passing the dry-run recipient",
+        "integration coverage for dry-run recipient override behavior"
+      ],
+      "test_command": "uv run pytest tests/integration/test_deliver_digest_dry_run_recipient_override.py -q",
+      "integration_test": "tests/integration/test_deliver_digest_dry_run_recipient_override.py",
+      "done_when": [
+        "deliver_digest.py accepts an explicit dry-run recipient input",
+        "A dry run sends to exactly that address and to no Buttondown or config recipients",
+        "The normal delivery path is unchanged when dry-run mode is not requested",
+        "The integration test passes offline"
       ]
     }
   ]

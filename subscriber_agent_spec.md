@@ -1,4 +1,6 @@
-# Agent Spec: Subscriber-Specific Newsletter Personalization
+# Subscriber Agent Spec
+
+This file is scoped to the `subscriber-persona-sources` worktree so the inherited repo-wide `agent_*` harness can remain intact.
 
 ## Product Goal
 Allow each newsletter subscriber to carry their own `persona` and `preferred_sources` so delivery can send a tailored digest instead of applying one global editorial profile to everyone.

@@ -1,0 +1,145 @@
+{
+  "version": 2,
+  "project": "newsletter-curator-subscriber-personalization",
+  "updated_at": "2026-03-26",
+  "agent_roles": {
+    "planner": "Owns subscriber_agent_spec.md and keeps the sprint aligned with subscriber personalization.",
+    "generator": "Implements exactly one approved task per session.",
+    "evaluator": "Reviews the sprint contract, runs QA, and blocks completion until the task passes."
+  },
+  "evaluation_criteria": [
+    "Subscriber personalization preserves current behavior when no overrides exist.",
+    "Per-subscriber persona and preferred-source overrides are applied deterministically.",
+    "Each task ends with an integration test and a clean commit."
+  ],
+  "session_contract": [
+    "Run `pwd`, read `subscriber_agent_progress.md`, read `subscriber_agent_spec.md`, read `subscriber_agent_tasks.json`, and run `./subscriber_init.sh`.",
+    "Pick exactly one pending task whose dependencies are complete.",
+    "Draft or update the task contract, then get evaluator review before coding.",
+    "Implement only that task plus minimal prerequisite refactors.",
+    "Add or update the task's integration test before asking for evaluation.",
+    "Run the task's test command and any needed regression tests.",
+    "Get evaluator sign-off, then update task status, append progress, and commit."
+  ],
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "Initialize the subscriber-personalization worktree harness",
+      "status": "completed",
+      "depends_on": [],
+      "scope": [
+        "Create subscriber_agent_spec.md for subscriber personalization",
+        "Create worktree-scoped subscriber harness files instead of replacing inherited repo harness files",
+        "Create the first sprint contract under subscriber_agent_contracts/"
+      ],
+      "artifacts": [
+        "subscriber_agent_spec.md",
+        "subscriber_agent_tasks.json",
+        "subscriber_agent_progress.md",
+        "subscriber_agent_contracts/"
+      ],
+      "contract_file": "subscriber_agent_contracts/T1.md",
+      "test_command": "python3 -c \"import json, pathlib; json.loads(pathlib.Path('subscriber_agent_tasks.json').read_text())\"",
+      "integration_test": "artifact validation only",
+      "evaluator_checks": [
+        "Worktree-scoped harness artifacts match the subscriber-personalization workstream",
+        "The first implementation task is explicit and testable"
+      ],
+      "done_when": [
+        "The worktree has a durable subscriber-personalization harness",
+        "The next task can implement the runtime feature directly"
+      ]
+    },
+    {
+      "id": "T1",
+      "title": "Add subscriber-profile resolution and grouped personalized delivery",
+      "status": "completed",
+      "depends_on": [
+        "T0"
+      ],
+      "scope": [
+        "Add config support for subscriber-level persona and preferred_sources overrides",
+        "Normalize resolved recipients into subscriber profile objects",
+        "Group recipients by effective profile during delivery",
+        "Apply per-subscriber preferred_sources filtering on top of globally enabled sources",
+        "Expose delivery_groups metadata so grouped generation is observable in tests",
+        "Keep cached newsletter reuse only for the non-personalized default path"
+      ],
+      "artifacts": [
+        "curator/config.py",
+        "curator/jobs.py",
+        "main.py",
+        "config.yaml",
+        "tests/integration/test_delivery_personalizes_by_subscriber_profile.py"
+      ],
+      "contract_file": "subscriber_agent_contracts/T1.md",
+      "test_command": "uv run pytest tests/integration/test_delivery_personalizes_by_subscriber_profile.py -q",
+      "integration_test": "tests/integration/test_delivery_personalizes_by_subscriber_profile.py",
+      "evaluator_checks": [
+        "Legacy recipient-only configs still deliver one digest as before",
+        "Different subscriber profiles can produce different delivered digests",
+        "Subscribers with the same effective profile share one generated digest group",
+        "preferred_sources narrowing works without bypassing the global source allowlist"
+      ],
+      "done_when": [
+        "Operators can configure persona and preferred_sources per subscriber in config",
+        "Delivery sends profile-specific digests end to end",
+        "A dedicated integration test proves the personalized behavior"
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Add audience-aware newsletter persistence for personalized delivery",
+      "status": "pending",
+      "depends_on": [
+        "T1"
+      ],
+      "scope": [
+        "Persist multiple newsletters per date when profile inputs differ",
+        "Reuse cached newsletters for matching personalized groups",
+        "Extend telemetry/tracking persistence to audience-aware newsletters"
+      ],
+      "artifacts": [
+        "curator/repository.py",
+        "curator/jobs.py",
+        "tests/integration/test_personalized_newsletter_cache_keys_by_profile.py"
+      ],
+      "contract_file": "subscriber_agent_contracts/T2.md",
+      "test_command": "uv run pytest tests/integration/test_personalized_newsletter_cache_keys_by_profile.py -q",
+      "integration_test": "tests/integration/test_personalized_newsletter_cache_keys_by_profile.py",
+      "evaluator_checks": [
+        "Different profile groups do not reuse the same persisted newsletter",
+        "Matching profile groups do reuse persisted output"
+      ],
+      "done_when": [
+        "Personalized delivery can safely reuse persisted newsletters"
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Document subscriber personalization and operator caveats",
+      "status": "pending",
+      "depends_on": [
+        "T1"
+      ],
+      "scope": [
+        "Document the new config shape",
+        "Call out the current preview and persistence caveats",
+        "Document source-filter semantics for preferred_sources"
+      ],
+      "artifacts": [
+        "README.md",
+        "config.yaml"
+      ],
+      "contract_file": "subscriber_agent_contracts/T3.md",
+      "test_command": "uv run pytest tests/integration/test_delivery_personalizes_by_subscriber_profile.py -q",
+      "integration_test": "documentation plus regression confirmation",
+      "evaluator_checks": [
+        "Docs match the shipped behavior"
+      ],
+      "done_when": [
+        "Operators can configure the feature without reading code"
+      ]
+    }
+  ]
+}
