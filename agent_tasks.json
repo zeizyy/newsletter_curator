@@ -1286,7 +1286,7 @@
     {
       "id": "T56",
       "title": "Add a CLI dry-run delivery mode that sends the digest only to an explicit test recipient",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T52"],
       "scope": [
         "Add a command-line option to the delivery entrypoint or generated wrapper for a dry-run recipient override",

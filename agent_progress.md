@@ -483,3 +483,11 @@ Add new entries below this line.
 - Outcome: Tracking is now disabled unless explicitly enabled through config or bootstrap-generated env, generated server assets carry `CURATOR_ENABLE_TELEMETRY`, and delivery leaves original article URLs untouched by default while still supporting tracked redirects when opted in.
 - Open risks: Operators who do want tracking must rerun bootstrap or update the generated env to set `CURATOR_ENABLE_TELEMETRY=1`, otherwise analytics endpoints will remain inactive for sent digests.
 - Next recommended task: `T56` Add a CLI dry-run delivery mode that sends the digest only to an explicit test recipient.
+
+### 2026-03-26 - T56 added a dry-run delivery recipient override for end-to-end testing
+- Context: Added an operator-facing way to send the current digest to exactly one explicit inbox without editing config recipients or touching the live Buttondown list.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `README.md`, `deliver_digest.py`, `main.py`, `scripts/bootstrap_server.py`, `tests/integration/test_deliver_digest_dry_run_recipient_override.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deliver_digest_dry_run_recipient_override.py -q`; `uv run pytest tests/integration/test_deployment_bootstrap_assets.py tests/integration/test_buttondown_recipient_resolution.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py -q`
+- Outcome: `deliver_digest.py` now accepts `--dry-run-recipient`, the override bypasses Buttondown and config recipients while still using the normal delivery pipeline, and generated wrapper scripts now forward CLI arguments so `run_deliver_digest.sh --dry-run-recipient you@example.com` works on the server.
+- Open risks: The override currently trusts the CLI input as-is and only trims whitespace, so invalid email strings will still make it down to the Gmail send path.
+- Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.

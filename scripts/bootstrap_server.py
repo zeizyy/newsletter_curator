@@ -93,7 +93,7 @@ def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoi
             "set -a",
             f"source {quote(env_file)}",
             "set +a",
-            f"exec {quote(uv_bin)} run python {quote(entrypoint)}",
+            f"exec {quote(uv_bin)} run python {quote(entrypoint)} \"$@\"",
             "",
         ]
     )

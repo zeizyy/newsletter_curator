@@ -70,6 +70,12 @@ uv run python fetch_sources.py
 uv run python deliver_digest.py
 ```
 
+For an end-to-end delivery dry run that sends only to one test inbox:
+
+```bash
+uv run python deliver_digest.py --dry-run-recipient you@example.com
+```
+
 `main.py` is kept as a compatibility wrapper for the delivery path.
 
 First Gmail-authenticated run will open a browser for Google OAuth and create `secrets/token.json`.
@@ -152,6 +158,12 @@ tail -n 200 /root/newsletter_curator/deploy/generated/cron.log
 If you chose to install the admin service too:
 ```bash
 systemctl --user status newsletter-curator-admin
+```
+
+For a one-off server-side dry run through the generated wrapper:
+
+```bash
+./deploy/generated/run_deliver_digest.sh --dry-run-recipient you@example.com
 ```
 
 Open the admin UI:

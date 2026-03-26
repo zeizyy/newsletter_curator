@@ -80,7 +80,12 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     admin_script_text = admin_script.read_text(encoding="utf-8")
     assert "admin_app.py" in admin_script_text
     assert str(env_file) in admin_script_text
+    assert "\"$@\"" in admin_script_text
     assert oct(admin_script.stat().st_mode & 0o777) == "0o700"
+
+    deliver_script_text = deliver_script.read_text(encoding="utf-8")
+    assert "deliver_digest.py" in deliver_script_text
+    assert "\"$@\"" in deliver_script_text
 
     cron_text = cron_file.read_text(encoding="utf-8")
     assert "CRON_TZ=" not in cron_text

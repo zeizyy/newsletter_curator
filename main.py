@@ -122,8 +122,13 @@ def process_story(
     )
 
 
-def run_job(config: dict, service) -> dict:
-    return _run_delivery(config, service, send_email_fn=send_email)
+def run_job(config: dict, service, *, recipient_override: str | None = None) -> dict:
+    return _run_delivery(
+        config,
+        service,
+        send_email_fn=send_email,
+        recipient_override=recipient_override,
+    )
 
 
 def preview_job(config: dict) -> dict:
@@ -144,7 +149,7 @@ def preview_job(config: dict) -> dict:
     return {**result, "preview": preview}
 
 
-def _run_delivery(config: dict, service, *, send_email_fn) -> dict:
+def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
     from curator.jobs import run_delivery_job
 
     development_cfg = config.get("development", {})
@@ -195,17 +200,25 @@ def _run_delivery(config: dict, service, *, send_email_fn) -> dict:
             summarize_article_with_llm_fn=summarize_fn,
         )
 
+    delivery_kwargs = {
+        "collect_gmail_links_fn": collect_gmail_links,
+        "collect_source_links_fn": collect_additional_source_links,
+        "select_top_stories_fn": select_top_stories_fn,
+        "process_story_fn": process_story_fn,
+        "group_summaries_by_category_fn": group_summaries_by_category,
+        "render_digest_html_fn": render_digest_html,
+        "send_email_fn": send_email_fn,
+        "telemetry_enabled": service is not None and telemetry_enabled_for_config(config),
+    }
+    if str(recipient_override or "").strip():
+        delivery_kwargs["resolve_digest_recipients_fn"] = (
+            lambda cfg: ([recipient_override.strip()], "dry_run_override")
+        )
+
     return run_delivery_job(
         config,
         service,
-        collect_gmail_links_fn=collect_gmail_links,
-        collect_source_links_fn=collect_additional_source_links,
-        select_top_stories_fn=select_top_stories_fn,
-        process_story_fn=process_story_fn,
-        group_summaries_by_category_fn=group_summaries_by_category,
-        render_digest_html_fn=render_digest_html,
-        send_email_fn=send_email_fn,
-        telemetry_enabled=service is not None and telemetry_enabled_for_config(config),
+        **delivery_kwargs,
     )
 
 
