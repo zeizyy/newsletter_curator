@@ -169,6 +169,7 @@ def preview_job(config: dict) -> dict:
 
 def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
     from curator.jobs import (
+        DEFAULT_AUDIENCE_KEY,
         group_delivery_subscribers,
         resolve_delivery_subscribers,
         run_delivery_job,
@@ -188,6 +189,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         recipients: list[str],
         use_cached_newsletter: bool,
         persist_newsletter: bool,
+        audience_key: str,
     ) -> dict:
         select_top_stories_fn = (
             (lambda items, usage_by_model, top_stories, reasoning_model: dev.fake_select_top_stories(
@@ -263,6 +265,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             telemetry_enabled=service is not None and telemetry_enabled_for_config(config),
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
+            audience_key=audience_key,
         )
 
     personalized_delivery = service is not None and any(
@@ -276,6 +279,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             recipients=[subscriber["email"] for subscriber in subscribers],
             use_cached_newsletter=True,
             persist_newsletter=True,
+            audience_key=DEFAULT_AUDIENCE_KEY,
         )
 
     delivery_groups = group_delivery_subscribers(subscribers)
@@ -287,8 +291,9 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             persona_text=group["persona_text"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
-            use_cached_newsletter=False,
-            persist_newsletter=False,
+            use_cached_newsletter=True,
+            persist_newsletter=True,
+            audience_key=group["profile_key"],
         )
         group_status = str(profile_result.get("status", "")).strip() or "unknown"
         group_statuses.append(group_status)
@@ -296,11 +301,14 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         group_results.append(
             {
                 "profile_key": group["profile_key"],
+                "audience_key": str(profile_result.get("audience_key", "")).strip(),
                 "persona_text": group["persona_text"],
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],
                 "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),
                 "status": group_status,
+                "cached_newsletter": bool(profile_result.get("cached_newsletter", False)),
+                "daily_newsletter_id": profile_result.get("daily_newsletter_id"),
                 "digest_subject": str(profile_result.get("digest_subject", "")).strip(),
                 "digest_body": str(profile_result.get("digest_body", "")).strip(),
             }
@@ -318,7 +326,9 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     return {
         "status": overall_status,
         "personalized_delivery": True,
-        "cached_newsletter": False,
+        "cached_newsletter": all(
+            bool(group_result.get("cached_newsletter", False)) for group_result in group_results
+        ),
         "recipient_source": recipient_source,
         "sent_recipients": total_sent_recipients,
         "delivery_groups": group_results,

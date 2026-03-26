@@ -38,7 +38,7 @@ from .rendering import (
     render_digest_html,
     render_email_safe_digest_html,
 )
-from .repository import SQLiteRepository
+from .repository import DEFAULT_AUDIENCE_KEY, SQLiteRepository
 from .sources import (
     collect_additional_source_links,
     collect_repository_source_links,
@@ -1304,10 +1304,15 @@ def run_delivery_job(
     telemetry_enabled: bool = True,
     use_cached_newsletter: bool = True,
     persist_newsletter: bool = True,
+    audience_key: str = DEFAULT_AUDIENCE_KEY,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     newsletter_date = current_newsletter_date()
-    cached_newsletter = repository.get_daily_newsletter(newsletter_date) if use_cached_newsletter else None
+    cached_newsletter = (
+        repository.get_daily_newsletter(newsletter_date, audience_key=audience_key)
+        if use_cached_newsletter
+        else None
+    )
     newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
     resolved_recipients, recipient_source = resolve_digest_recipients_fn(config)
@@ -1435,6 +1440,7 @@ def run_delivery_job(
             "readiness": readiness,
             "newsletter_ttl_cleanup": newsletter_cleanup,
             "newsletter_date": newsletter_date,
+            "audience_key": audience_key,
         }
     )
     try:
@@ -1455,6 +1461,8 @@ def run_delivery_job(
                 "status": "completed",
                 "cached_newsletter": True,
                 "newsletter_date": newsletter_date,
+                "audience_key": audience_key,
+                "daily_newsletter_id": int(cached_newsletter["id"]),
                 "ranked_candidates": int(
                     cached_newsletter["metadata"].get("ranked_candidates", 0) or 0
                 ),
@@ -1483,6 +1491,7 @@ def run_delivery_job(
                     "readiness": readiness,
                     "newsletter_ttl_cleanup": newsletter_cleanup,
                     "newsletter_date": newsletter_date,
+                    "audience_key": audience_key,
                     "cached_newsletter": True,
                     "daily_newsletter_id": cached_newsletter["id"],
                     "pipeline_result": cached_result,
@@ -1516,6 +1525,7 @@ def run_delivery_job(
             if persist_newsletter:
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,
+                    audience_key=audience_key,
                     delivery_run_id=run_id,
                     subject=str(pipeline_result.get("digest_subject", "")).strip(),
                     body=str(pipeline_result.get("digest_body", "")).strip(),
@@ -1542,6 +1552,8 @@ def run_delivery_job(
             pipeline_result["recipient_source"] = recipient_source
             pipeline_result["content"] = newsletter_content
             pipeline_result["delivery_digest_html"] = delivery_html
+            pipeline_result["daily_newsletter_id"] = daily_newsletter_id
+            pipeline_result["audience_key"] = audience_key
         repository.complete_delivery_run(
             run_id,
             status="completed",
@@ -1550,6 +1562,7 @@ def run_delivery_job(
                 "readiness": readiness,
                 "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
+                "audience_key": audience_key,
                 "cached_newsletter": False,
                 "daily_newsletter_id": daily_newsletter_id,
                 "pipeline_result": pipeline_result,
@@ -1558,6 +1571,7 @@ def run_delivery_job(
         return {
             "run_id": run_id,
             "newsletter_date": newsletter_date,
+            "audience_key": audience_key,
             "cached_newsletter": False,
             "status": "completed",
             **pipeline_result,
@@ -1571,6 +1585,7 @@ def run_delivery_job(
                 "readiness": readiness,
                 "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
+                "audience_key": audience_key,
                 "error": str(exc),
             },
         )

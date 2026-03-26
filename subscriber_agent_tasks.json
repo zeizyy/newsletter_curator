@@ -90,7 +90,7 @@
     {
       "id": "T2",
       "title": "Add audience-aware newsletter persistence for personalized delivery",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "T1"
       ],

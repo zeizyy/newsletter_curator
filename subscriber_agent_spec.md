@@ -24,7 +24,7 @@ Operators can keep one ingest pipeline and one delivery command while serving di
 ## Current Constraints
 - Persona is currently global at `config.persona.text`.
 - Repository-backed source enable/disable is currently global.
-- Cached newsletters are keyed only by day, so they cannot safely serve multiple personalized variants yet.
+- Preview still targets the generic default audience rather than personalized variants.
 
 ## High-Level Technical Design
 ### Config model
@@ -54,7 +54,8 @@ Config recipients, dry-run recipients, and Buttondown recipients should all flow
 - If no subscriber-specific overrides are active, preserve the current single-digest path and cached newsletter reuse.
 - If subscriber-specific overrides are active during delivery, group recipients by `profile_key`.
 - Generate one digest per group and send it to every recipient in that group.
-- Personalized groups should not reuse the current single-day cache until audience-aware persistence exists.
+- Persist the legacy generic digest under audience key `"default"`.
+- Persist personalized groups under their `profile_key` so matching groups can reuse cached newsletters without colliding with the generic digest or other personalized audiences.
 
 ### Source filtering
 Keep global repository source selection as the coarse allowlist, then narrow candidate links by subscriber `preferred_sources` when provided. Matching is exact after trim/lowercase against candidate `source_name`; an empty or missing list means no additional filtering.
@@ -63,4 +64,4 @@ Keep global repository source selection as the coarse allowlist, then narrow can
 - Existing non-personalized delivery behavior remains unchanged.
 - Persona and preferred-source overrides are deterministic under test.
 - Recipients sharing a profile receive the same digest without duplicate generation work.
-- The repo stays mergeable, with audience-aware persistence left as an explicit follow-up task.
+- Audience-aware persistence keeps `daily_newsletter_id` stable for telemetry and tracked links.
