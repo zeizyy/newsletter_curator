@@ -35,6 +35,8 @@ persona:
     Avoid:
     PR fluff, hype, generic macro, repetitive benchmark news, shallow summaries
 
+subscribers: []
+
 additional_sources:
   enabled: true
   script_path: skills/daily-news-curator/scripts/build_daily_digest.py

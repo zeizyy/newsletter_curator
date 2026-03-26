@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -180,6 +181,104 @@ def resolve_digest_recipients(
         )
     )
     return configured_recipients, "config_fallback"
+
+
+def normalize_preferred_sources(
+    raw_preferred_sources: list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    preferred_sources: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_preferred_sources or []:
+        source_name = str(raw).strip()
+        normalized = source_name.lower()
+        if not source_name or normalized in seen:
+            continue
+        preferred_sources.append(source_name)
+        seen.add(normalized)
+    return preferred_sources
+
+
+def subscriber_profile_key(persona_text: str, preferred_sources: list[str]) -> str:
+    payload = json.dumps(
+        {
+            "persona_text": str(persona_text).strip(),
+            "preferred_sources": [source.lower() for source in preferred_sources],
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _subscriber_override_map(config: dict) -> dict[str, dict]:
+    overrides: dict[str, dict] = {}
+    for raw_entry in config.get("subscribers", []):
+        if not isinstance(raw_entry, dict):
+            continue
+        email = str(raw_entry.get("email", "")).strip().lower()
+        if not email:
+            continue
+        persona_cfg = raw_entry.get("persona", {})
+        persona_text = ""
+        if isinstance(persona_cfg, dict):
+            persona_text = str(persona_cfg.get("text", "")).strip()
+        preferred_sources = normalize_preferred_sources(raw_entry.get("preferred_sources", []))
+        overrides[email] = {
+            "persona_text": persona_text,
+            "preferred_sources": preferred_sources,
+        }
+    return overrides
+
+
+def resolve_delivery_subscribers(
+    config: dict,
+    *,
+    requests_get=None,
+    recipient_override: str | None = None,
+) -> tuple[list[dict], str]:
+    if str(recipient_override or "").strip():
+        recipients = normalize_digest_recipients([recipient_override])
+        recipient_source = "dry_run_override"
+    else:
+        recipients, recipient_source = resolve_digest_recipients(
+            config,
+            requests_get=requests_get,
+        )
+
+    default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    overrides = _subscriber_override_map(config)
+    subscribers: list[dict] = []
+    for email in recipients:
+        override = overrides.get(email, {})
+        persona_text = str(override.get("persona_text") or default_persona_text).strip()
+        preferred_sources = list(override.get("preferred_sources") or [])
+        subscribers.append(
+            {
+                "email": email,
+                "persona_text": persona_text,
+                "preferred_sources": preferred_sources,
+                "profile_key": subscriber_profile_key(persona_text, preferred_sources),
+            }
+        )
+    return subscribers, recipient_source
+
+
+def group_delivery_subscribers(subscribers: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for subscriber in subscribers:
+        profile_key = str(subscriber.get("profile_key", "")).strip()
+        if not profile_key:
+            continue
+        group = grouped.get(profile_key)
+        if group is None:
+            group = {
+                "profile_key": profile_key,
+                "persona_text": str(subscriber.get("persona_text", "")).strip(),
+                "preferred_sources": list(subscriber.get("preferred_sources") or []),
+                "recipients": [],
+            }
+            grouped[profile_key] = group
+        group["recipients"].append(str(subscriber.get("email", "")).strip().lower())
+    return list(grouped.values())
 
 
 def summarize_for_ingest(
@@ -1203,10 +1302,12 @@ def run_delivery_job(
     send_email_fn=send_email,
     resolve_digest_recipients_fn=resolve_digest_recipients,
     telemetry_enabled: bool = True,
+    use_cached_newsletter: bool = True,
+    persist_newsletter: bool = True,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     newsletter_date = current_newsletter_date()
-    cached_newsletter = repository.get_daily_newsletter(newsletter_date)
+    cached_newsletter = repository.get_daily_newsletter(newsletter_date) if use_cached_newsletter else None
     newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
     resolved_recipients, recipient_source = resolve_digest_recipients_fn(config)
@@ -1412,24 +1513,25 @@ def run_delivery_job(
                 str(pipeline_result.get("email_safe_digest_html", "")).strip()
                 or str(pipeline_result.get("digest_html", "")).strip(),
             )
-            daily_newsletter_id = repository.upsert_daily_newsletter(
-                newsletter_date=newsletter_date,
-                delivery_run_id=run_id,
-                subject=str(pipeline_result.get("digest_subject", "")).strip(),
-                body=str(pipeline_result.get("digest_body", "")).strip(),
-                html_body=delivery_html,
-                content=newsletter_content,
-                selected_items=list(pipeline_result.get("accepted_story_items", [])),
-                metadata={
-                    "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
-                    "selected": pipeline_result.get("selected", 0),
-                    "accepted_items": pipeline_result.get("accepted_items", 0),
-                    "backfilled_count": pipeline_result.get("backfilled_count", 0),
-                    "skipped_count": pipeline_result.get("skipped_count", 0),
-                    "render_groups": pipeline_result.get("render_groups", {}),
-                    "newsletter_ttl_cleanup": newsletter_cleanup,
-                },
-            )
+            if persist_newsletter:
+                daily_newsletter_id = repository.upsert_daily_newsletter(
+                    newsletter_date=newsletter_date,
+                    delivery_run_id=run_id,
+                    subject=str(pipeline_result.get("digest_subject", "")).strip(),
+                    body=str(pipeline_result.get("digest_body", "")).strip(),
+                    html_body=delivery_html,
+                    content=newsletter_content,
+                    selected_items=list(pipeline_result.get("accepted_story_items", [])),
+                    metadata={
+                        "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
+                        "selected": pipeline_result.get("selected", 0),
+                        "accepted_items": pipeline_result.get("accepted_items", 0),
+                        "backfilled_count": pipeline_result.get("backfilled_count", 0),
+                        "skipped_count": pipeline_result.get("skipped_count", 0),
+                        "render_groups": pipeline_result.get("render_groups", {}),
+                        "newsletter_ttl_cleanup": newsletter_cleanup,
+                    },
+                )
             pipeline_result["sent_recipients"] = send_digest(
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
                 body=str(pipeline_result.get("digest_body", "")).strip(),
