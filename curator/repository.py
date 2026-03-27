@@ -251,11 +251,92 @@ class SQLiteRepository:
                     created_at,
                     updated_at
                 FROM daily_newsletters;
-
-                DROP TABLE daily_newsletters;
-                ALTER TABLE daily_newsletters_migrated RENAME TO daily_newsletters;
                 """
             )
+
+            dependent_tables = {
+                "newsletter_telemetry": """
+                    CREATE TABLE newsletter_telemetry_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL UNIQUE REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL UNIQUE,
+                        created_at TEXT NOT NULL
+                    )
+                """,
+                "tracked_links": """
+                    CREATE TABLE tracked_links_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL UNIQUE,
+                        target_url TEXT NOT NULL,
+                        story_title TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        UNIQUE(daily_newsletter_id, target_url)
+                    )
+                """,
+                "newsletter_open_events": """
+                    CREATE TABLE newsletter_open_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL,
+                        opened_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+                "newsletter_click_events": """
+                    CREATE TABLE newsletter_click_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL,
+                        clicked_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+            }
+
+            for table_name, create_sql in dependent_tables.items():
+                if not self._table_exists(connection, table_name):
+                    continue
+                connection.execute(create_sql)
+                column_names = [
+                    str(row["name"])
+                    for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+                ]
+                joined_columns = ", ".join(column_names)
+                connection.execute(
+                    f"""
+                    INSERT INTO {table_name}_migrated ({joined_columns})
+                    SELECT {joined_columns}
+                    FROM {table_name}
+                    """
+                )
+
+            for table_name in [
+                "newsletter_click_events",
+                "newsletter_open_events",
+                "tracked_links",
+                "newsletter_telemetry",
+            ]:
+                if self._table_exists(connection, table_name):
+                    connection.execute(f"DROP TABLE {table_name}")
+
+            connection.execute("DROP TABLE daily_newsletters")
+            connection.execute("ALTER TABLE daily_newsletters_migrated RENAME TO daily_newsletters")
+
+            for table_name in [
+                "newsletter_telemetry",
+                "tracked_links",
+                "newsletter_open_events",
+                "newsletter_click_events",
+            ]:
+                migrated_table = f"{table_name}_migrated"
+                if self._table_exists(connection, migrated_table):
+                    connection.execute(
+                        f"ALTER TABLE {migrated_table} RENAME TO {table_name}"
+                    )
         finally:
             connection.execute("PRAGMA foreign_keys = ON")
 

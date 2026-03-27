@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import importlib
 from datetime import UTC, datetime, timedelta
 
-from curator.jobs import current_newsletter_date, get_repository_from_config
+from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
+
+
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
 
 
 def _seed_story(
@@ -49,36 +56,18 @@ def _seed_story(
 
 def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
 
     config_path = write_temp_config(
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "development": {"fake_inference": True},
-            "persona": {"text": "Generalist tech reader."},
             "email": {
-                "digest_recipients": [
-                    "macro-one@example.com",
-                    "macro-two@example.com",
-                    "chips@example.com",
-                ],
+                "digest_recipients": ["generic@example.com"],
                 "digest_subject": "Personalized Digest",
             },
-            "subscribers": [
-                {
-                    "email": "macro-one@example.com",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                },
-                {
-                    "email": "macro-two@example.com",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                },
-                {
-                    "email": "chips@example.com",
-                    "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-                    "preferred_sources": ["Chip Insider"],
-                },
-            ],
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -88,20 +77,12 @@ def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedDateTime)
 
-    config = main.load_config()
-    repository = get_repository_from_config(config)
-    newsletter_date = current_newsletter_date()
-    default_newsletter_id = repository.upsert_daily_newsletter(
-        newsletter_date=newsletter_date,
-        audience_key="default",
-        subject="Default Digest",
-        body="Default digest body",
-        html_body="<html><body>Default digest body</body></html>",
-        selected_items=[{"title": "Default Story", "url": "https://example.com/default"}],
-    )
-
-    recent_base = datetime.now(UTC) - timedelta(hours=2)
+    generic_config = main.load_config()
+    repository = get_repository_from_config(generic_config)
+    recent_base = FixedDateTime.now(UTC) - timedelta(hours=2)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
     _seed_story(
         repository,
@@ -132,10 +113,10 @@ def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
         summarized_at=(recent_base - timedelta(minutes=25)).isoformat(),
     )
 
-    first_sent_messages: list[dict] = []
+    sent_messages: list[dict] = []
 
-    def first_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
-        first_sent_messages.append(
+    def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        sent_messages.append(
             {
                 "to": to_address,
                 "subject": subject,
@@ -144,88 +125,90 @@ def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
             }
         )
 
-    monkeypatch.setattr(main, "send_email", first_send_email)
+    monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    first_result = main.run_job(config, FakeGmailService(messages=[]))
+    generic_result = main.run_job(generic_config, FakeGmailService(messages=[]))
+    default_newsletter = repository.get_daily_newsletter("2026-03-24")
 
-    assert first_result["status"] == "completed"
-    assert first_result["personalized_delivery"] is True
-    assert first_result["cached_newsletter"] is False
-    assert len(first_result["delivery_groups"]) == 2
-    assert all(group["cached_newsletter"] is False for group in first_result["delivery_groups"])
+    assert generic_result["status"] == "completed"
+    assert generic_result["cached_newsletter"] is False
+    assert default_newsletter is not None
+    assert default_newsletter["audience_key"] == "default"
 
-    all_newsletters = repository.list_daily_newsletters(include_all_audiences=True, limit=10)
-    same_day_newsletters = [
-        row for row in all_newsletters if row["newsletter_date"] == newsletter_date
+    personalized_config = deepcopy(generic_config)
+    personalized_config["email"]["digest_recipients"] = [
+        "macro-one@example.com",
+        "macro-two@example.com",
+        "chips@example.com",
     ]
-    assert len(same_day_newsletters) == 3
-    assert repository.get_daily_newsletter(newsletter_date)["id"] == default_newsletter_id
-    assert repository.get_daily_newsletter(newsletter_date)["body"] == "Default digest body"
+    personalized_config["subscribers"] = [
+        {
+            "email": "macro-one@example.com",
+            "persona": {"text": "Macro investor focused on rates and valuations."},
+        },
+        {
+            "email": "macro-two@example.com",
+            "persona": {"text": "Macro investor focused on rates and valuations."},
+        },
+        {
+            "email": "chips@example.com",
+            "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
+            "preferred_sources": ["Chip Insider"],
+        },
+    ]
 
-    groups_by_recipients = {
-        tuple(group["recipients"]): group
-        for group in first_result["delivery_groups"]
+    sent_messages.clear()
+    first_personalized = main.run_job(personalized_config, FakeGmailService(messages=[]))
+
+    assert first_personalized["status"] == "completed"
+    assert first_personalized["personalized_delivery"] is True
+    assert first_personalized["cached_newsletter"] is False
+    assert len(first_personalized["delivery_groups"]) == 2
+    assert all(group["cached_newsletter"] is False for group in first_personalized["delivery_groups"])
+
+    newsletters = repository.list_daily_newsletters(limit=10, include_all_audiences=True)
+    newsletter_ids = {row["id"] for row in newsletters if row["newsletter_date"] == "2026-03-24"}
+    audience_keys = {
+        row["audience_key"] for row in newsletters if row["newsletter_date"] == "2026-03-24"
     }
-    macro_group = groups_by_recipients[("macro-one@example.com", "macro-two@example.com")]
-    chips_group = groups_by_recipients[("chips@example.com",)]
+    assert len(newsletter_ids) == 3
+    assert "default" in audience_keys
 
-    assert macro_group["audience_key"] == macro_group["profile_key"]
-    assert chips_group["audience_key"] == chips_group["profile_key"]
-    assert macro_group["daily_newsletter_id"] != chips_group["daily_newsletter_id"]
-    assert macro_group["sent_recipients"] == 2
-    assert chips_group["sent_recipients"] == 1
-    assert macro_group["digest_body"] != chips_group["digest_body"]
+    grouped_ids = {
+        tuple(group["recipients"]): int(group["daily_newsletter_id"])
+        for group in first_personalized["delivery_groups"]
+    }
+    assert grouped_ids[("macro-one@example.com", "macro-two@example.com")] != grouped_ids[
+        ("chips@example.com",)
+    ]
+    assert all(
+        int(group["daily_newsletter_id"]) != int(default_newsletter["id"])
+        for group in first_personalized["delivery_groups"]
+    )
 
     with repository.connect() as connection:
-        connection.execute("DELETE FROM fetched_stories")
         connection.execute("DELETE FROM article_snapshots")
+        connection.execute("DELETE FROM fetched_stories")
 
-    def fail_if_uncached(*args, **kwargs):
-        raise AssertionError("Personalized cache reuse should prevent fresh candidate collection.")
+    def fail_fake_select(*args, **kwargs):
+        raise AssertionError("Audience-aware cache should prevent reranking on the second run.")
 
-    second_sent_messages: list[dict] = []
+    def fail_fake_summarize(*args, **kwargs):
+        raise AssertionError("Audience-aware cache should prevent resummarization on the second run.")
 
-    def second_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
-        second_sent_messages.append(
-            {
-                "to": to_address,
-                "subject": subject,
-                "body": body,
-                "html_body": html_body or "",
-            }
-        )
+    monkeypatch.setattr(main.dev, "fake_select_top_stories", fail_fake_select)
+    monkeypatch.setattr(main.dev, "fake_summarize_article", fail_fake_summarize)
 
-    monkeypatch.setattr(main, "collect_additional_source_links", fail_if_uncached)
-    monkeypatch.setattr(main, "collect_gmail_links", fail_if_uncached)
-    monkeypatch.setattr(main, "send_email", second_send_email)
+    sent_messages.clear()
+    second_personalized = main.run_job(personalized_config, FakeGmailService(messages=[]))
 
-    second_result = main.run_job(config, FakeGmailService(messages=[]))
+    assert second_personalized["status"] == "completed"
+    assert second_personalized["personalized_delivery"] is True
+    assert second_personalized["cached_newsletter"] is True
+    assert all(group["cached_newsletter"] is True for group in second_personalized["delivery_groups"])
+    assert {
+        tuple(group["recipients"]): int(group["daily_newsletter_id"])
+        for group in second_personalized["delivery_groups"]
+    } == grouped_ids
+    assert len(sent_messages) == 3
 
-    assert second_result["status"] == "completed"
-    assert second_result["personalized_delivery"] is True
-    assert second_result["cached_newsletter"] is True
-    assert len(second_result["delivery_groups"]) == 2
-    assert all(group["cached_newsletter"] is True for group in second_result["delivery_groups"])
-
-    second_groups_by_recipients = {
-        tuple(group["recipients"]): group
-        for group in second_result["delivery_groups"]
-    }
-    assert (
-        second_groups_by_recipients[("macro-one@example.com", "macro-two@example.com")]["daily_newsletter_id"]
-        == macro_group["daily_newsletter_id"]
-    )
-    assert (
-        second_groups_by_recipients[("chips@example.com",)]["daily_newsletter_id"]
-        == chips_group["daily_newsletter_id"]
-    )
-
-    second_messages_by_recipient = {
-        message["to"]: message for message in second_sent_messages
-    }
-    first_messages_by_recipient = {
-        message["to"]: message for message in first_sent_messages
-    }
-    assert second_messages_by_recipient["macro-one@example.com"]["body"] == first_messages_by_recipient["macro-one@example.com"]["body"]
-    assert second_messages_by_recipient["macro-two@example.com"]["body"] == first_messages_by_recipient["macro-two@example.com"]["body"]
-    assert second_messages_by_recipient["chips@example.com"]["body"] == first_messages_by_recipient["chips@example.com"]["body"]

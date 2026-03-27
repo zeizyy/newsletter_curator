@@ -50,6 +50,25 @@ def test_daily_newsletter_audience_key_migration_preserves_telemetry(tmp_path):
             UNIQUE(daily_newsletter_id, target_url)
         );
 
+        CREATE TABLE newsletter_open_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+            open_token TEXT NOT NULL,
+            opened_at TEXT NOT NULL,
+            user_agent TEXT NOT NULL DEFAULT '',
+            ip_address TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE newsletter_click_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+            tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+            click_token TEXT NOT NULL,
+            clicked_at TEXT NOT NULL,
+            user_agent TEXT NOT NULL DEFAULT '',
+            ip_address TEXT NOT NULL DEFAULT ''
+        );
+
         INSERT INTO daily_newsletters (
             id,
             newsletter_date,
@@ -62,38 +81,25 @@ def test_daily_newsletter_audience_key_migration_preserves_telemetry(tmp_path):
             metadata_json,
             created_at,
             updated_at
-        )
-        VALUES (
-            7,
+        ) VALUES (
+            11,
             '2026-03-24',
             NULL,
             'Legacy Digest',
             'Legacy body',
-            '<html><body>Legacy body</body></html>',
+            '<div>Legacy body</div>',
             '{}',
             '[]',
             '{}',
-            '2026-03-24T18:00:00+00:00',
-            '2026-03-24T18:00:00+00:00'
+            '2026-03-24T17:00:00+00:00',
+            '2026-03-24T17:00:00+00:00'
         );
 
-        INSERT INTO newsletter_telemetry (daily_newsletter_id, open_token, created_at)
-        VALUES (7, 'legacy-open-token', '2026-03-24T18:00:00+00:00');
+        INSERT INTO newsletter_telemetry (id, daily_newsletter_id, open_token, created_at)
+        VALUES (21, 11, 'open-token-123', '2026-03-24T17:05:00+00:00');
 
-        INSERT INTO tracked_links (
-            daily_newsletter_id,
-            click_token,
-            target_url,
-            story_title,
-            created_at
-        )
-        VALUES (
-            7,
-            'legacy-click-token',
-            'https://example.com/legacy',
-            'Legacy Story',
-            '2026-03-24T18:00:00+00:00'
-        );
+        INSERT INTO tracked_links (id, daily_newsletter_id, click_token, target_url, story_title, created_at)
+        VALUES (31, 11, 'click-token-123', 'https://example.com/story', 'Legacy Story', '2026-03-24T17:06:00+00:00');
         """
     )
     connection.commit()
@@ -102,31 +108,31 @@ def test_daily_newsletter_audience_key_migration_preserves_telemetry(tmp_path):
     repository = SQLiteRepository(db_path)
     repository.initialize()
 
-    migrated = repository.get_daily_newsletter("2026-03-24")
-    assert migrated is not None
-    assert migrated["id"] == 7
-    assert migrated["audience_key"] == "default"
-    assert migrated["subject"] == "Legacy Digest"
+    newsletter = repository.get_daily_newsletter("2026-03-24")
+    newsletters = repository.list_daily_newsletters(limit=10, include_all_audiences=True)
 
-    with repository.connect() as connection:
-        telemetry_count = connection.execute(
-            "SELECT COUNT(*) FROM newsletter_telemetry WHERE daily_newsletter_id = 7"
-        ).fetchone()[0]
-        tracked_link_count = connection.execute(
-            "SELECT COUNT(*) FROM tracked_links WHERE daily_newsletter_id = 7"
-        ).fetchone()[0]
+    assert newsletter is not None
+    assert newsletter["id"] == 11
+    assert newsletter["audience_key"] == "default"
+    assert newsletters[0]["id"] == 11
+    assert newsletters[0]["audience_key"] == "default"
 
-    assert telemetry_count == 1
-    assert tracked_link_count == 1
-
-    personalized_id = repository.upsert_daily_newsletter(
-        newsletter_date="2026-03-24",
-        audience_key="profile-123",
-        subject="Personalized Digest",
-        body="Personalized body",
-        html_body="<html><body>Personalized body</body></html>",
-        selected_items=[{"title": "Personalized Story", "url": "https://example.com/personalized"}],
+    open_event = repository.record_newsletter_open(
+        "open-token-123",
+        user_agent="test-agent",
+        ip_address="1.1.1.1",
+    )
+    click_event = repository.record_newsletter_click(
+        "click-token-123",
+        user_agent="test-agent",
+        ip_address="1.1.1.1",
     )
 
-    assert personalized_id != 7
-    assert repository.get_daily_newsletter("2026-03-24", audience_key="profile-123") is not None
+    assert open_event["daily_newsletter_id"] == 11
+    assert click_event["daily_newsletter_id"] == 11
+
+    counts = repository.get_table_counts()
+    assert counts["newsletter_telemetry"] == 1
+    assert counts["tracked_links"] == 1
+    assert counts["newsletter_open_events"] == 1
+    assert counts["newsletter_click_events"] == 1

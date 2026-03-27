@@ -56,3 +56,11 @@ Add new entries below this line.
 - Outcome: Personalized delivery groups now persist under their `profile_key`, matching groups reuse cached variants on later runs, the generic `"default"` audience path remains intact for preview and non-personalized delivery, and existing daily-newsletter rows migrate in place without orphaning telemetry or tracked links.
 - Open risks: Preview still shows only the generic default audience, and the admin newsletter history/analytics surfaces intentionally stay on the default audience rather than exposing all personalized variants.
 - Next recommended task: `T3` Document subscriber personalization and operator caveats.
+
+### 2026-03-26 - T2 evaluator sign-off recorded
+- Context: Validated the audience-aware persistence diff against the T2 contract, reran the targeted and compatibility regressions, and recorded the evaluator pass in the worktree-scoped contract file.
+- Files changed: `curator/repository.py`, `tests/integration/test_personalized_newsletter_cache_keys_by_profile.py`, `tests/integration/test_daily_newsletter_audience_key_migration_preserves_telemetry.py`, `subscriber_agent_contracts/T2.md`, `subscriber_agent_progress.md`
+- Tests run: `uv run pytest tests/integration/test_personalized_newsletter_cache_keys_by_profile.py tests/integration/test_daily_newsletter_audience_key_migration_preserves_telemetry.py -q`; `uv run pytest tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_delivery_personalizes_by_subscriber_profile.py tests/integration/test_newsletter_history_view_and_ttl.py tests/integration/test_admin_newsletter_analytics_page.py tests/integration/test_buttondown_recipient_resolution.py tests/integration/test_deliver_digest_dry_run_recipient_override.py tests/integration/test_admin_source_selection_filters_delivery.py -q`
+- Outcome: T2 is now fully closed with evaluator approval; personalized delivery reuses persisted newsletters by audience key, legacy default-audience callers remain stable, and old databases migrate without breaking telemetry or tracked-link lookups.
+- Open risks: Personalized variants are intentionally not listed in preview/history/analytics yet; documenting that operator caveat remains the next step.
+- Next recommended task: `T3` Document subscriber personalization and operator caveats.
