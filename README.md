@@ -223,6 +223,7 @@ Edit `config.yaml`:
 - `gmail.query_time_window` (default `newer_than:1d`)
 - `database.path` (default `data/newsletter_curator.sqlite3`)
 - `persona.text`
+- `subscribers`
 - `development.use_canned_sources`
 - `development.canned_sources_file`
 - `development.fake_inference`
@@ -250,6 +251,51 @@ Edit `config.yaml`:
 - summary generation shapes the `Why this matters to me` framing for each stored article summary
 
 In practice, this means the same persona can change both what gets summarized during ingest and what ultimately gets selected for delivery or preview later.
+
+### Subscriber Personalization
+Use top-level `subscribers` entries when you want matched recipients to receive their own effective persona or a narrower source mix:
+
+```yaml
+persona:
+  text: |
+    Generalist tech reader interested in strategy and platform shifts.
+
+email:
+  digest_recipients:
+    - macro@example.com
+    - infra@example.com
+
+subscribers:
+  - email: macro@example.com
+    persona:
+      text: |
+        Macro investor focused on rates, valuations, and software demand shifts.
+    preferred_sources:
+      - Macro Wire
+      - General Tech
+  - email: infra@example.com
+    persona:
+      text: |
+        AI infrastructure builder focused on model costs, chips, and inference economics.
+    preferred_sources:
+      - Chip Insider
+```
+
+Delivery recipient membership is still resolved in this order:
+- `--dry-run-recipient`
+- Buttondown active subscribers when `BUTTONDOWN_API_KEY` is set
+- `email.digest_recipients`
+
+`subscribers` does not add recipients by itself. It only overrides the effective profile for matching resolved email addresses after normalization.
+
+`preferred_sources` is a per-subscriber narrowing filter on top of the global source allowlist. Matching is exact after trim/lowercase against each candidate item's `source_name`, so it can narrow already-enabled sources but cannot re-enable a globally disabled source.
+
+When no subscriber-specific overrides are active, delivery keeps the legacy single-digest behavior and reuses the default cached newsletter as before. When overrides are active, delivery groups recipients by their effective profile so matching profiles share one generated digest, and personalized variants persist under their own audience keys for later reuse.
+
+Current operator caveats:
+- preview still uses the default audience rather than generating one preview per personalized profile
+- newsletter history and analytics remain focused on the default audience instead of listing every personalized variant
+- Buttondown only supplies recipient membership; subscriber preferences still come from `config.yaml`
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
 

@@ -64,3 +64,11 @@ Add new entries below this line.
 - Outcome: T2 is now fully closed with evaluator approval; personalized delivery reuses persisted newsletters by audience key, legacy default-audience callers remain stable, and old databases migrate without breaking telemetry or tracked-link lookups.
 - Open risks: Personalized variants are intentionally not listed in preview/history/analytics yet; documenting that operator caveat remains the next step.
 - Next recommended task: `T3` Document subscriber personalization and operator caveats.
+
+### 2026-03-27 - T3 documented subscriber personalization and operator caveats
+- Context: Documented the shipped `subscribers` config schema, recipient resolution order, per-subscriber source filtering semantics, and the current default-audience caveats for preview/history/analytics.
+- Files changed: `README.md`, `config.yaml`, `subscriber_agent_contracts/T3.md`, `subscriber_agent_tasks.json`, `subscriber_agent_progress.md`
+- Tests run: `uv run pytest tests/integration/test_delivery_personalizes_by_subscriber_profile.py -q`; `uv run python -c "from curator import config as c; cfg=c.load_config('config.yaml'); assert isinstance(cfg.get('subscribers'), list); print('subscribers_len=', len(cfg['subscribers']))"`
+- Outcome: Operators now have a copyable `subscribers` example and explicit guidance for how personalized delivery behaves, including where it still falls back to the default audience.
+- Open risks: Preview/history/analytics still do not enumerate personalized variants.
+- Next recommended task: No pending task remains in `subscriber_agent_tasks.json`; create a new task only if preview/history/analytics should become audience-aware.

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "project": "newsletter-curator-subscriber-personalization",
-  "updated_at": "2026-03-26",
+  "updated_at": "2026-03-27",
   "agent_roles": {
     "planner": "Owns subscriber_agent_spec.md and keeps the sprint aligned with subscriber personalization.",
     "generator": "Implements exactly one approved task per session.",
@@ -118,7 +118,7 @@
     {
       "id": "T3",
       "title": "Document subscriber personalization and operator caveats",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "T1"
       ],
