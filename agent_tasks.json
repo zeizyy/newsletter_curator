@@ -1596,7 +1596,7 @@
     {
       "id": "T66",
       "title": "Publish the MCP server as a Codex-discoverable local plugin",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T65"],
       "scope": [
         "Add local plugin or manifest metadata for the read-only story-feed server.",

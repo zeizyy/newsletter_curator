@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "newsletter-curator-story-feed": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "../../scripts/newsletter_mcp_server.py",
+        "--config-path",
+        "../../config.yaml"
+      ],
+      "note": "Repo-local read-only MCP server for stored newsletter stories. Launch this from the plugin root so the relative repo paths resolve correctly."
+    }
+  }
+}

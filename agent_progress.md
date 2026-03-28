@@ -563,3 +563,11 @@ Add new entries below this line.
 - Outcome: `list_recent_stories` now accepts bounded `hours` and exact-match `source_type` arguments while preserving the default 24-hour behavior, invalid arguments now surface as MCP-visible tool errors, and the harness now includes follow-on tasks for publishing the MCP as a local plugin plus adding a Codex-oriented workflow on top of it.
 - Open risks: The server now has a slightly larger argument surface, so any future additions should stay bounded or they will blur into pagination or discovery work that belongs in a separate sprint.
 - Next recommended task: `T66` Publish the MCP server as a Codex-discoverable local plugin.
+
+### 2026-03-28 - T66 published the MCP server as a repo-local Codex plugin
+- Context: Turned the read-only MCP server into a repo-local publish surface that Codex can discover through a local marketplace entry, without changing server behavior.
+- Files changed: `README.md`, `.agents/plugins/marketplace.json`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T66_mcp_publish_and_manifest.md`, `plugins/newsletter-curator-story-feed/.codex-plugin/plugin.json`, `plugins/newsletter-curator-story-feed/.mcp.json`, `tests/integration/test_mcp_publish_manifest.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_publish_manifest.py -q`; `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: The repo now publishes a local `newsletter-curator-story-feed` plugin with a real plugin manifest, a stdio `.mcp.json` that launches the checked-in server from the plugin root, a local marketplace entry under `.agents/plugins/marketplace.json`, and a manifest smoke test that proves the published plugin can negotiate `initialize` offline.
+- Open risks: This publish path is repo-local, so any future home-local or global Codex installation flow still needs a separate validation step rather than assuming the same relative paths.
+- Next recommended task: `T67` Add a Codex agent workflow that uses the MCP story feed.

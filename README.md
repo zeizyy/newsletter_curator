@@ -84,6 +84,21 @@ If you already export `NEWSLETTER_CONFIG`, `--config-path` is optional. For loca
 uv run python scripts/newsletter_mcp_server.py --help
 ```
 
+Repo-local Codex plugin publish path:
+
+- plugin root: `plugins/newsletter-curator-story-feed`
+- plugin manifest: `plugins/newsletter-curator-story-feed/.codex-plugin/plugin.json`
+- MCP server manifest: `plugins/newsletter-curator-story-feed/.mcp.json`
+- local marketplace entry: `.agents/plugins/marketplace.json`
+
+The published plugin launches the checked-in MCP server through:
+
+```bash
+uv run python ../../scripts/newsletter_mcp_server.py --config-path ../../config.yaml
+```
+
+That command is stored in the plugin-local `.mcp.json` and is intended to run from the plugin root.
+
 For an end-to-end delivery dry run that sends only to one test inbox:
 
 ```bash
