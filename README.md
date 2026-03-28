@@ -76,6 +76,21 @@ For an end-to-end delivery dry run that sends only to one test inbox:
 uv run python deliver_digest.py --dry-run-recipient you@example.com
 ```
 
+For an offline subprocess E2E run that exercises the full ingest + delivery stack with fixture data and
+prints stage runtime / memory-watermark diagnostics:
+
+```bash
+uv run python scripts/run_offline_e2e_fixture.py --scenario main_flow
+uv run python scripts/run_offline_e2e_fixture.py --scenario smoke
+uv run python scripts/run_offline_e2e_fixture.py --scenario memory_stress --max-rss-mb 512
+```
+
+For the corresponding pytest coverage:
+
+```bash
+uv run pytest tests/integration/test_offline_e2e_fixture_runner.py -q
+```
+
 `main.py` is kept as a compatibility wrapper for the delivery path.
 
 First Gmail-authenticated run will open a browser for Google OAuth and create `secrets/token.json`.

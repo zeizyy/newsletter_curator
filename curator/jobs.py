@@ -40,6 +40,7 @@ from .rendering import (
     render_email_safe_digest_html,
 )
 from .repository import DEFAULT_AUDIENCE_KEY, SQLiteRepository
+from .runtime import finish_runtime_capture, start_runtime_capture
 from .sources import (
     collect_additional_source_links,
     collect_repository_source_links,
@@ -967,6 +968,7 @@ def run_fetch_sources_job(
 ) -> dict:
     job_name = "fetch_sources"
     repository = repository or get_repository_from_config(config)
+    runtime_capture = start_runtime_capture()
     if source_fetcher is None:
         if config.get("development", {}).get("use_canned_sources", False):
             source_fetcher = load_canned_source_links
@@ -994,6 +996,8 @@ def run_fetch_sources_job(
     failures: list[dict] = []
     usage_by_model: dict = {}
     lock = Lock()
+    return_payload: dict | None = None
+    final_status = "failed"
 
     try:
         stories = source_fetcher(config)
@@ -1078,6 +1082,9 @@ def run_fetch_sources_job(
         }
         raise
     finally:
+        runtime = finish_runtime_capture(runtime_capture)
+        if return_payload is not None:
+            return_payload["runtime"] = runtime
         repository.complete_ingestion_run(
             run_id,
             status=final_status,
@@ -1097,6 +1104,7 @@ def run_fetch_sources_job(
                 "checkpointed_snapshots": stats["checkpointed_snapshots"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
+                "runtime": runtime,
             },
         )
 
@@ -1113,6 +1121,7 @@ def run_fetch_gmail_job(
 ) -> dict:
     job_name = "fetch_gmail"
     repository = repository or get_repository_from_config(config)
+    runtime_capture = start_runtime_capture()
     article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
     collect_gmail_links_fn = collect_gmail_links_fn or (
@@ -1141,6 +1150,8 @@ def run_fetch_gmail_job(
     failures: list[dict] = []
     usage_by_model: dict = {}
     lock = Lock()
+    return_payload: dict | None = None
+    final_status = "failed"
 
     try:
         stories = collect_gmail_links_fn(service, config)
@@ -1237,6 +1248,9 @@ def run_fetch_gmail_job(
         }
         raise
     finally:
+        runtime = finish_runtime_capture(runtime_capture)
+        if return_payload is not None:
+            return_payload["runtime"] = runtime
         repository.complete_ingestion_run(
             run_id,
             status=final_status,
@@ -1257,6 +1271,7 @@ def run_fetch_gmail_job(
                 "checkpointed_snapshots": stats["checkpointed_snapshots"],
                 "usage_by_model": usage_by_model,
                 "failures": failures,
+                "runtime": runtime,
             },
         )
 
@@ -1275,6 +1290,7 @@ def run_daily_orchestrator_job(
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     article_fetcher = article_fetcher or fetch_article_details
+    runtime_capture = start_runtime_capture()
     delivery_runner_fn = delivery_runner_fn or (
         lambda cfg, svc: run_delivery_job(cfg, svc, repository=repository)
     )
@@ -1283,38 +1299,46 @@ def run_daily_orchestrator_job(
     stage_order = ["fetch_gmail", "fetch_sources", "deliver_digest"]
     failures: list[dict] = []
 
-    def record_failure(stage_name: str, exc: Exception) -> None:
-        stages[stage_name] = {
-            "status": "failed",
-            "error": str(exc),
-        }
-        failures.append({"stage": stage_name, "error": str(exc)})
+    def run_stage(stage_name: str, stage_fn) -> None:
+        stage_runtime_capture = start_runtime_capture()
+        try:
+            stage_result = dict(stage_fn())
+        except Exception as exc:
+            runtime = finish_runtime_capture(stage_runtime_capture)
+            stages[stage_name] = {
+                "status": "failed",
+                "error": str(exc),
+                "runtime": runtime,
+            }
+            failures.append({"stage": stage_name, "error": str(exc), "runtime": runtime})
+            return
 
-    try:
-        stages["fetch_gmail"] = run_fetch_gmail_job(
+        stage_result.setdefault("runtime", finish_runtime_capture(stage_runtime_capture))
+        stages[stage_name] = stage_result
+
+    run_stage(
+        "fetch_gmail",
+        lambda: run_fetch_gmail_job(
             config,
             service,
             repository=repository,
             article_fetcher=article_fetcher,
             collect_gmail_links_fn=collect_gmail_links_fn,
-        )
-    except Exception as exc:
-        record_failure("fetch_gmail", exc)
-
-    try:
-        stages["fetch_sources"] = run_fetch_sources_job(
+        ),
+    )
+    run_stage(
+        "fetch_sources",
+        lambda: run_fetch_sources_job(
             config,
             repository=repository,
             source_fetcher=source_fetcher,
             article_fetcher=article_fetcher,
-        )
-    except Exception as exc:
-        record_failure("fetch_sources", exc)
-
-    try:
-        stages["deliver_digest"] = delivery_runner_fn(config, service)
-    except Exception as exc:
-        record_failure("deliver_digest", exc)
+        ),
+    )
+    run_stage(
+        "deliver_digest",
+        lambda: delivery_runner_fn(config, service),
+    )
 
     completed_stages = [
         stage_name
@@ -1341,6 +1365,7 @@ def run_daily_orchestrator_job(
         "failed_stages": failed_stages,
         "stages": stages,
         "failures": failures,
+        "runtime": finish_runtime_capture(runtime_capture),
     }
     print(json.dumps({"event": "daily_orchestrator", "result": result}, sort_keys=True))
     return result
@@ -1439,6 +1464,7 @@ def run_delivery_job(
     audience_key: str = DEFAULT_AUDIENCE_KEY,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
+    runtime_capture = start_runtime_capture()
     newsletter_date = current_newsletter_date()
     cached_newsletter = (
         repository.get_daily_newsletter(newsletter_date, audience_key=audience_key)
@@ -1615,6 +1641,8 @@ def run_delivery_job(
                 "email_safe_digest_html": delivery_html,
                 "content": cached_content,
             }
+            runtime = finish_runtime_capture(runtime_capture)
+            cached_result["runtime"] = runtime
             repository.complete_delivery_run(
                 run_id,
                 status="completed",
@@ -1627,6 +1655,7 @@ def run_delivery_job(
                     "cached_newsletter": True,
                     "daily_newsletter_id": cached_newsletter["id"],
                     "pipeline_result": cached_result,
+                    "runtime": runtime,
                 },
             )
             return {"run_id": run_id, **cached_result}
@@ -1686,6 +1715,7 @@ def run_delivery_job(
             pipeline_result["delivery_digest_html"] = delivery_html
             pipeline_result["daily_newsletter_id"] = daily_newsletter_id
             pipeline_result["audience_key"] = audience_key
+        runtime = finish_runtime_capture(runtime_capture)
         repository.complete_delivery_run(
             run_id,
             status="completed",
@@ -1698,6 +1728,7 @@ def run_delivery_job(
                 "cached_newsletter": False,
                 "daily_newsletter_id": daily_newsletter_id,
                 "pipeline_result": pipeline_result,
+                "runtime": runtime,
             },
         )
         return {
@@ -1706,9 +1737,11 @@ def run_delivery_job(
             "audience_key": audience_key,
             "cached_newsletter": False,
             "status": "completed",
+            "runtime": runtime,
             **pipeline_result,
         }
     except Exception as exc:
+        runtime = finish_runtime_capture(runtime_capture)
         repository.complete_delivery_run(
             run_id,
             status="failed",
@@ -1719,6 +1752,7 @@ def run_delivery_job(
                 "newsletter_date": newsletter_date,
                 "audience_key": audience_key,
                 "error": str(exc),
+                "runtime": runtime,
             },
         )
         raise
