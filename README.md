@@ -201,6 +201,7 @@ Optional security token:
 Optional Buttondown recipient sync:
 - Set `BUTTONDOWN_API_KEY` on the server.
 - Delivery will fetch active subscribers from Buttondown first and fall back to `email.digest_recipients` if the API key is missing, the API request fails, or Buttondown returns no deliverable subscribers.
+- `--dry-run-recipient you@example.com` still overrides recipient membership to that one address, but it now attempts a one-subscriber Buttondown lookup for `metadata.persona` on that email when the API key is present.
 
 Optional host/port overrides:
 - `CURATOR_ADMIN_HOST` (default `127.0.0.1`)

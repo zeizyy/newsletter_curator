@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
+from urllib.parse import quote
 
 from openai import OpenAI
 import requests
@@ -169,6 +170,37 @@ def fetch_buttondown_recipients(
     ]
 
 
+def fetch_buttondown_subscriber_by_email(
+    *,
+    api_key: str,
+    email: str,
+    requests_get=None,
+) -> dict | None:
+    requests_get = requests_get or requests.get
+    normalized_email = str(email).strip().lower()
+    if not normalized_email:
+        return None
+    response = requests_get(
+        f"{BUTTONDOWN_SUBSCRIBERS_URL}/{quote(normalized_email, safe='')}",
+        headers={
+            "Authorization": f"Token {api_key}",
+            "X-API-Version": BUTTONDOWN_API_VERSION,
+        },
+        params=None,
+        timeout=15,
+    )
+    if int(getattr(response, "status_code", 0) or 0) == 404:
+        return None
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("Buttondown subscriber response did not return an object.")
+    return {
+        "email": _buttondown_subscriber_email(payload) or normalized_email,
+        "persona_text": _buttondown_subscriber_persona(payload),
+    }
+
+
 def _resolve_buttondown_subscribers(
     configured_recipients: list[str],
     *,
@@ -207,6 +239,38 @@ def _resolve_buttondown_subscribers(
         )
     )
     return [], "config_fallback"
+
+
+def _resolve_buttondown_persona_for_email(
+    email: str,
+    *,
+    requests_get=None,
+) -> str:
+    requests_get = requests_get or requests.get
+    buttondown_api_key = os.getenv("BUTTONDOWN_API_KEY", "").strip()
+    if not buttondown_api_key:
+        return ""
+    try:
+        subscriber = fetch_buttondown_subscriber_by_email(
+            api_key=buttondown_api_key,
+            email=email,
+            requests_get=requests_get,
+        )
+    except (requests.RequestException, ValueError) as exc:
+        print(
+            json.dumps(
+                {
+                    "event": "buttondown_subscriber_persona_fallback",
+                    "email": str(email).strip().lower(),
+                    "reason": str(exc),
+                },
+                sort_keys=True,
+            )
+        )
+        return ""
+    if not subscriber:
+        return ""
+    return str(subscriber.get("persona_text", "")).strip()
 
 
 def resolve_digest_recipients(
@@ -282,6 +346,13 @@ def resolve_delivery_subscribers(
     if str(recipient_override or "").strip():
         recipients = normalize_digest_recipients([recipient_override])
         recipient_source = "dry_run_override"
+        if recipients:
+            buttondown_persona = _resolve_buttondown_persona_for_email(
+                recipients[0],
+                requests_get=requests_get,
+            )
+            if buttondown_persona:
+                buttondown_persona_by_email[recipients[0]] = buttondown_persona
     else:
         configured_recipients = normalize_digest_recipients(
             config.get("email", {}).get("digest_recipients", [])
@@ -304,7 +375,10 @@ def resolve_delivery_subscribers(
     subscribers: list[dict] = []
     for email in recipients:
         override = overrides.get(email, {})
-        if recipient_source == "buttondown":
+        buttondown_persona_text = str(buttondown_persona_by_email.get(email) or "").strip()
+        if buttondown_persona_text:
+            persona_text = buttondown_persona_text
+        elif recipient_source == "buttondown":
             persona_text = str(buttondown_persona_by_email.get(email) or default_persona_text).strip()
         else:
             persona_text = str(override.get("persona_text") or default_persona_text).strip()
