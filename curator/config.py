@@ -32,7 +32,7 @@ DEFAULT_CONFIG = {
         "feeds_file": "",
         "hours": 24,
         "top_per_category": 5,
-        "max_total": 20,
+        "max_total": 30,
     },
     "openai": {"reasoning_model": "gpt-5-mini", "summary_model": "gpt-5-mini"},
     "limits": {
@@ -47,7 +47,7 @@ DEFAULT_CONFIG = {
         "max_fetch_workers": 5,
         "max_summary_workers": 5,
         "max_ingest_summaries": 20,
-        "max_gmail_fetch_after_score": 12,
+        "max_gmail_fetch_after_score": 18,
     },
     "email": {
         "digest_recipients": [],

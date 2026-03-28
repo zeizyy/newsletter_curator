@@ -473,7 +473,6 @@ def summarize_for_ingest(
     usage_by_model: dict,
     lock: Lock,
 ) -> tuple[str, str, str]:
-    persona_text = str(config.get("persona", {}).get("text", "")).strip()
     development_cfg = config.get("development", {})
     summary_model = config["openai"]["summary_model"]
     if development_cfg.get("fake_inference", False):
@@ -482,7 +481,6 @@ def summarize_for_ingest(
             usage_by_model,
             lock,
             summary_model,
-            persona_text=persona_text,
         )
     else:
         summary_raw = summarize_article_with_llm(
@@ -490,7 +488,6 @@ def summarize_for_ingest(
             usage_by_model,
             lock,
             summary_model,
-            persona_text=persona_text,
             client_factory=OpenAI,
         )
     headline, body = extract_summary_json(summary_raw)
@@ -525,7 +522,6 @@ def score_for_ingest(
         1,
         int(config.get("limits", {}).get("max_ingest_summaries", 20) or 20),
     )
-    persona_text = str(config.get("persona", {}).get("text", "")).strip()
     development_cfg = config.get("development", {})
     scoring_model = config["openai"]["reasoning_model"]
     scoring_items = []
@@ -550,7 +546,6 @@ def score_for_ingest(
             usage_by_model,
             max_ingest_summaries,
             scoring_model,
-            persona_text=persona_text,
         )
     else:
         ranked = score_story_candidates(
@@ -558,7 +553,6 @@ def score_for_ingest(
             usage_by_model,
             max_ingest_summaries,
             scoring_model,
-            persona_text=persona_text,
             client_factory=OpenAI,
         )
 
@@ -597,7 +591,6 @@ def score_gmail_stories_for_fetch(
         1,
         int(config.get("limits", {}).get("max_gmail_fetch_after_score", 12) or 12),
     )
-    persona_text = str(config.get("persona", {}).get("text", "")).strip()
     development_cfg = config.get("development", {})
     scoring_model = config["openai"]["reasoning_model"]
 
@@ -622,7 +615,6 @@ def score_gmail_stories_for_fetch(
             usage_by_model,
             max_fetch_after_score,
             scoring_model,
-            persona_text=persona_text,
         )
     else:
         ranked = score_story_candidates(
@@ -630,7 +622,6 @@ def score_gmail_stories_for_fetch(
             usage_by_model,
             max_fetch_after_score,
             scoring_model,
-            persona_text=persona_text,
             client_factory=OpenAI,
         )
 

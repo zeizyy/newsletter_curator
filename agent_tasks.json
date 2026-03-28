@@ -1444,7 +1444,7 @@
     {
       "id": "T61",
       "title": "Restrict persona to final selection and widen initial discovery recall",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T60"],
       "scope": [
         "Apply persona text only to the final ranking or selection LLM call",

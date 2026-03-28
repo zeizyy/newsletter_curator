@@ -226,7 +226,6 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 usage_by_model,
                 lock,
                 summary_model,
-                persona_text=persona_text,
             ))
             if development_cfg.get("fake_inference", False)
             else (
@@ -235,7 +234,6 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                     usage_by_model,
                     lock,
                     summary_model,
-                    persona_text=persona_text,
                 )
             )
         )

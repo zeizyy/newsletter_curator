@@ -70,17 +70,13 @@ def fake_summarize_article(
     persona_text: str = "",
 ) -> str:
     headline = " ".join(article_text.split()[:6]) or "Untitled"
-    why_line = "This matters because development can run fully offline."
-    lowered_persona = persona_text.lower()
-    if lowered_persona:
-        why_line = f"This matters to a reader with this persona: {persona_text.strip()[:80]}."
     body = "\n".join(
         [
             "Key takeaways",
             f"- {headline} is available from the canned repository.",
             "- Development mode uses deterministic local summaries.",
             "Why this matters to me",
-            why_line,
+            "This matters because development can run fully offline.",
         ]
     )
     with lock:

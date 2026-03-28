@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from curator.jobs import get_repository_from_config
@@ -19,10 +20,16 @@ class PersonaAwareOpenAI:
 
         if "select the top stories" in lowered:
             if "macro investor focused on rates and valuations" in lowered:
+                preferred_index = (
+                    1
+                    if "[1] rates reset changes software valuations" in lowered
+                    or "[1] macro context for valuations and rates." in lowered
+                    else 2
+                )
                 content = json.dumps(
                     [
                         {
-                            "index": 1,
+                            "index": preferred_index,
                             "category": "Markets / stocks / macro / economy",
                             "score": 9.8,
                             "rationale": "Persona favors macro and valuation stories.",
@@ -30,10 +37,16 @@ class PersonaAwareOpenAI:
                     ]
                 )
             elif "ai infrastructure builder focused on model costs and chips" in lowered:
+                preferred_index = (
+                    1
+                    if "[1] open model pricing changed" in lowered
+                    or "[1] ai pricing and chip context." in lowered
+                    else 2
+                )
                 content = json.dumps(
                     [
                         {
-                            "index": 2,
+                            "index": preferred_index,
                             "category": "AI & ML industry developments",
                             "score": 9.8,
                             "rationale": "Persona favors AI infrastructure and model-cost stories.",
@@ -43,7 +56,13 @@ class PersonaAwareOpenAI:
             else:
                 raise AssertionError("Persona text missing from ranking prompt.")
         else:
+            assert "macro investor focused on rates and valuations" not in lowered
+            assert "ai infrastructure builder focused on model costs and chips" not in lowered
             if "macro investor focused on rates and valuations" in lowered:
+                raise AssertionError("Persona text should not reach summary prompts.")
+            elif "ai infrastructure builder focused on model costs and chips" in lowered:
+                raise AssertionError("Persona text should not reach summary prompts.")
+            elif "rates reset changes software valuations" in lowered:
                 content = json.dumps(
                     {
                         "headline": "Rates reset changes software valuations",
@@ -53,12 +72,12 @@ class PersonaAwareOpenAI:
                                 "- Rates reset changes software valuations in public markets.",
                                 "- The repricing pressure is concentrated in growth names.",
                                 "Why this matters to me",
-                                "You care about rates and valuation resets. This directly affects your macro framing.",
+                                "This matters because repricing pressure can reset investor and operator expectations.",
                             ]
                         ),
                     }
                 )
-            elif "ai infrastructure builder focused on model costs and chips" in lowered:
+            elif "open model pricing changed" in lowered:
                 content = json.dumps(
                     {
                         "headline": "Open model pricing changed",
@@ -68,13 +87,13 @@ class PersonaAwareOpenAI:
                                 "- Open model pricing changed and inference budgets moved again.",
                                 "- The change alters platform-level deployment economics.",
                                 "Why this matters to me",
-                                "You care about model costs and chips. This directly affects infrastructure choices.",
+                                "This matters because pricing shifts can quickly reorder platform economics.",
                             ]
                         ),
                     }
                 )
             else:
-                raise AssertionError("Persona text missing from summary prompt.")
+                raise AssertionError("Unexpected summary prompt.")
 
         usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15)
         return SimpleNamespace(
@@ -106,34 +125,20 @@ def build_persona_config(tmp_path, repo_root, persona_text: str):
 def seed_repository(config: dict):
     repository = get_repository_from_config(config)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
-    persona_text = str(config.get("persona", {}).get("text", "")).lower()
-    macro_summary = (
+    now = datetime.now(UTC)
+    rates_summary = (
         "Key takeaways\n"
         "- Rates reset changes software valuations in public markets.\n"
         "- The repricing pressure is concentrated in growth names.\n"
         "Why this matters to me\n"
-        "You care about rates and valuation resets. This directly affects your macro framing."
+        "This matters because repricing pressure can reset investor and operator expectations."
     )
-    ai_summary = (
+    pricing_summary = (
         "Key takeaways\n"
         "- Open model pricing changed and inference budgets moved again.\n"
         "- The change alters platform-level deployment economics.\n"
         "Why this matters to me\n"
-        "You care about model costs and chips. This directly affects infrastructure choices."
-    )
-    rates_summary = macro_summary if "macro investor focused on rates and valuations" in persona_text else (
-        "Key takeaways\n"
-        "- Rates reset changes software valuations in public markets.\n"
-        "- The repricing pressure is concentrated in growth names.\n"
-        "Why this matters to me\n"
-        "You care less about this than infrastructure cost shifts."
-    )
-    pricing_summary = ai_summary if "ai infrastructure builder focused on model costs and chips" in persona_text else (
-        "Key takeaways\n"
-        "- Open model pricing changed and inference budgets moved again.\n"
-        "- The change alters platform-level deployment economics.\n"
-        "Why this matters to me\n"
-        "You care less about this than macro valuation resets."
+        "This matters because pricing shifts can quickly reorder platform economics."
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -145,7 +150,7 @@ def seed_repository(config: dict):
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Macro context for valuations and rates.",
                 "category": "Markets / stocks / macro / economy",
-                "published_at": "2026-03-21T07:30:00+00:00",
+                "published_at": (now - timedelta(hours=2)).isoformat(),
                 "summary": "Rates reset summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -154,7 +159,7 @@ def seed_repository(config: dict):
         summary_headline="Rates reset changes software valuations",
         summary_body=rates_summary,
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T07:35:00+00:00",
+        summarized_at=(now - timedelta(hours=1, minutes=55)).isoformat(),
     )
     repository.upsert_article_snapshot(
         repository.upsert_story(
@@ -166,7 +171,7 @@ def seed_repository(config: dict):
                 "anchor_text": "Open model pricing changed",
                 "context": "AI pricing and chip context.",
                 "category": "AI & ML industry developments",
-                "published_at": "2026-03-21T06:00:00+00:00",
+                "published_at": (now - timedelta(hours=1)).isoformat(),
                 "summary": "Pricing summary",
             },
             ingestion_run_id=ingestion_run_id,
@@ -175,7 +180,7 @@ def seed_repository(config: dict):
         summary_headline="Open model pricing changed",
         summary_body=pricing_summary,
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-21T06:05:00+00:00",
+        summarized_at=(now - timedelta(minutes=55)).isoformat(),
     )
 
 
@@ -206,7 +211,7 @@ def run_persona_delivery(main_module, config_path: str):
     return sent_messages[0]
 
 
-def test_persona_changes_ranking_and_summary(monkeypatch, repo_root, tmp_path):
+def test_persona_changes_ranking_but_not_summary(monkeypatch, repo_root, tmp_path):
     main = importlib.import_module("main")
     monkeypatch.setattr(main, "OpenAI", PersonaAwareOpenAI)
 
@@ -226,8 +231,8 @@ def test_persona_changes_ranking_and_summary(monkeypatch, repo_root, tmp_path):
 
     assert "Rates reset changes software valuations" in macro_payload["body"]
     assert "Open model pricing changed" not in macro_payload["body"]
-    assert "You care about rates and valuation resets." in macro_payload["body"]
+    assert "This matters because repricing pressure can reset investor and operator expectations." in macro_payload["body"]
 
     assert "Open model pricing changed" in ai_payload["body"]
     assert "Rates reset changes software valuations" not in ai_payload["body"]
-    assert "You care about model costs and chips." in ai_payload["body"]
+    assert "This matters because pricing shifts can quickly reorder platform economics." in ai_payload["body"]

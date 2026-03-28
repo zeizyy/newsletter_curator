@@ -80,9 +80,8 @@ def build_ranking_prompts(items: list[dict], top_stories: int, persona_text: str
 
 def build_summary_prompts(article_text: str, persona_text: str = "") -> tuple[str, str]:
     system_prompt = (
-        "You are a concise financial/tech news analyst writing for a specific reader "
-        f"with priorities: {DEFAULT_PRIORITY_TEXT}"
-        f"{persona_clause(persona_text)}"
+        "You are a concise financial/tech news analyst writing for a broad financial and "
+        f"technology readership with priorities: {DEFAULT_PRIORITY_TEXT}"
     )
     user_prompt = (
         "Write a concise summary of the article below.\n"
@@ -91,7 +90,6 @@ def build_summary_prompts(article_text: str, persona_text: str = "") -> tuple[st
         "The body should include:\n"
         "1) Key takeaways (3-5 bullets; be specific and informative).\n"
         "2) Why this matters to me (exactly 2 short sentences, max 45 words total).\n"
-        "If a persona is provided, tailor the why-this-matters section to that reader.\n"
         "Keep the full body concise, but prioritize clarity in key takeaways.\n"
         "No extra text.\n\n"
         f"Article text:\n{article_text}"
@@ -110,13 +108,12 @@ def build_ingest_scoring_prompts(
         "category, and short article excerpt. Prefer concrete, strategic, technically meaningful, "
         "or economically revealing stories. Penalize repetition, fluff, low-signal roundups, "
         "and generic promo-style items."
-        f"{persona_clause(persona_text)}"
     )
     user_prompt = (
         "Here are fetched article candidates. Select which ones deserve expensive summaries.\n"
         f"Return ONLY a JSON array of up to {top_stories} objects in ranked order.\n"
         "Each object must be: {\"index\": <int>, \"score\": <number>, \"rationale\": <string>}.\n"
-        "Score on a 1-10 scale based on likely value to the reader, using the persona if provided.\n"
+        "Score on a 1-10 scale based on likely value to the reader.\n"
         "The \"index\" must refer to the numbered items below. No extra text.\n\n"
         f"{format_ingest_candidates_for_llm(items)}"
     )
