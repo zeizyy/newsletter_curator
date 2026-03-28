@@ -25,7 +25,6 @@ DEFAULT_CONFIG = {
         "fake_inference": False,
     },
     "persona": {"text": ""},
-    "subscribers": [],
     "additional_sources": {
         "enabled": False,
         "script_path": "skills/daily-news-curator/scripts/build_daily_digest.py",

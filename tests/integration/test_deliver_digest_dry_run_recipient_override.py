@@ -97,30 +97,10 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
-    monkeypatch.setenv("BUTTONDOWN_API_KEY", "test-buttondown-key")
 
     config = main.load_config()
     repository = get_repository_from_config(config)
     _seed_cached_newsletter(repository, "2026-03-24")
-
-    seen_calls: list[dict] = []
-
-    def fake_buttondown_get(url: str, *, headers: dict, params, timeout: int):
-        seen_calls.append({"url": url, "headers": headers, "params": params, "timeout": timeout})
-        assert url == "https://api.buttondown.com/v1/subscribers/dry-run%40example.com"
-        assert headers == {
-            "Authorization": "Token test-buttondown-key",
-            "X-API-Version": "2025-06-01",
-        }
-        assert params is None
-        assert timeout == 15
-        return SimpleNamespace(
-            status_code=404,
-            raise_for_status=lambda: None,
-            json=lambda: {},
-        )
-
-    monkeypatch.setattr(jobs.requests, "get", fake_buttondown_get)
     monkeypatch.setattr(
         deliver_digest,
         "parse_args",
@@ -164,11 +144,10 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }
     ]
-    assert len(seen_calls) == 1
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
 
 
-def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_path):
+def test_dry_run_recipient_without_db_profile_uses_default_personalization(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
     sources = importlib.import_module("curator.sources")
@@ -183,12 +162,7 @@ def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_pat
                 "digest_recipients": ["fallback@example.com"],
                 "digest_subject": "Personalized Digest",
             },
-            "subscribers": [
-                {
-                    "email": "dry-run@example.com",
-                    "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-                }
-            ],
+            "persona": {"text": "Generalist tech reader."},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 1,
@@ -200,7 +174,6 @@ def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_pat
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
     monkeypatch.setattr(sources, "datetime", FixedDateTime)
-    monkeypatch.setenv("BUTTONDOWN_API_KEY", "test-buttondown-key")
 
     config = main.load_config()
     repository = get_repository_from_config(config)
@@ -236,25 +209,6 @@ def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_pat
         summarized_at=(recent_base - timedelta(minutes=25)).isoformat(),
     )
 
-    def fake_buttondown_get(url: str, *, headers: dict, params, timeout: int):
-        assert url == "https://api.buttondown.com/v1/subscribers/dry-run%40example.com"
-        assert headers == {
-            "Authorization": "Token test-buttondown-key",
-            "X-API-Version": "2025-06-01",
-        }
-        assert params is None
-        assert timeout == 15
-        return SimpleNamespace(
-            status_code=200,
-            raise_for_status=lambda: None,
-            json=lambda: {
-                "email_address": "dry-run@example.com",
-                "metadata": {"persona": "Macro investor focused on rates and valuations."},
-            },
-        )
-
-    monkeypatch.setattr(jobs.requests, "get", fake_buttondown_get)
-
     sent_messages: list[dict] = []
 
     def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
@@ -277,17 +231,15 @@ def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_pat
 
     assert result["status"] == "completed"
     assert result["recipient_source"] == "dry_run_override"
-    assert result["personalized_delivery"] is True
     assert result["cached_newsletter"] is False
     assert result["sent_recipients"] == 1
     assert result["delivery_subscribers"] == [
         {
             "email": "dry-run@example.com",
-            "persona_text": "Macro investor focused on rates and valuations.",
+            "persona_text": "Generalist tech reader.",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }
     ]
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
     assert "Rates reset changes software valuations" in sent_messages[0]["body"]
-    assert "Model pricing shifted inference budgets" not in sent_messages[0]["body"]

@@ -123,21 +123,6 @@ def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):
                 ],
                 "digest_subject": "Personalized Digest",
             },
-            "subscribers": [
-                {
-                    "email": " macro-one@example.com ",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                },
-                {
-                    "email": "MACRO-TWO@example.com",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                },
-                {
-                    "email": "chips@example.com",
-                    "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-                    "preferred_sources": [" chip insider ", "CHIP insider"],
-                },
-            ],
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -151,6 +136,22 @@ def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):
     config = main.load_config()
     repository = get_repository_from_config(config)
     _seed_cached_newsletter(repository, datetime.now(UTC).date().isoformat())
+    macro_one = repository.upsert_subscriber("macro-one@example.com")
+    repository.upsert_subscriber_profile(
+        int(macro_one["id"]),
+        persona_text="Macro investor focused on rates and valuations.",
+    )
+    macro_two = repository.upsert_subscriber("macro-two@example.com")
+    repository.upsert_subscriber_profile(
+        int(macro_two["id"]),
+        persona_text="Macro investor focused on rates and valuations.",
+    )
+    chips = repository.upsert_subscriber("chips@example.com")
+    repository.upsert_subscriber_profile(
+        int(chips["id"]),
+        persona_text="AI infrastructure builder focused on model costs and chips.",
+        preferred_sources=["chip insider", "CHIP insider"],
+    )
 
     recent_base = datetime.now(UTC) - timedelta(hours=2)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
@@ -278,16 +279,6 @@ def test_personalized_delivery_reports_partial_failure(monkeypatch, tmp_path):
                 ],
                 "digest_subject": "Personalized Digest",
             },
-            "subscribers": [
-                {
-                    "email": "macro@example.com",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                },
-                {
-                    "email": "missing@example.com",
-                    "preferred_sources": ["No Such Source"],
-                },
-            ],
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 1,
@@ -300,6 +291,16 @@ def test_personalized_delivery_reports_partial_failure(monkeypatch, tmp_path):
 
     config = main.load_config()
     repository = get_repository_from_config(config)
+    macro_subscriber = repository.upsert_subscriber("macro@example.com")
+    repository.upsert_subscriber_profile(
+        int(macro_subscriber["id"]),
+        persona_text="Macro investor focused on rates and valuations.",
+    )
+    missing_subscriber = repository.upsert_subscriber("missing@example.com")
+    repository.upsert_subscriber_profile(
+        int(missing_subscriber["id"]),
+        preferred_sources=["No Such Source"],
+    )
 
     recent_base = datetime.now(UTC) - timedelta(hours=2)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")

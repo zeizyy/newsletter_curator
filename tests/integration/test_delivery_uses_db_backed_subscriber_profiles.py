@@ -87,7 +87,7 @@ def _seed_two_story_catalog(repository) -> None:
     )
 
 
-def test_delivery_prefers_db_backed_profiles_over_buttondown_and_yaml(monkeypatch, tmp_path):
+def test_delivery_prefers_db_backed_profiles_over_legacy_personalization_inputs(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
     sources = importlib.import_module("curator.sources")
@@ -213,12 +213,8 @@ def test_delivery_prefers_db_backed_profiles_over_buttondown_and_yaml(monkeypatc
         "Generalist tech reader."
     )
     assert subscribers_by_email["db-blank@example.com"]["preferred_sources"] == ["Chip Insider"]
-    assert subscribers_by_email["yaml-fallback@example.com"]["persona_text"] == (
-        "Macro investor focused on rates and valuations."
-    )
-    assert subscribers_by_email["yaml-fallback@example.com"]["preferred_sources"] == [
-        "Macro Wire"
-    ]
+    assert subscribers_by_email["yaml-fallback@example.com"]["persona_text"] == "Generalist tech reader."
+    assert subscribers_by_email["yaml-fallback@example.com"]["preferred_sources"] == []
 
     messages_by_recipient = {message["to"]: message for message in sent_messages}
     assert "Model pricing shifted inference budgets" in messages_by_recipient["db-profile@example.com"]["body"]
@@ -231,7 +227,7 @@ def test_delivery_prefers_db_backed_profiles_over_buttondown_and_yaml(monkeypatc
         assert message["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
 
 
-def test_dry_run_recipient_override_prefers_db_profile_over_buttondown(monkeypatch, tmp_path):
+def test_dry_run_recipient_override_prefers_db_profile_without_buttondown_personalization(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
     sources = importlib.import_module("curator.sources")
@@ -257,8 +253,6 @@ def test_dry_run_recipient_override_prefers_db_profile_over_buttondown(monkeypat
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
     monkeypatch.setattr(sources, "datetime", FixedDateTime)
-    monkeypatch.setenv("BUTTONDOWN_API_KEY", "test-buttondown-key")
-
     config = main.load_config()
     repository = get_repository_from_config(config)
     _seed_two_story_catalog(repository)
@@ -269,25 +263,6 @@ def test_dry_run_recipient_override_prefers_db_profile_over_buttondown(monkeypat
         persona_text="AI infrastructure builder focused on model costs and chips.",
         preferred_sources=["Chip Insider"],
     )
-
-    def fake_buttondown_get(url: str, *, headers: dict, params, timeout: int):
-        assert url == "https://api.buttondown.com/v1/subscribers/dry-run%40example.com"
-        assert headers == {
-            "Authorization": "Token test-buttondown-key",
-            "X-API-Version": "2025-06-01",
-        }
-        assert params is None
-        assert timeout == 15
-        return SimpleNamespace(
-            status_code=200,
-            raise_for_status=lambda: None,
-            json=lambda: {
-                "email_address": "dry-run@example.com",
-                "metadata": {"persona": "Macro investor metadata that should lose."},
-            },
-        )
-
-    monkeypatch.setattr(jobs.requests, "get", fake_buttondown_get)
 
     sent_messages: list[dict] = []
 

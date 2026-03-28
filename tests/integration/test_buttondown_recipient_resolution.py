@@ -183,7 +183,7 @@ def test_delivery_uses_buttondown_subscribers_before_yaml(monkeypatch, tmp_path)
     ]
 
 
-def test_delivery_uses_buttondown_metadata_persona_for_personalization(monkeypatch, tmp_path):
+def test_buttondown_recipients_without_db_profiles_use_default_personalization(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
     sources = importlib.import_module("curator.sources")
@@ -198,21 +198,6 @@ def test_delivery_uses_buttondown_metadata_persona_for_personalization(monkeypat
                 "digest_recipients": ["fallback@example.com"],
                 "digest_subject": "Personalized Digest",
             },
-            "subscribers": [
-                {
-                    "email": "macro-one@example.com",
-                    "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-                },
-                {
-                    "email": "macro-two@example.com",
-                    "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-                },
-                {
-                    "email": "chips@example.com",
-                    "persona": {"text": "Macro investor focused on rates and valuations."},
-                    "preferred_sources": [" chip insider ", "CHIP insider"],
-                },
-            ],
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -331,20 +316,28 @@ def test_delivery_uses_buttondown_metadata_persona_for_personalization(monkeypat
 
     assert result["status"] == "completed"
     assert result["recipient_source"] == "buttondown"
-    assert result["personalized_delivery"] is True
     assert result["cached_newsletter"] is False
-    assert len(result["delivery_groups"]) == 2
-
-    groups_by_recipients = {
-        tuple(group["recipients"]): group
-        for group in result["delivery_groups"]
-    }
-    macro_group = groups_by_recipients[("macro-one@example.com", "macro-two@example.com")]
-    chips_group = groups_by_recipients[("chips@example.com",)]
-
-    assert macro_group["sent_recipients"] == 2
-    assert chips_group["sent_recipients"] == 1
-    assert chips_group["preferred_sources"] == ["chip insider"]
+    assert "personalized_delivery" not in result
+    assert result["delivery_subscribers"] == [
+        {
+            "email": "macro-one@example.com",
+            "persona_text": "Generalist tech reader.",
+            "preferred_sources": [],
+            "profile_key": result["delivery_subscribers"][0]["profile_key"],
+        },
+        {
+            "email": "macro-two@example.com",
+            "persona_text": "Generalist tech reader.",
+            "preferred_sources": [],
+            "profile_key": result["delivery_subscribers"][1]["profile_key"],
+        },
+        {
+            "email": "chips@example.com",
+            "persona_text": "Generalist tech reader.",
+            "preferred_sources": [],
+            "profile_key": result["delivery_subscribers"][2]["profile_key"],
+        },
+    ]
 
     messages_by_recipient = {message["to"]: message for message in sent_messages}
     macro_one_body = messages_by_recipient["macro-one@example.com"]["body"]
@@ -352,9 +345,8 @@ def test_delivery_uses_buttondown_metadata_persona_for_personalization(monkeypat
     chips_body = messages_by_recipient["chips@example.com"]["body"]
 
     assert macro_one_body == macro_two_body
+    assert macro_one_body == chips_body
     assert "Rates reset changes software valuations" in macro_one_body
-    assert "Model pricing shifted inference budgets" in chips_body
-    assert "Rates reset changes software valuations" not in chips_body
 
 
 def test_delivery_falls_back_to_yaml_when_buttondown_fetch_fails(monkeypatch, tmp_path):

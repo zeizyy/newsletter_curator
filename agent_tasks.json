@@ -1474,7 +1474,7 @@
     {
       "id": "T62",
       "title": "Clean up legacy subscriber-personalization paths and document rollout",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T61"],
       "scope": [
         "Remove obsolete YAML and Buttondown personalization reads once DB-backed profiles are authoritative",

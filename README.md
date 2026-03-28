@@ -10,9 +10,9 @@ Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to g
 - Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
 - Single daily orchestrator for production cron scheduling
 - Local SQLite repository for normalized stories, article snapshots, and run history
-- Admin UI for source selection and persona text
+- Admin UI for source selection plus subscriber login and settings
 - Repo-only delivery job with no live Gmail reads or live article fetches at send time
-- Two-stage LLM flow: persona-aware ingest scoring and ranking, followed by persona-aware summaries over stored article text
+- Two-stage LLM flow: persona-neutral ingest scoring and summaries, followed by persona-aware final ranking
 - Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
 - Delivery readiness checks against ingest run history and stored fresh stories
 - Deterministic canned-data mode for local development and integration testing
@@ -216,7 +216,6 @@ Optional security token:
 Optional Buttondown recipient sync:
 - Set `BUTTONDOWN_API_KEY` on the server.
 - Delivery will fetch active subscribers from Buttondown first and fall back to `email.digest_recipients` if the API key is missing, the API request fails, or Buttondown returns no deliverable subscribers.
-- `--dry-run-recipient you@example.com` still overrides recipient membership to that one address, but it now attempts a one-subscriber Buttondown lookup for `metadata.persona` on that email when the API key is present.
 
 Optional host/port overrides:
 - `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
@@ -239,7 +238,6 @@ Edit `config.yaml`:
 - `gmail.query_time_window` (default `newer_than:1d`)
 - `database.path` (default `data/newsletter_curator.sqlite3`)
 - `persona.text`
-- `subscribers`
 - `development.use_canned_sources`
 - `development.canned_sources_file`
 - `development.fake_inference`
@@ -261,59 +259,40 @@ Edit `config.yaml`:
 - `email.digest_recipients` and `email.alert_recipient`
 
 ### Persona Behavior
-`persona.text` is used in three distinct places:
-- ingest scoring decides which fetched articles are worth an expensive stored summary
-- delivery ranking chooses which stored stories make the final newsletter
-- summary generation shapes the `Why this matters to me` framing for each stored article summary
+`persona.text` now affects only the final delivery ranking step.
 
-In practice, this means the same persona can change both what gets summarized during ingest and what ultimately gets selected for delivery or preview later.
+Ingest scoring and stored article summaries are persona-neutral, so the same stored repository data can be reused across subscribers. Persona only changes which already-stored stories make the final delivered digest.
 
 ### Subscriber Personalization
-Use top-level `subscribers` entries when you want matched recipients to receive their own effective persona or a narrower source mix:
-
-```yaml
-persona:
-  text: |
-    Generalist tech reader interested in strategy and platform shifts.
-
-email:
-  digest_recipients:
-    - macro@example.com
-    - infra@example.com
-
-subscribers:
-  - email: macro@example.com
-    persona:
-      text: |
-        Macro investor focused on rates, valuations, and software demand shifts.
-    preferred_sources:
-      - Macro Wire
-      - General Tech
-  - email: infra@example.com
-    persona:
-      text: |
-        AI infrastructure builder focused on model costs, chips, and inference economics.
-    preferred_sources:
-      - Chip Insider
-```
+Subscriber personalization now lives in SQLite, not in `config.yaml` or Buttondown metadata.
 
 Delivery recipient membership is still resolved in this order:
 - `--dry-run-recipient`
 - Buttondown active subscribers when `BUTTONDOWN_API_KEY` is set
 - `email.digest_recipients`
 
-`subscribers` does not add recipients by itself. It only overrides the effective profile for matching resolved email addresses after normalization.
+Resolved recipients are automatically upserted into the `subscribers` table during delivery so the DB becomes the durable recipient registry over time. Personalization only comes from the matching `subscriber_profiles` row:
+- blank or missing `persona_text` falls back to the global `persona.text`
+- blank or missing `preferred_sources` means no per-user source filter
+- Buttondown metadata and legacy `config.yaml` subscriber overrides no longer affect personalization
 
 `preferred_sources` is a per-subscriber narrowing filter on top of the global source allowlist. Matching is exact after trim/lowercase against each candidate item's `source_name`, so it can narrow already-enabled sources but cannot re-enable a globally disabled source.
 
-When Buttondown is the active recipient source, per-subscriber persona now comes from Buttondown subscriber metadata under the `persona` key. `config.yaml` subscriber overrides still apply `preferred_sources`, and they still provide per-subscriber persona when delivery is using config-based recipients instead of Buttondown.
-
-When no subscriber-specific overrides are active, delivery keeps the legacy single-digest behavior and reuses the default cached newsletter as before. When overrides are active, delivery groups recipients by their effective profile so matching profiles share one generated digest, and personalized variants persist under their own audience keys for later reuse.
+The subscriber-facing rollout is:
+1. Keep Buttondown or `email.digest_recipients` configured so recipient discovery still works.
+2. Let each subscriber visit `/login`, then `/settings`, to save their persona text and preferred sources into SQLite.
+3. Run a dry-run send and verify the expected recipients now exist in `subscribers`; users who saved settings will also have a `subscriber_profiles` row.
+4. If a user has not created a profile yet, delivery still succeeds and sends the default digest variant for that recipient.
 
 Current operator caveats:
 - preview still uses the default audience rather than generating one preview per personalized profile
 - newsletter history and analytics remain focused on the default audience instead of listing every personalized variant
-- Buttondown persona personalization currently reads only the `metadata.persona` field; other Buttondown metadata is ignored
+- YAML `subscribers` entries are legacy-only and should be removed from `config.yaml` during rollout cleanup
+
+Rollback:
+- keep recipient discovery on Buttondown or `email.digest_recipients`
+- remove or ignore `subscriber_profiles` rows to fall back to the global `persona.text` plus no per-user source filters
+- no rollback is required for Buttondown metadata because delivery no longer reads personalization from Buttondown at all
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
 

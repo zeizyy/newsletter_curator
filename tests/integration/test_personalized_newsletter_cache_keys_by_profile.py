@@ -141,21 +141,22 @@ def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
         "macro-two@example.com",
         "chips@example.com",
     ]
-    personalized_config["subscribers"] = [
-        {
-            "email": "macro-one@example.com",
-            "persona": {"text": "Macro investor focused on rates and valuations."},
-        },
-        {
-            "email": "macro-two@example.com",
-            "persona": {"text": "Macro investor focused on rates and valuations."},
-        },
-        {
-            "email": "chips@example.com",
-            "persona": {"text": "AI infrastructure builder focused on model costs and chips."},
-            "preferred_sources": ["Chip Insider"],
-        },
-    ]
+    macro_one = repository.upsert_subscriber("macro-one@example.com")
+    repository.upsert_subscriber_profile(
+        int(macro_one["id"]),
+        persona_text="Macro investor focused on rates and valuations.",
+    )
+    macro_two = repository.upsert_subscriber("macro-two@example.com")
+    repository.upsert_subscriber_profile(
+        int(macro_two["id"]),
+        persona_text="Macro investor focused on rates and valuations.",
+    )
+    chips = repository.upsert_subscriber("chips@example.com")
+    repository.upsert_subscriber_profile(
+        int(chips["id"]),
+        persona_text="AI infrastructure builder focused on model costs and chips.",
+        preferred_sources=["Chip Insider"],
+    )
 
     sent_messages.clear()
     first_personalized = main.run_job(personalized_config, FakeGmailService(messages=[]))
@@ -211,4 +212,3 @@ def test_personalized_newsletter_cache_keys_by_profile(monkeypatch, tmp_path):
         for group in second_personalized["delivery_groups"]
     } == grouped_ids
     assert len(sent_messages) == 3
-

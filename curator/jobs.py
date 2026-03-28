@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from urllib.parse import quote
 
 from openai import OpenAI
 import requests
@@ -104,16 +103,6 @@ def _buttondown_subscriber_email(subscriber: dict) -> str:
     return str(subscriber.get("email_address") or "").strip().lower()
 
 
-def _buttondown_subscriber_persona(subscriber: dict) -> str:
-    metadata = subscriber.get("metadata", {})
-    if not isinstance(metadata, dict):
-        return ""
-    raw_persona = metadata.get("persona", "")
-    if isinstance(raw_persona, dict):
-        return str(raw_persona.get("text", "")).strip()
-    return str(raw_persona or "").strip()
-
-
 def fetch_buttondown_subscribers(
     *,
     api_key: str,
@@ -149,12 +138,7 @@ def fetch_buttondown_subscribers(
             email_address = _buttondown_subscriber_email(subscriber)
             if not email_address or email_address in seen:
                 continue
-            subscribers.append(
-                {
-                    "email": email_address,
-                    "persona_text": _buttondown_subscriber_persona(subscriber),
-                }
-            )
+            subscribers.append({"email": email_address})
             seen.add(email_address)
         next_value = payload.get("next")
         next_url = str(next_value).strip() if next_value else None
@@ -174,38 +158,6 @@ def fetch_buttondown_recipients(
             requests_get=requests_get,
         )
     ]
-
-
-def fetch_buttondown_subscriber_by_email(
-    *,
-    api_key: str,
-    email: str,
-    requests_get=None,
-) -> dict | None:
-    requests_get = requests_get or requests.get
-    normalized_email = str(email).strip().lower()
-    if not normalized_email:
-        return None
-    response = requests_get(
-        f"{BUTTONDOWN_SUBSCRIBERS_URL}/{quote(normalized_email, safe='')}",
-        headers={
-            "Authorization": f"Token {api_key}",
-            "X-API-Version": BUTTONDOWN_API_VERSION,
-        },
-        params=None,
-        timeout=15,
-    )
-    if int(getattr(response, "status_code", 0) or 0) == 404:
-        return None
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("Buttondown subscriber response did not return an object.")
-    return {
-        "email": _buttondown_subscriber_email(payload) or normalized_email,
-        "persona_text": _buttondown_subscriber_persona(payload),
-    }
-
 
 def _resolve_buttondown_subscribers(
     configured_recipients: list[str],
@@ -245,39 +197,6 @@ def _resolve_buttondown_subscribers(
         )
     )
     return [], "config_fallback"
-
-
-def _resolve_buttondown_persona_for_email(
-    email: str,
-    *,
-    requests_get=None,
-) -> str:
-    requests_get = requests_get or requests.get
-    buttondown_api_key = os.getenv("BUTTONDOWN_API_KEY", "").strip()
-    if not buttondown_api_key:
-        return ""
-    try:
-        subscriber = fetch_buttondown_subscriber_by_email(
-            api_key=buttondown_api_key,
-            email=email,
-            requests_get=requests_get,
-        )
-    except (requests.RequestException, ValueError) as exc:
-        print(
-            json.dumps(
-                {
-                    "event": "buttondown_subscriber_persona_fallback",
-                    "email": str(email).strip().lower(),
-                    "reason": str(exc),
-                },
-                sort_keys=True,
-            )
-        )
-        return ""
-    if not subscriber:
-        return ""
-    return str(subscriber.get("persona_text", "")).strip()
-
 
 def resolve_digest_recipients(
     config: dict,
@@ -322,26 +241,6 @@ def subscriber_profile_key(persona_text: str, preferred_sources: list[str]) -> s
     return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
-def _subscriber_override_map(config: dict) -> dict[str, dict]:
-    overrides: dict[str, dict] = {}
-    for raw_entry in config.get("subscribers", []):
-        if not isinstance(raw_entry, dict):
-            continue
-        email = str(raw_entry.get("email", "")).strip().lower()
-        if not email:
-            continue
-        persona_cfg = raw_entry.get("persona", {})
-        persona_text = ""
-        if isinstance(persona_cfg, dict):
-            persona_text = str(persona_cfg.get("text", "")).strip()
-        preferred_sources = normalize_preferred_sources(raw_entry.get("preferred_sources", []))
-        overrides[email] = {
-            "persona_text": persona_text,
-            "preferred_sources": preferred_sources,
-        }
-    return overrides
-
-
 def append_signup_cta_to_newsletter(body: str, html_body: str) -> tuple[str, str]:
     normalized_body = str(body or "").strip()
     normalized_html = str(html_body or "").strip()
@@ -380,17 +279,9 @@ def resolve_delivery_subscribers(
     requests_get=None,
     recipient_override: str | None = None,
 ) -> tuple[list[dict], str]:
-    buttondown_persona_by_email: dict[str, str] = {}
     if str(recipient_override or "").strip():
         recipients = normalize_digest_recipients([recipient_override])
         recipient_source = "dry_run_override"
-        if recipients:
-            buttondown_persona = _resolve_buttondown_persona_for_email(
-                recipients[0],
-                requests_get=requests_get,
-            )
-            if buttondown_persona:
-                buttondown_persona_by_email[recipients[0]] = buttondown_persona
     else:
         configured_recipients = normalize_digest_recipients(
             config.get("email", {}).get("digest_recipients", [])
@@ -401,15 +292,13 @@ def resolve_delivery_subscribers(
         )
         if buttondown_subscribers:
             recipients = [subscriber["email"] for subscriber in buttondown_subscribers]
-            buttondown_persona_by_email = {
-                subscriber["email"]: str(subscriber.get("persona_text", "")).strip()
-                for subscriber in buttondown_subscribers
-            }
         else:
             recipients = configured_recipients
 
     db_profiles_by_email: dict[str, dict] = {}
     if repository is not None:
+        for email in recipients:
+            repository.upsert_subscriber(email)
         db_profiles_by_email = {
             profile["email_address"]: profile
             for profile in repository.list_subscriber_delivery_profiles()
@@ -417,26 +306,13 @@ def resolve_delivery_subscribers(
         }
 
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
-    overrides = _subscriber_override_map(config)
     subscribers: list[dict] = []
     for email in recipients:
-        override = overrides.get(email, {})
-        buttondown_persona_text = str(buttondown_persona_by_email.get(email) or "").strip()
         db_profile = db_profiles_by_email.get(email)
-        if db_profile and bool(db_profile.get("profile_exists")):
-            persona_text = str(db_profile.get("persona_text") or default_persona_text).strip()
-            preferred_sources = normalize_preferred_sources(
-                db_profile.get("preferred_sources", [])
-            )
-        elif buttondown_persona_text:
-            persona_text = buttondown_persona_text
-            preferred_sources = list(override.get("preferred_sources") or [])
-        elif recipient_source == "buttondown":
-            persona_text = str(buttondown_persona_by_email.get(email) or default_persona_text).strip()
-            preferred_sources = list(override.get("preferred_sources") or [])
-        else:
-            persona_text = str(override.get("persona_text") or default_persona_text).strip()
-            preferred_sources = list(override.get("preferred_sources") or [])
+        persona_text = str((db_profile or {}).get("persona_text") or default_persona_text).strip()
+        preferred_sources = normalize_preferred_sources(
+            (db_profile or {}).get("preferred_sources", [])
+        )
         subscribers.append(
             {
                 "email": email,
