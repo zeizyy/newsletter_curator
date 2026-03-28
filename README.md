@@ -290,12 +290,14 @@ Delivery recipient membership is still resolved in this order:
 
 `preferred_sources` is a per-subscriber narrowing filter on top of the global source allowlist. Matching is exact after trim/lowercase against each candidate item's `source_name`, so it can narrow already-enabled sources but cannot re-enable a globally disabled source.
 
+When Buttondown is the active recipient source, per-subscriber persona now comes from Buttondown subscriber metadata under the `persona` key. `config.yaml` subscriber overrides still apply `preferred_sources`, and they still provide per-subscriber persona when delivery is using config-based recipients instead of Buttondown.
+
 When no subscriber-specific overrides are active, delivery keeps the legacy single-digest behavior and reuses the default cached newsletter as before. When overrides are active, delivery groups recipients by their effective profile so matching profiles share one generated digest, and personalized variants persist under their own audience keys for later reuse.
 
 Current operator caveats:
 - preview still uses the default audience rather than generating one preview per personalized profile
 - newsletter history and analytics remain focused on the default audience instead of listing every personalized variant
-- Buttondown only supplies recipient membership; subscriber preferences still come from `config.yaml`
+- Buttondown persona personalization currently reads only the `metadata.persona` field; other Buttondown metadata is ignored
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
 
