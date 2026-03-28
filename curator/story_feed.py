@@ -69,10 +69,18 @@ def list_recent_story_feed(
     *,
     now: datetime | None = None,
     window_hours: int = RECENT_STORY_WINDOW_HOURS,
+    source_type: str | None = None,
 ) -> dict:
     current_time = now or datetime.now(UTC)
     cutoff = (current_time - timedelta(hours=window_hours)).isoformat()
     database_path = resolve_database_path(config)
+    conditions = ["COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) >= ?"]
+    params: list[str] = [cutoff]
+    normalized_source_type = str(source_type or "").strip()
+    if normalized_source_type:
+        conditions.append("fs.source_type = ?")
+        params.append(normalized_source_type)
+    where_clause = f"WHERE {' AND '.join(conditions)}"
     query = """
         SELECT
             fs.id,
@@ -98,11 +106,11 @@ def list_recent_story_feed(
             snap.summarized_at
         FROM fetched_stories fs
         LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
-        WHERE COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) >= ?
+        {where_clause}
         ORDER BY COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) DESC, fs.id DESC
-    """
+    """.format(where_clause=where_clause)
     with connect_readonly(database_path) as connection:
-        rows = connection.execute(query, (cutoff,)).fetchall()
+        rows = connection.execute(query, params).fetchall()
     stories = [_normalize_story_row(row) for row in rows]
     return {
         "generated_at": current_time.isoformat(),

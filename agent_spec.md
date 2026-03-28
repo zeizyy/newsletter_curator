@@ -31,6 +31,9 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Return metadata only, including source fields, anchor text, stored summary fields, and repository timestamps.
 - Query the SQLite repository in read-only mode so the MCP server never initializes, resets, or mutates schema state during normal use.
 - Keep the initial transport minimal by implementing newline-delimited JSON-RPC over stdio, matching the current MCP stdio transport.
+- Add bounded query ergonomics before packaging or client integration so operators and agents can narrow the read-only feed safely.
+- Package the server for local discovery by agent tooling after the tool contract is stable.
+- Add a Codex-oriented consumption workflow only after the plugin or manifest contract exists.
 - This wave is intentionally separate from the pending evaluation tasks (`T43` through `T46`); do not make them prerequisites for the MCP work.
 
 # Task Map
@@ -43,3 +46,5 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T63` read-only recent-story MCP server vertical slice
 - `T64` launch docs and smoke coverage for the MCP server
 - `T65` optional query ergonomics for the recent-story MCP tool
+- `T66` publish the MCP server for local agent discovery
+- `T67` add a Codex-oriented workflow that uses the MCP server

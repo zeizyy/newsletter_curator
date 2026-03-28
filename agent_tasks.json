@@ -1566,7 +1566,7 @@
     {
       "id": "T65",
       "title": "Add optional query ergonomics to the recent-story MCP tool",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T64"],
       "scope": [
         "Add bounded optional filters or arguments to the MCP story feed without breaking the default 24-hour use case.",
@@ -1591,6 +1591,67 @@
         "The tool supports the agreed ergonomic arguments.",
         "The default behavior remains stable.",
         "The targeted MCP integration test passes."
+      ]
+    },
+    {
+      "id": "T66",
+      "title": "Publish the MCP server as a Codex-discoverable local plugin",
+      "status": "pending",
+      "depends_on": ["T65"],
+      "scope": [
+        "Add local plugin or manifest metadata for the read-only story-feed server.",
+        "Point the published metadata at the checked-in MCP launch script and launch contract.",
+        "Keep publishing separate from server semantics, query ergonomics, and agent workflow logic."
+      ],
+      "artifacts": [
+        ".codex-plugin/plugin.json",
+        ".agents/plugins/marketplace.json",
+        "README.md",
+        "agent_contracts/T66_mcp_publish_and_manifest.md",
+        "tests/integration/test_mcp_publish_manifest.py"
+      ],
+      "contract_file": "agent_contracts/T66_mcp_publish_and_manifest.md",
+      "test_command": "uv run pytest tests/integration/test_mcp_publish_manifest.py -q",
+      "integration_test": "tests/integration/test_mcp_publish_manifest.py",
+      "evaluator_checks": [
+        "The manifest points at the checked-in MCP launch script.",
+        "The published metadata is sufficient for Codex or another local agent to discover and start the server.",
+        "The task does not alter story-feed semantics, tool shape, or transport."
+      ],
+      "done_when": [
+        "The MCP server is discoverable as a local plugin or manifest.",
+        "The publish or install path is documented.",
+        "The offline manifest smoke test passes."
+      ]
+    },
+    {
+      "id": "T67",
+      "title": "Add a Codex agent workflow that uses the MCP story feed",
+      "status": "pending",
+      "depends_on": ["T66"],
+      "scope": [
+        "Add a Codex-oriented skill, workflow, or setup guide that starts the MCP server and queries list_recent_stories.",
+        "Keep the agent-side workflow separate from plugin publishing and from server implementation.",
+        "Provide a reproducible local example that remains read-only."
+      ],
+      "artifacts": [
+        "skills/codex-mcp-story-feed/SKILL.md",
+        "docs/codex-mcp-story-feed.md",
+        "agent_contracts/T67_codex_mcp_story_feed.md",
+        "tests/integration/test_codex_mcp_story_feed_smoke.py"
+      ],
+      "contract_file": "agent_contracts/T67_codex_mcp_story_feed.md",
+      "test_command": "uv run pytest tests/integration/test_codex_mcp_story_feed_smoke.py -q",
+      "integration_test": "tests/integration/test_codex_mcp_story_feed_smoke.py",
+      "evaluator_checks": [
+        "The agent workflow can start the local MCP server and call list_recent_stories.",
+        "The workflow stays read-only and does not introduce new story-feed semantics.",
+        "The example is reproducible offline."
+      ],
+      "done_when": [
+        "A Codex-oriented workflow exists for querying the MCP server.",
+        "The workflow is documented and testable.",
+        "The smoke test passes offline."
       ]
     }
   ]

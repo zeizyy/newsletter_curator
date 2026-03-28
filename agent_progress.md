@@ -555,3 +555,11 @@ Add new entries below this line.
 - Outcome: The MCP server now has a thin CLI wrapper with `--help` and optional `--config-path`, the README documents the exact read-only stdio launch path and config expectations, and the new smoke test proves the checked-in entrypoint is callable locally and can answer `initialize` offline.
 - Open risks: This sprint intentionally avoids re-testing `tools/list` and `tools/call`; those semantics remain covered by the T63 integration test and should be rerun if the launch wrapper grows beyond config selection.
 - Next recommended task: `T65` Add optional query ergonomics to the recent-story MCP tool.
+
+### 2026-03-28 - T65 added bounded query ergonomics and queued publish plus Codex tasks
+- Context: Kept the next MCP sprint narrowly focused on practical filtering for `list_recent_stories`, while also extending the harness so publish and Codex-consumption work are explicitly queued behind the stable tool contract.
+- Files changed: `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T65_mcp_story_feed_query_ergonomics.md`, `curator/story_feed.py`, `curator/mcp_server.py`, `tests/integration/test_mcp_recent_story_feed_server.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `uv run pytest tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: `list_recent_stories` now accepts bounded `hours` and exact-match `source_type` arguments while preserving the default 24-hour behavior, invalid arguments now surface as MCP-visible tool errors, and the harness now includes follow-on tasks for publishing the MCP as a local plugin plus adding a Codex-oriented workflow on top of it.
+- Open risks: The server now has a slightly larger argument surface, so any future additions should stay bounded or they will blur into pagination or discovery work that belongs in a separate sprint.
+- Next recommended task: `T66` Publish the MCP server as a Codex-discoverable local plugin.

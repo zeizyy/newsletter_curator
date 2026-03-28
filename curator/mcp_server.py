@@ -10,6 +10,8 @@ MCP_PROTOCOL_VERSION = "2025-11-25"
 SERVER_NAME = "newsletter-curator-story-feed"
 SERVER_VERSION = "0.1.0"
 RECENT_STORIES_TOOL = "list_recent_stories"
+MIN_WINDOW_HOURS = 1
+MAX_WINDOW_HOURS = 168
 
 
 def build_recent_stories_tool() -> dict:
@@ -69,7 +71,16 @@ def build_recent_stories_tool() -> dict:
         "description": "Returns stored newsletter story metadata from the last 24 hours without fetching or summarizing anything new.",
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "hours": {
+                    "type": "integer",
+                    "minimum": MIN_WINDOW_HOURS,
+                    "maximum": MAX_WINDOW_HOURS,
+                },
+                "source_type": {
+                    "type": "string",
+                },
+            },
             "additionalProperties": False,
         },
         "outputSchema": {
@@ -123,6 +134,34 @@ def _tool_success_result(payload: dict) -> dict:
     }
 
 
+def _parse_list_recent_stories_arguments(arguments: object) -> tuple[int, str | None]:
+    if arguments in (None, {}):
+        return RECENT_STORY_WINDOW_HOURS, None
+    if not isinstance(arguments, dict):
+        raise ValueError("list_recent_stories arguments must be an object.")
+
+    allowed_keys = {"hours", "source_type"}
+    unexpected = sorted(set(arguments) - allowed_keys)
+    if unexpected:
+        raise ValueError(f"Unsupported list_recent_stories arguments: {', '.join(unexpected)}")
+
+    raw_hours = arguments.get("hours", RECENT_STORY_WINDOW_HOURS)
+    if isinstance(raw_hours, bool) or not isinstance(raw_hours, int):
+        raise ValueError("hours must be an integer.")
+    if raw_hours < MIN_WINDOW_HOURS or raw_hours > MAX_WINDOW_HOURS:
+        raise ValueError(f"hours must be between {MIN_WINDOW_HOURS} and {MAX_WINDOW_HOURS}.")
+
+    raw_source_type = arguments.get("source_type")
+    if raw_source_type is None:
+        source_type = None
+    elif not isinstance(raw_source_type, str):
+        raise ValueError("source_type must be a string.")
+    else:
+        source_type = raw_source_type.strip() or None
+
+    return raw_hours, source_type
+
+
 def handle_request(message: dict, *, config_path: str | None = None) -> dict | None:
     method = str(message.get("method", ""))
     message_id = message.get("id")
@@ -158,11 +197,13 @@ def handle_request(message: dict, *, config_path: str | None = None) -> dict | N
         tool_name = str(params.get("name", ""))
         if tool_name != RECENT_STORIES_TOOL:
             return _jsonrpc_error(message_id, -32601, f"Unknown tool: {tool_name}")
-        arguments = params.get("arguments")
-        if arguments not in (None, {}):
-            return _jsonrpc_error(message_id, -32602, "list_recent_stories does not accept arguments.")
         try:
-            payload = list_recent_story_feed(config_module.load_config(config_path))
+            hours, source_type = _parse_list_recent_stories_arguments(params.get("arguments"))
+            payload = list_recent_story_feed(
+                config_module.load_config(config_path),
+                window_hours=hours,
+                source_type=source_type,
+            )
         except Exception as exc:
             return _jsonrpc_result(message_id, _tool_error_result(str(exc)))
         return _jsonrpc_result(message_id, _tool_success_result(payload))

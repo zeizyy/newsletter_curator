@@ -28,6 +28,19 @@ def _read_message(process: subprocess.Popen[str]) -> dict:
     raise AssertionError(f"Server exited before responding. stderr={stderr_output!r}")
 
 
+def _call_tool(process: subprocess.Popen[str], *, call_id: int, arguments: dict | None = None) -> dict:
+    _send_message(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": call_id,
+            "method": "tools/call",
+            "params": {"name": "list_recent_stories", "arguments": arguments or {}},
+        },
+    )
+    return _read_message(process)
+
+
 def _set_story_first_seen(repository, story_id: int, timestamp: str) -> None:
     with repository.connect() as connection:
         connection.execute(
@@ -172,6 +185,8 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
         assert len(tools) == 1
         assert tools[0]["name"] == "list_recent_stories"
         assert tools[0]["annotations"]["readOnlyHint"] is True
+        assert tools[0]["inputSchema"]["properties"]["hours"]["maximum"] == 168
+        assert tools[0]["inputSchema"]["properties"]["source_type"]["type"] == "string"
 
         _send_message(
             process,
@@ -180,16 +195,14 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
         ping_response = _read_message(process)
         assert ping_response["result"] == {}
 
-        _send_message(
+        call_response = _call_tool(process, call_id=3)
+        hours_filtered_response = _call_tool(process, call_id=4, arguments={"hours": 1})
+        source_filtered_response = _call_tool(
             process,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {"name": "list_recent_stories", "arguments": {}},
-            },
+            call_id=5,
+            arguments={"source_type": "gmail"},
         )
-        call_response = _read_message(process)
+        invalid_response = _call_tool(process, call_id=6, arguments={"hours": 999})
     finally:
         if process.stdin is not None:
             process.stdin.close()
@@ -219,3 +232,20 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
     rendered_text = result["content"][0]["text"]
     assert json.loads(rendered_text)["story_count"] == 2
     assert stale_story_id not in {story["id"] for story in payload["stories"]}
+
+    hours_filtered_result = hours_filtered_response["result"]
+    assert hours_filtered_result.get("isError") is not True
+    hours_filtered_payload = hours_filtered_result["structuredContent"]
+    assert hours_filtered_payload["window_hours"] == 1
+    assert [story["id"] for story in hours_filtered_payload["stories"]] == [fallback_story_id]
+
+    source_filtered_result = source_filtered_response["result"]
+    assert source_filtered_result.get("isError") is not True
+    source_filtered_payload = source_filtered_result["structuredContent"]
+    assert source_filtered_payload["story_count"] == 1
+    assert [story["id"] for story in source_filtered_payload["stories"]] == [fallback_story_id]
+    assert source_filtered_payload["stories"][0]["source_type"] == "gmail"
+
+    invalid_result = invalid_response["result"]
+    assert invalid_result["isError"] is True
+    assert "hours must be between 1 and 168" in invalid_result["content"][0]["text"]
