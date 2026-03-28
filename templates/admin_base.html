@@ -707,13 +707,20 @@
           <p class="utility-copy">{% block utility_copy %}Move between live preview, stored newsletters, analytics, and repository inventory without dropping context.{% endblock %}</p>
           <nav class="nav-pills">
             {% block utility_nav %}
-            <a class="nav-pill {% if request.endpoint == 'config_editor' %}is-active{% endif %}" href="{{ url_for('config_editor', token=token or None) }}">Control Room</a>
-            <a class="nav-pill {% if request.endpoint == 'preview_newsletter' %}is-active{% endif %}" href="{{ url_for('preview_newsletter', token=token or None) }}">Briefing Desk</a>
-            <a class="nav-pill {% if request.endpoint in ['newsletter_history', 'newsletter_history_detail'] %}is-active{% endif %}" href="{{ url_for('newsletter_history', token=token or None) }}">Archive</a>
-            <a class="nav-pill {% if request.endpoint == 'analytics_dashboard' %}is-active{% endif %}" href="{{ url_for('analytics_dashboard', token=token or None) }}">Analytics</a>
-            <a class="nav-pill {% if request.endpoint == 'story_explorer' %}is-active{% endif %}" href="{{ url_for('story_explorer', token=token or None) }}">Signals</a>
+            <a class="nav-pill {% if request.endpoint == 'config_editor' %}is-active{% endif %}" href="{{ url_for('config_editor') }}">Control Room</a>
+            <a class="nav-pill {% if request.endpoint == 'preview_newsletter' %}is-active{% endif %}" href="{{ url_for('preview_newsletter') }}">Briefing Desk</a>
+            <a class="nav-pill {% if request.endpoint in ['newsletter_history', 'newsletter_history_detail'] %}is-active{% endif %}" href="{{ url_for('newsletter_history') }}">Archive</a>
+            <a class="nav-pill {% if request.endpoint == 'analytics_dashboard' %}is-active{% endif %}" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
+            <a class="nav-pill {% if request.endpoint == 'story_explorer' %}is-active{% endif %}" href="{{ url_for('story_explorer') }}">Signals</a>
             {% endblock %}
           </nav>
+          {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
+            <div class="action-row">
+              <form method="post" action="{{ url_for('admin_logout') }}">
+                <button type="submit">Admin Sign Out</button>
+              </form>
+            </div>
+          {% endif %}
         </aside>
       </div>
       <div class="action-row">{% block page_actions %}{% endblock %}</div>

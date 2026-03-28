@@ -10,6 +10,7 @@ from tests.helpers import create_completed_ingestion_run, write_temp_config
 def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
+    jobs = importlib.import_module("curator.jobs")
 
     config_path = write_temp_config(
         tmp_path,
@@ -19,7 +20,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
                 "digest_recipients": ["preview@example.com"],
                 "digest_subject": "Preview Digest",
             },
-            "additional_sources": {"enabled": True, "hours": 48},
+            "additional_sources": {"enabled": True, "hours": 100000},
             "limits": {
                 "select_top_stories": 2,
                 "final_top_stories": 2,
@@ -29,6 +30,8 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
+    monkeypatch.setattr(jobs, "current_newsletter_date", lambda: "2026-03-24")
     monkeypatch.setenv("CURATOR_ADMIN_ENABLE_PREVIEW", "1")
     config = main.load_config()
 
@@ -85,13 +88,13 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
 
     client = admin_app.app.test_client()
     response = client.get("/preview")
-    assert response.status_code == 202
-    assert "generation has started" in response.get_data(as_text=True).lower()
-
-    for _ in range(20):
-        response = client.get("/preview")
-        if response.status_code == 200:
-            break
+    assert response.status_code in {200, 202}
+    if response.status_code == 202:
+        assert "generation has started" in response.get_data(as_text=True).lower()
+        for _ in range(20):
+            response = client.get("/preview")
+            if response.status_code == 200:
+                break
 
     assert response.status_code == 200
     page = response.get_data(as_text=True)

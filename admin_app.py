@@ -4,6 +4,7 @@ from email.utils import parseaddr
 import os
 from pathlib import Path
 import threading
+from urllib.parse import urlsplit
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 import yaml
@@ -167,8 +168,6 @@ def start_preview_generation(config: dict, newsletter_date: str, generation_toke
 def get_provided_admin_token() -> str:
     return (
         request.headers.get("X-Admin-Token", "").strip()
-        or request.args.get("token", "").strip()
-        or request.form.get("token", "").strip()
         or request.cookies.get(ADMIN_TOKEN_COOKIE, "").strip()
     )
 
@@ -210,6 +209,38 @@ def clear_subscriber_session_cookie(response) -> None:
         httponly=True,
         samesite="Lax",
         secure=subscriber_cookie_secure(),
+        path="/",
+    )
+
+
+def admin_token_configured() -> bool:
+    return bool(os.getenv("CURATOR_ADMIN_TOKEN", "").strip())
+
+
+def admin_cookie_secure() -> bool:
+    return bool(request.is_secure)
+
+
+def set_admin_session_cookie(response, admin_token: str) -> None:
+    response.set_cookie(
+        ADMIN_TOKEN_COOKIE,
+        admin_token,
+        httponly=True,
+        samesite="Lax",
+        secure=admin_cookie_secure(),
+        path="/",
+    )
+
+
+def clear_admin_session_cookie(response) -> None:
+    response.set_cookie(
+        ADMIN_TOKEN_COOKIE,
+        "",
+        expires=0,
+        max_age=0,
+        httponly=True,
+        samesite="Lax",
+        secure=admin_cookie_secure(),
         path="/",
     )
 
@@ -279,12 +310,57 @@ def require_admin_token() -> str:
     return provided
 
 
-def resolve_request_token(provided_token: str) -> str:
-    return (
-        request.args.get("token", "").strip()
-        or request.form.get("token", "").strip()
-        or provided_token
+def render_admin_template(template_name: str, **context):
+    return render_template(
+        template_name,
+        admin_auth_active=admin_token_configured(),
+        **context,
     )
+
+
+def is_safe_local_redirect_target(target: str) -> bool:
+    candidate = str(target or "").strip()
+    if not candidate.startswith("/"):
+        return False
+    parsed = urlsplit(candidate)
+    return not parsed.scheme and not parsed.netloc
+
+
+def resolve_admin_redirect_target() -> str:
+    requested = (
+        request.args.get("next", "").strip()
+        or request.form.get("next", "").strip()
+    )
+    if is_safe_local_redirect_target(requested) and requested not in {
+        url_for("admin_login"),
+        url_for("admin_logout"),
+    }:
+        return requested
+    return url_for("config_editor")
+
+
+def current_request_target() -> str:
+    return request.full_path[:-1] if request.full_path.endswith("?") else request.full_path
+
+
+def require_admin_browser_auth():
+    expected = os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
+    if not expected:
+        return "", None
+
+    header_token = request.headers.get("X-Admin-Token", "").strip()
+    if header_token:
+        if header_token != expected:
+            abort(401)
+        return header_token, None
+
+    cookie_token = request.cookies.get(ADMIN_TOKEN_COOKIE, "").strip()
+    if cookie_token == expected:
+        return cookie_token, None
+
+    response = redirect(url_for("admin_login", next=current_request_target()))
+    clear_admin_session_cookie(response)
+    return "", response
 
 
 def parse_bool(value: str | None) -> bool:
@@ -553,10 +629,51 @@ def health():
 @app.errorhandler(401)
 def unauthorized(_):
     return (
-        "Unauthorized. Provide CURATOR_ADMIN_TOKEN via '?token=YOUR_TOKEN' "
-        "or header 'X-Admin-Token'.",
+        "Unauthorized. Provide CURATOR_ADMIN_TOKEN via header 'X-Admin-Token' "
+        "or sign in at /admin/login.",
         401,
     )
+
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if not admin_token_configured():
+        return redirect(url_for("config_editor"))
+
+    expected = os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
+    if request.cookies.get(ADMIN_TOKEN_COOKIE, "").strip() == expected and request.method == "GET":
+        return redirect(resolve_admin_redirect_target())
+
+    message = ""
+    errors: list[str] = []
+    if request.method == "POST":
+        posted_token = request.form.get("admin_token", "").strip()
+        if not posted_token:
+            errors.append("Enter the admin token.")
+        elif posted_token != expected:
+            errors.append("The admin token is invalid.")
+        else:
+            response = redirect(resolve_admin_redirect_target())
+            set_admin_session_cookie(response, posted_token)
+            return response
+
+    if request.args.get("logged_out", "").strip() == "1" and not errors:
+        message = "You have been signed out."
+    return make_response(
+        render_admin_template(
+            "admin_login.html",
+            message=message,
+            errors=errors,
+            next_target=resolve_admin_redirect_target(),
+        )
+    )
+
+
+@app.route("/admin/logout", methods=["GET", "POST"])
+def admin_logout():
+    response = redirect(url_for("admin_login", logged_out="1"))
+    clear_admin_session_cookie(response)
+    return response
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -722,8 +839,9 @@ def subscriber_logout():
 
 @app.route("/", methods=["GET", "POST"])
 def config_editor():
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     raw = load_config_file()
     merged = merge_dicts(DEFAULT_CONFIG, raw)
     repository = load_repository(merged)
@@ -742,17 +860,7 @@ def config_editor():
                 yaml.safe_dump(updated_raw, handle, sort_keys=False)
             repository = load_repository(updated_merged)
             update_source_selections(repository, request.form)
-            response = redirect(
-                url_for("config_editor", saved="1", token=token_from_request or None)
-            )
-            if token_from_request:
-                response.set_cookie(
-                    ADMIN_TOKEN_COOKIE,
-                    token_from_request,
-                    httponly=True,
-                    samesite="Lax",
-                )
-            return response
+            return redirect(url_for("config_editor", saved="1"))
         merged = merge_dicts(DEFAULT_CONFIG, updated_raw)
         repository = load_repository(merged)
         available_sources = repository.list_sources_with_selection() if repository else []
@@ -761,36 +869,23 @@ def config_editor():
         message = f"Saved {CONFIG_PATH} successfully."
 
     response = make_response(
-        render_template(
+        render_admin_template(
             "admin_config.html",
             config=merged,
             config_path=CONFIG_PATH,
             available_sources=available_sources,
             message=message,
             errors=errors,
-            token=token_from_request,
-            token_note=(
-                "Token auth is active via session cookie."
-                if os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
-                and not request.args.get("token", "").strip()
-                else ""
-            ),
         )
     )
-    if request.args.get("token", "").strip():
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            request.args.get("token", "").strip(),
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 
 @app.route("/preview", methods=["GET"])
 def preview_newsletter():
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     preview_template = resolve_preview_template()
     merged = load_merged_config()
     repository = load_repository(merged)
@@ -874,13 +969,12 @@ def preview_newsletter():
             status_code = 200
 
     response = make_response(
-        render_template(
+        render_admin_template(
             "digest_preview.html",
             config_path=CONFIG_PATH,
             preview=preview,
             result=result,
             error=error,
-            token=token_from_request,
             generation_in_progress=generation_in_progress,
             generation_state=generation_state,
             generation_started=generation_started,
@@ -888,13 +982,6 @@ def preview_newsletter():
         ),
         status_code,
     )
-    if token_from_request:
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            token_from_request,
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 
@@ -940,8 +1027,9 @@ def track_newsletter_click(click_token: str):
 
 @app.route("/stories", methods=["GET"])
 def story_explorer():
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
     source_type = request.args.get("source_type", "").strip() or None
@@ -973,55 +1061,41 @@ def story_explorer():
         for source in available_sources
     ]
     response = make_response(
-        render_template(
+        render_admin_template(
             "story_explorer.html",
             config_path=CONFIG_PATH,
             stories=stories,
             source_type=source_type or "",
             source_name=source_name or "",
             available_sources=available_sources,
-            token=token_from_request,
         )
     )
-    if token_from_request:
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            token_from_request,
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 
 @app.route("/newsletters", methods=["GET"])
 def newsletter_history():
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
     newsletters = repository.list_daily_newsletters(limit=30) if repository else []
     response = make_response(
-        render_template(
+        render_admin_template(
             "newsletter_history.html",
             config_path=CONFIG_PATH,
             newsletters=newsletters,
-            token=token_from_request,
         )
     )
-    if token_from_request:
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            token_from_request,
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 
 @app.route("/newsletters/<newsletter_date>", methods=["GET"])
 def newsletter_history_detail(newsletter_date: str):
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
     newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
@@ -1029,28 +1103,21 @@ def newsletter_history_detail(newsletter_date: str):
         abort(404)
 
     response = make_response(
-        render_template(
+        render_admin_template(
             "newsletter_history_detail.html",
             config_path=CONFIG_PATH,
             newsletter=newsletter,
             preview=build_preview_payload(newsletter),
-            token=token_from_request,
         )
     )
-    if token_from_request:
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            token_from_request,
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 
 @app.route("/analytics", methods=["GET"])
 def analytics_dashboard():
-    provided_token = require_admin_token()
-    token_from_request = resolve_request_token(provided_token)
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
     recent_newsletters = repository.list_newsletter_analytics(limit=14) if repository else []
@@ -1059,22 +1126,14 @@ def analytics_dashboard():
         repository.list_top_clicked_stories(trailing_days=30, limit=10) if repository else []
     )
     response = make_response(
-        render_template(
+        render_admin_template(
             "analytics.html",
             config_path=CONFIG_PATH,
             recent_newsletters=recent_newsletters,
             window_stats=window_stats,
             top_clicked_stories=top_clicked_stories,
-            token=token_from_request,
         )
     )
-    if token_from_request:
-        response.set_cookie(
-            ADMIN_TOKEN_COOKIE,
-            token_from_request,
-            httponly=True,
-            samesite="Lax",
-        )
     return response
 
 

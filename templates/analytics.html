@@ -98,8 +98,8 @@
         </div>
       </div>
       <div class="state-actions">
-        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
-        <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+        <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
+        <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
       </div>
     </div>
     {% endif %}

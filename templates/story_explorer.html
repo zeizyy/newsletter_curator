@@ -35,9 +35,6 @@
       <div class="section-copy">Use these filters to separate Gmail candidates from centrally fetched feeds and inspect whether a source is producing usable depth.</div>
     </div>
     <form method="get" class="filters">
-      {% if token %}
-      <input type="hidden" name="token" value="{{ token }}" />
-      {% endif %}
       <div class="field">
         <label class="field-label" for="source_type">Source Type</label>
         <select id="source_type" name="source_type">
@@ -118,8 +115,8 @@
         </div>
       </div>
       <div class="state-actions">
-        <a class="button-link ghost" href="{{ url_for('story_explorer', token=token or None) }}">Clear Filters</a>
-        <a class="button-link primary" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
+        <a class="button-link ghost" href="{{ url_for('story_explorer') }}">Clear Filters</a>
+        <a class="button-link primary" href="{{ url_for('config_editor') }}">Open Control Room</a>
       </div>
     </div>
     {% endif %}

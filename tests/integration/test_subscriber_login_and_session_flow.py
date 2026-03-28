@@ -121,7 +121,8 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
     assert "Session active" in account_page
 
     admin_response = client.get("/")
-    assert admin_response.status_code == 401
+    assert admin_response.status_code == 302
+    assert admin_response.headers["Location"].startswith("/admin/login?next=")
 
     logout_response = client.post("/logout", follow_redirects=True)
     logout_page = logout_response.get_data(as_text=True)

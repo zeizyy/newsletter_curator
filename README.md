@@ -183,7 +183,7 @@ For a one-off server-side dry run through the generated wrapper:
 
 Open the admin UI:
 ```text
-http://YOUR_SERVER:8080/?token=YOUR_ADMIN_TOKEN
+http://YOUR_SERVER:8080/admin/login
 ```
 
 ### Dry-Run Asset Generation
@@ -211,7 +211,8 @@ Default URL is `http://127.0.0.1:8080`.
 
 Optional security token:
 - Set `CURATOR_ADMIN_TOKEN` on the server.
-- Access with `?token=...` or header `X-Admin-Token: ...`.
+- Browser access uses `/admin/login`, which sets an HttpOnly admin session cookie after validating the token.
+- Scripted access can still send `X-Admin-Token: ...`.
 
 Optional Buttondown recipient sync:
 - Set `BUTTONDOWN_API_KEY` on the server.

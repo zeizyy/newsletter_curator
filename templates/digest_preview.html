@@ -14,9 +14,9 @@
 {% block page_lead %}Inspect the exact digest payload the system will send, compare the web-first and email-safe renderings, and catch layout problems before delivery.{% endblock %}
 {% block page_meta %}Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code>{% endblock %}
 {% block page_actions %}
-  <a class="button-link {% if preview_template == 'market_tape' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='market_tape') }}">Web Template</a>
-  <a class="button-link {% if preview_template == 'email_safe' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='email_safe') }}">Email-Safe Template</a>
-  <a class="button-link {% if preview_template == 'gmail_lab' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', token=token or None, template='gmail_lab') }}">Gmail Lab</a>
+  <a class="button-link {% if preview_template == 'market_tape' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', template='market_tape') }}">Web Template</a>
+  <a class="button-link {% if preview_template == 'email_safe' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', template='email_safe') }}">Email-Safe Template</a>
+  <a class="button-link {% if preview_template == 'gmail_lab' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', template='gmail_lab') }}">Gmail Lab</a>
 {% endblock %}
 {% block head_extra %}
   {% if generation_in_progress %}
@@ -264,8 +264,8 @@
           <div class="state-meta">Generation started at <code>{{ generation_state.started_at }}</code>.</div>
         {% endif %}
         <div class="state-actions">
-          <a class="button-link primary" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
-          <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+          <a class="button-link primary" href="{{ url_for('config_editor') }}">Open Control Room</a>
+          <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
         </div>
       </div>
     </section>

@@ -6,13 +6,13 @@
 {% block page_lead %}Tune sourcing, ranking, summary, and delivery rules from one editorial desk instead of bouncing between disconnected utility pages.{% endblock %}
 {% block page_meta %}
   Editing <code>{{ config_path }}</code>
-  {% if token_note %}
-    <span style="margin-left:8px;">{{ token_note }}</span>
+  {% if admin_auth_active %}
+    <span style="margin-left:8px;">Admin session is active.</span>
   {% endif %}
 {% endblock %}
 {% block page_actions %}
-  <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
-  <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+  <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Review Today&apos;s Digest</a>
+  <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
 {% endblock %}
 
 {% block alerts %}
@@ -28,8 +28,8 @@
       </div>
       <div class="state-meta">{{ message }}</div>
       <div class="state-actions">
-        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
-        <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+        <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Review Today&apos;s Digest</a>
+        <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
       </div>
     </section>
   {% endif %}
@@ -87,10 +87,6 @@
   </div>
 
   <form method="post" class="stack">
-    {% if token %}
-    <input type="hidden" name="token" value="{{ token }}" />
-    {% endif %}
-
     <section class="surface surface-section">
       <div class="section-head">
         <div>
@@ -299,8 +295,8 @@
             </div>
           </div>
           <div class="state-actions">
-            <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Review Today&apos;s Digest</a>
-            <a class="button-link ghost" href="{{ url_for('newsletter_history', token=token or None) }}">Open Archive</a>
+            <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Review Today&apos;s Digest</a>
+            <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
           </div>
         </div>
       {% endif %}

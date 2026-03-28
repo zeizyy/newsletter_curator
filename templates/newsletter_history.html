@@ -6,7 +6,7 @@
 {% block page_lead %}Browse the stored daily briefings as a coherent record of what the system actually published, not just what today&apos;s config says it might do.{% endblock %}
 {% block page_meta %}Browsing stored daily newsletters in <code>{{ config_path }}</code>{% endblock %}
 {% block page_actions %}
-  <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
+  <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
 {% endblock %}
 
 {% block content %}
@@ -41,7 +41,7 @@
             <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
             <td data-label="Updated">{{ newsletter.updated_at }}</td>
             <td data-label="Action">
-              <a class="button-link ghost" href="{{ url_for('newsletter_history_detail', newsletter_date=newsletter.newsletter_date, token=token or None) }}">Open</a>
+              <a class="button-link ghost" href="{{ url_for('newsletter_history_detail', newsletter_date=newsletter.newsletter_date) }}">Open</a>
             </td>
           </tr>
           {% endfor %}
@@ -58,8 +58,8 @@
         </div>
       </div>
       <div class="state-actions">
-        <a class="button-link primary" href="{{ url_for('preview_newsletter', token=token or None) }}">Preview Today</a>
-        <a class="button-link ghost" href="{{ url_for('config_editor', token=token or None) }}">Open Control Room</a>
+        <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
+        <a class="button-link ghost" href="{{ url_for('config_editor') }}">Open Control Room</a>
       </div>
     </div>
     {% endif %}

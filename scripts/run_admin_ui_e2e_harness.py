@@ -590,7 +590,30 @@ def main() -> int:
 
             run_playwright_command(
                 "goto",
-                f"{base_url}/?token={args.admin_token}",
+                f"{base_url}/admin/login",
+                output_dir=output_dir,
+                session=browser_session,
+                pwcli_path=pwcli_path,
+            )
+            admin_login_snapshot = read_snapshot(
+                output_dir=output_dir,
+                session=browser_session,
+                pwcli_path=pwcli_path,
+            )
+            ensure_contains(admin_login_snapshot, "Sign in to the control room", context="admin login snapshot")
+            admin_token_ref = extract_ref(admin_login_snapshot, role="textbox", accessible_name="Admin token")
+            admin_sign_in_ref = extract_ref(admin_login_snapshot, role="button", accessible_name="Sign in")
+            run_playwright_command(
+                "fill",
+                admin_token_ref,
+                args.admin_token,
+                output_dir=output_dir,
+                session=browser_session,
+                pwcli_path=pwcli_path,
+            )
+            run_playwright_command(
+                "click",
+                admin_sign_in_ref,
                 output_dir=output_dir,
                 session=browser_session,
                 pwcli_path=pwcli_path,

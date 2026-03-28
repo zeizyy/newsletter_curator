@@ -1,0 +1,39 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Admin Login | Newsletter Curator{% endblock %}
+{% block eyebrow %}Operations Console{% endblock %}
+{% block page_title %}Sign in to the control room{% endblock %}
+{% block page_lead %}Enter the configured admin token once, then keep using the browser session cookie for normal navigation.{% endblock %}
+{% block utility_copy %}Browser access no longer accepts admin credentials in the URL. Use this page for operator sign-in, or send `X-Admin-Token` from scripted clients.{% endblock %}
+{% block utility_nav %}
+  <a class="nav-pill is-active" href="{{ url_for('admin_login') }}">Admin Login</a>
+{% endblock %}
+
+{% block content %}
+  {% if message %}
+    <section class="banner-ok">{{ message }}</section>
+  {% endif %}
+  {% for error in errors %}
+    <section class="banner-err">{{ error }}</section>
+  {% endfor %}
+
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Admin Access</div>
+        <h2>Start an operator session</h2>
+      </div>
+    </div>
+    <p class="section-copy">This form sets the admin session cookie after it validates the token against `CURATOR_ADMIN_TOKEN` on the server.</p>
+    <form method="post" class="stack">
+      <input type="hidden" name="next" value="{{ next_target }}" />
+      <div class="field">
+        <label class="field-label" for="admin_token">Admin token</label>
+        <input id="admin_token" name="admin_token" type="password" autocomplete="current-password" required />
+      </div>
+      <div class="button-row">
+        <button type="submit">Sign in</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

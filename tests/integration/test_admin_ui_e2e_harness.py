@@ -115,6 +115,14 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                     '- link "Review Today\'s Digest" [ref=e21] [cursor=pointer]:',
                 ]
             )
+        if page == "admin_login":
+            return "\n".join(
+                [
+                    '- heading "Sign in to the control room" [level=1] [ref=e7]',
+                    '- textbox "Admin token" [ref=e26]',
+                    '- button "Sign in" [ref=e28] [cursor=pointer]',
+                ]
+            )
         if page == "preview":
             return "\n".join(
                 [
@@ -141,14 +149,20 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
         if action == "fill":
             ref, value = command[1], command[2]
             if ref == "e26":
-                state["email"] = value
+                if state["page"] == "admin_login":
+                    state["admin_token"] = value
+                else:
+                    state["email"] = value
             elif ref == "e29":
                 state["persona"] = value
             return "### Ran Playwright code\n"
         if action == "click":
             ref = command[1]
             if ref == "e28":
-                state["page"] = "login_link"
+                if state["page"] == "admin_login":
+                    state["page"] = "admin"
+                else:
+                    state["page"] = "login_link"
             elif ref == "e17":
                 state["page"] = "settings"
             elif ref == "e64":
@@ -171,8 +185,8 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
             url = command[1]
             if "/login/confirm" in url:
                 state["page"] = "account"
-            elif url.endswith("/?token=local-review-token"):
-                state["page"] = "admin"
+            elif url.endswith("/admin/login"):
+                state["page"] = "admin_login"
             return "### Page\n"
         if action == "mousewheel":
             return "### Ran Playwright code\n"
