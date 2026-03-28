@@ -1627,7 +1627,7 @@
     {
       "id": "T67",
       "title": "Add a Codex agent workflow that uses the MCP story feed",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T66"],
       "scope": [
         "Add a Codex-oriented skill, workflow, or setup guide that starts the MCP server and queries list_recent_stories.",
@@ -1636,6 +1636,8 @@
       ],
       "artifacts": [
         "skills/codex-mcp-story-feed/SKILL.md",
+        "skills/codex-mcp-story-feed/agents/openai.yaml",
+        "skills/codex-mcp-story-feed/scripts/query_story_feed.py",
         "docs/codex-mcp-story-feed.md",
         "agent_contracts/T67_codex_mcp_story_feed.md",
         "tests/integration/test_codex_mcp_story_feed_smoke.py"

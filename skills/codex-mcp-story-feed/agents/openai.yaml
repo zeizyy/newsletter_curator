@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex MCP Story Feed"
+  short_description: "Use Codex with the MCP story feed"
+  default_prompt: "Use $codex-mcp-story-feed to inspect recent stored stories through the published MCP plugin."

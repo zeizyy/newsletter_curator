@@ -571,3 +571,11 @@ Add new entries below this line.
 - Outcome: The repo now publishes a local `newsletter-curator-story-feed` plugin with a real plugin manifest, a stdio `.mcp.json` that launches the checked-in server from the plugin root, a local marketplace entry under `.agents/plugins/marketplace.json`, and a manifest smoke test that proves the published plugin can negotiate `initialize` offline.
 - Open risks: This publish path is repo-local, so any future home-local or global Codex installation flow still needs a separate validation step rather than assuming the same relative paths.
 - Next recommended task: `T67` Add a Codex agent workflow that uses the MCP story feed.
+
+### 2026-03-28 - T67 added a Codex skill and helper for the published story-feed plugin
+- Context: Added a repo-local Codex workflow on top of the published MCP plugin so agents can query stored stories through the manifest contract instead of calling repository code directly.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T67_codex_mcp_story_feed.md`, `docs/codex-mcp-story-feed.md`, `skills/codex-mcp-story-feed/SKILL.md`, `skills/codex-mcp-story-feed/agents/openai.yaml`, `skills/codex-mcp-story-feed/scripts/query_story_feed.py`, `tests/integration/test_codex_mcp_story_feed_smoke.py`
+- Tests run: `uv run pytest tests/integration/test_codex_mcp_story_feed_smoke.py -q`; `uv run pytest tests/integration/test_mcp_publish_manifest.py tests/integration/test_mcp_recent_story_feed_server.py tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: The repo now has a `$codex-mcp-story-feed` skill, a helper that reads `plugins/newsletter-curator-story-feed/.mcp.json`, starts the published MCP server, completes `initialize`, and calls `list_recent_stories`, plus a smoke test that proves the workflow works offline against a seeded SQLite repo.
+- Open risks: The helper currently exercises the repo-local published plugin path only, so any future global Codex install flow should be tested separately rather than assuming the same relative manifest paths.
+- Next recommended task: none; `T67` is complete.
