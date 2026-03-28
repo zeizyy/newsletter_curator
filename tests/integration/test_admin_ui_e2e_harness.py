@@ -43,6 +43,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
             admin_token="local-review-token",
             subscriber_email="existing@example.com",
             updated_persona="Focus on chips, software margins, and rates.",
+            public_base_url="http://127.0.0.1:8091",
         ),
     )
     monkeypatch.setattr(harness, "resolve_pwcli_path", lambda: fake_pwcli)
@@ -193,6 +194,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "completed"
+    assert payload["public_base_url"] == "http://127.0.0.1:8091"
     assert payload["saved_profile"]["persona_text"] == "Focus on chips, software margins, and rates."
     assert payload["saved_profile"]["preferred_sources"] == ["Macro Wire", "Signal Mail", "AI Wire"]
 

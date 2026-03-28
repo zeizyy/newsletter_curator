@@ -180,6 +180,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"ExecStart={admin_script}" in service_text
 
     assert "Generated deployment assets:" in result.stdout
+    assert "Warning: --public-base-url has no explicit port while --admin-port is set to 9090." in result.stdout
 
 
 def test_generated_daily_wrapper_stops_and_restarts_admin_service(tmp_path, repo_root):

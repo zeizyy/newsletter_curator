@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,6 +85,25 @@ def build_env_file(
             f"PATH={os.getenv('PATH', '/usr/local/bin:/usr/bin:/bin')}",
             "",
         ]
+    )
+
+
+def public_base_url_warning(public_base_url: str, admin_port: int) -> str:
+    configured = str(public_base_url or "").strip()
+    if not configured:
+        return ""
+    parsed = urlparse(configured)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    if parsed.port is not None:
+        return ""
+    if admin_port in {80, 443}:
+        return ""
+    return (
+        "Warning: --public-base-url has no explicit port while --admin-port is set to "
+        f"{admin_port}. This is correct only if your public origin is behind a reverse proxy on "
+        "the scheme default port. Otherwise subscriber login links and tracking links will omit "
+        f":{admin_port}."
     )
 
 
@@ -370,6 +390,9 @@ def main() -> None:
         print("- Admin app not started by default. Pass --install-systemd-user to install "
               "and start it.")
     print("- If you passed --install-crontab, check: crontab -l")
+    base_url_warning = public_base_url_warning(args.public_base_url, args.admin_port)
+    if base_url_warning:
+        print(f"- {base_url_warning}")
 
 
 if __name__ == "__main__":

@@ -146,7 +146,7 @@ Notes:
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
 - Telemetry tracking is now disabled by default. Pass `--enable-telemetry` only when the `/track/*` endpoints are publicly reachable.
-- Set `--public-base-url` to the externally reachable admin host for telemetry links and open-tracking pixels when telemetry is enabled.
+- Set `--public-base-url` to the externally reachable admin origin for subscriber login links, telemetry links, and open-tracking pixels. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated cron schedule defaults to:
   - `30 14 * * *` run `daily_pipeline.py`

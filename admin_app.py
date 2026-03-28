@@ -330,30 +330,12 @@ def require_subscriber_session(repository):
     return None, response
 
 
-def source_type_label(source_type: str) -> str:
-    normalized = str(source_type or "").strip().lower()
-    if normalized == "gmail":
-        return "Gmail newsletters"
-    if normalized == "additional_source":
-        return "Publisher feeds"
-    return normalized.replace("_", " ").title() or "Sources"
-
-
-def group_subscriber_settings_sources(available_sources: list[dict], selected_sources: list[str]) -> list[dict]:
+def build_subscriber_settings_sources(available_sources: list[dict], selected_sources: list[str]) -> list[dict]:
     selected_lookup = {str(source).strip().lower() for source in selected_sources if str(source).strip()}
-    grouped: dict[str, dict] = {}
+    normalized_sources: list[dict] = []
     for source in available_sources:
-        source_type = str(source.get("source_type", "")).strip() or "other"
-        group = grouped.get(source_type)
-        if group is None:
-            group = {
-                "source_type": source_type,
-                "label": source_type_label(source_type),
-                "sources": [],
-            }
-            grouped[source_type] = group
         source_name = str(source.get("source_name", "")).strip()
-        group["sources"].append(
+        normalized_sources.append(
             {
                 "id": int(source.get("id", 0) or 0),
                 "source_name": source_name,
@@ -361,7 +343,14 @@ def group_subscriber_settings_sources(available_sources: list[dict], selected_so
                 "selected": source_name.lower() in selected_lookup,
             }
         )
-    return list(grouped.values())
+    return sorted(
+        normalized_sources,
+        key=lambda source: (
+            0 if source["selected"] else 1,
+            0 if source["enabled"] else 1,
+            source["source_name"].lower(),
+        ),
+    )
 
 
 def normalize_subscriber_preferred_sources(
@@ -413,7 +402,7 @@ def render_subscriber_settings_page(
     *,
     subscriber: dict,
     profile: dict,
-    source_groups: list[dict],
+    available_sources: list[dict],
     message: str = "",
     errors: list[str] | None = None,
     status_code: int = 200,
@@ -423,7 +412,7 @@ def render_subscriber_settings_page(
             "subscriber_settings.html",
             subscriber=subscriber,
             profile=profile,
-            source_groups=source_groups,
+            available_sources=available_sources,
             message=message,
             errors=errors or [],
         ),
@@ -706,14 +695,14 @@ def subscriber_settings():
     if request.args.get("saved", "").strip() == "1":
         message = "Subscriber settings saved."
 
-    source_groups = group_subscriber_settings_sources(
+    available_sources = build_subscriber_settings_sources(
         available_sources,
         profile.get("preferred_sources", []),
     )
     return render_subscriber_settings_page(
         subscriber=subscriber,
         profile=profile,
-        source_groups=source_groups,
+        available_sources=available_sources,
         message=message,
         errors=errors,
     )

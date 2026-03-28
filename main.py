@@ -64,6 +64,7 @@ def select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> list[dict]:
     return llm.select_top_stories(
         items,
@@ -71,6 +72,7 @@ def select_top_stories(
         top_stories,
         reasoning_model,
         persona_text=persona_text,
+        preferred_sources=preferred_sources,
         client_factory=OpenAI,
     )
 
@@ -120,24 +122,6 @@ def process_story(
         article_fetcher=fetch_article_text,
         summarize_article_with_llm_fn=summarize_article_with_llm,
     )
-
-
-def _filter_links_by_preferred_sources(
-    links: list[dict],
-    preferred_sources: list[str],
-) -> list[dict]:
-    normalized_sources = {
-        str(source).strip().lower()
-        for source in preferred_sources
-        if str(source).strip()
-    }
-    if not normalized_sources:
-        return links
-    return [
-        item
-        for item in links
-        if str(item.get("source_name", "")).strip().lower() in normalized_sources
-    ]
 
 
 def run_job(config: dict, service, *, recipient_override: str | None = None) -> dict:
@@ -210,6 +194,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 top_stories,
                 reasoning_model,
                 persona_text=persona_text,
+                preferred_sources=preferred_sources,
             ))
             if development_cfg.get("fake_inference", False)
             else (lambda items, usage_by_model, top_stories, reasoning_model: select_top_stories(
@@ -218,6 +203,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 top_stories,
                 reasoning_model,
                 persona_text=persona_text,
+                preferred_sources=preferred_sources,
             ))
         )
         summarize_fn = (
@@ -250,16 +236,10 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             )
 
         def collect_profile_gmail_links(cfg, svc):
-            return _filter_links_by_preferred_sources(
-                collect_gmail_links(cfg, svc),
-                preferred_sources,
-            )
+            return collect_gmail_links(cfg, svc)
 
         def collect_profile_source_links(cfg):
-            return _filter_links_by_preferred_sources(
-                collect_additional_source_links(cfg),
-                preferred_sources,
-            )
+            return collect_additional_source_links(cfg)
 
         return run_delivery_job(
             config,

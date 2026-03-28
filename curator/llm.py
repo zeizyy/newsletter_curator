@@ -111,13 +111,19 @@ def select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
     client_factory=OpenAI,
 ) -> list[dict]:
     if not items:
         return []
 
     client = client_factory()
-    system_prompt, user_prompt = build_ranking_prompts(items, top_stories, persona_text)
+    system_prompt, user_prompt = build_ranking_prompts(
+        items,
+        top_stories,
+        persona_text,
+        preferred_sources,
+    )
     response = client.chat.completions.create(
         model=reasoning_model,
         messages=[

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -68,6 +69,14 @@ def parse_args() -> argparse.Namespace:
         default="Focus on chips, software margins, and rates.",
         help="Persona text saved during the settings step.",
     )
+    parser.add_argument(
+        "--public-base-url",
+        default="",
+        help=(
+            "Absolute base URL the app should use when it generates subscriber login links. "
+            "Defaults to the local harness origin."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -89,7 +98,14 @@ def resolve_pwcli_path() -> Path:
     return codex_home / "skills" / "playwright" / "scripts" / "playwright_cli.sh"
 
 
-def seed_review_fixture(root: Path, *, host: str, port: int, subscriber_email: str) -> dict:
+def seed_review_fixture(
+    root: Path,
+    *,
+    host: str,
+    port: int,
+    public_base_url: str,
+    subscriber_email: str,
+) -> dict:
     config_path = write_temp_config(
         root,
         overrides={
@@ -109,7 +125,7 @@ def seed_review_fixture(root: Path, *, host: str, port: int, subscriber_email: s
                 "source_quotas": {"gmail": 2, "additional_source": 4},
             },
             "persona": {"text": "Default persona for fallback testing."},
-            "tracking": {"enabled": False, "base_url": f"http://{host}:{port}"},
+            "tracking": {"enabled": False, "base_url": public_base_url},
         },
     )
     config = config_module.load_config(config_path)
@@ -224,6 +240,7 @@ def start_admin_server(
     host: str,
     port: int,
     admin_token: str,
+    public_base_url: str,
     stdout_handle,
 ) -> subprocess.Popen[str]:
     env = os.environ.copy()
@@ -234,7 +251,7 @@ def start_admin_server(
             "CURATOR_EXPOSE_LOGIN_LINKS": "1",
             "CURATOR_ADMIN_HOST": host,
             "CURATOR_ADMIN_PORT": str(port),
-            "CURATOR_PUBLIC_BASE_URL": f"http://{host}:{port}",
+            "CURATOR_PUBLIC_BASE_URL": public_base_url,
         }
     )
     return subprocess.Popen(
@@ -344,6 +361,12 @@ def extract_confirm_url(snapshot_text: str) -> str:
     return match.group(0)
 
 
+def extract_confirm_path(confirm_url: str) -> str:
+    parsed = urlparse(confirm_url)
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"{parsed.path}{query}"
+
+
 def load_saved_profile(database_path: Path, subscriber_email: str) -> dict:
     repository = SQLiteRepository(database_path)
     repository.initialize()
@@ -375,6 +398,7 @@ def main() -> int:
     manifest_path = output_dir / "manifest.json"
     browser_session = "admin-ui-e2e"
     base_url = f"http://{args.host}:{args.port}"
+    public_base_url = str(args.public_base_url or base_url).strip().rstrip("/")
     screenshots: dict[str, str] = {}
 
     with fixture_root_context(args.fixture_dir) as fixture_root:
@@ -382,6 +406,7 @@ def main() -> int:
             fixture_root,
             host=args.host,
             port=args.port,
+            public_base_url=public_base_url,
             subscriber_email=args.subscriber_email,
         )
         server_log_handle = server_log_path.open("w", encoding="utf-8")
@@ -392,6 +417,7 @@ def main() -> int:
                 host=args.host,
                 port=args.port,
                 admin_token=args.admin_token,
+                public_base_url=public_base_url,
                 stdout_handle=server_log_handle,
             )
             wait_for_server(base_url)
@@ -450,6 +476,11 @@ def main() -> int:
             )
             ensure_contains(login_link_snapshot, "Temporary sign-in link", context="login link snapshot")
             confirm_url = extract_confirm_url(login_link_snapshot)
+            if not confirm_url.startswith(f"{public_base_url}/login/confirm?token="):
+                raise RuntimeError(
+                    "Subscriber login link did not use the configured public base URL. "
+                    f"expected_prefix={public_base_url}/login/confirm?token= actual={confirm_url}"
+                )
             screenshots["login_link"] = str(
                 write_named_screenshot(
                     "02-login-link-exposed.png",
@@ -458,10 +489,11 @@ def main() -> int:
                     pwcli_path=pwcli_path,
                 )
             )
+            confirm_path = extract_confirm_path(confirm_url)
 
             run_playwright_command(
                 "goto",
-                confirm_url,
+                f"{base_url}{confirm_path}",
                 output_dir=output_dir,
                 session=browser_session,
                 pwcli_path=pwcli_path,
@@ -626,6 +658,7 @@ def main() -> int:
             manifest = {
                 "status": "completed",
                 "base_url": base_url,
+                "public_base_url": public_base_url,
                 "admin_token": args.admin_token,
                 "subscriber_email": args.subscriber_email,
                 "updated_persona": args.updated_persona,

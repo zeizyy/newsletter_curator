@@ -10,6 +10,7 @@ def fake_select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> list[dict]:
     if not items:
         return []
@@ -20,11 +21,22 @@ def fake_select_top_stories(
     stats["total"] += stats["input"] + stats["output"]
 
     lowered_persona = persona_text.lower()
+    lowered_preferred_sources = {
+        str(source).strip().lower()
+        for source in preferred_sources or []
+        if str(source).strip()
+    }
     sorted_items = list(items)
     if "macro" in lowered_persona or "rates" in lowered_persona or "valuation" in lowered_persona:
         sorted_items.sort(key=lambda item: "markets" not in str(item.get("category", "")).lower())
     elif "ai" in lowered_persona or "model" in lowered_persona or "chip" in lowered_persona:
         sorted_items.sort(key=lambda item: "ai" not in str(item.get("category", "")).lower())
+    if lowered_preferred_sources:
+        sorted_items.sort(
+            key=lambda item: (
+                str(item.get("source_name", "")).strip().lower() not in lowered_preferred_sources
+            )
+        )
 
     ranked = []
     for index, item in enumerate(sorted_items[:top_stories], start=1):

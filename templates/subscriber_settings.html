@@ -3,7 +3,7 @@
 {% block title %}Subscriber Settings | Newsletter Curator{% endblock %}
 {% block eyebrow %}Subscriber Access{% endblock %}
 {% block page_title %}Your digest settings{% endblock %}
-{% block page_lead %}Save the persona guidance and source preferences that will later feed into personalized delivery once the DB-backed delivery switch lands.{% endblock %}
+{% block page_lead %}Save the persona guidance and source preferences that shape your personalized delivery profile in the database.{% endblock %}
 {% block utility_label %}Subscriber Rail{% endblock %}
 {% block utility_copy %}Adjust your subscriber profile without touching operator controls. Disabled sources stay visible so your preferences do not disappear when the catalog changes.{% endblock %}
 {% block utility_nav %}
@@ -33,7 +33,7 @@
           <h2>What should the digest optimize for?</h2>
         </div>
       </div>
-      <p class="section-copy">Describe the reader lens you want the eventual personalized ranking pass to use. This sprint only stores the preference; the delivery pipeline still changes in a later task.</p>
+      <p class="section-copy">Describe the reader lens you want the final personalized ranking pass to use when it chooses your digest.</p>
       <div class="field">
         <label class="field-label" for="persona_text">Persona text</label>
         <textarea id="persona_text" name="persona_text">{{ profile.persona_text }}</textarea>
@@ -47,38 +47,31 @@
           <h2>Choose the sources you care about most</h2>
         </div>
       </div>
-      <p class="section-copy">Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
-      {% for group in source_groups %}
-        <div class="stack">
-          <div>
-            <div class="table-title">{{ group.label }}</div>
-          </div>
-          <div class="toggle-grid">
-            {% for source in group.sources %}
-              <label class="toggle-card">
-                <div class="stack">
-                  <strong>{{ source.source_name }}</strong>
-                  {% if source.enabled %}
-                    <span class="pill">Available</span>
-                  {% else %}
-                    <span class="pill muted-pill">Unavailable</span>
-                  {% endif %}
-                </div>
-                <div class="checkbox-row">
-                  <input
-                    type="checkbox"
-                    name="preferred_source"
-                    value="{{ source.source_name }}"
-                    {% if source.selected %}checked{% endif %}
-                    {% if not source.enabled %}disabled{% endif %}
-                  />
-                </div>
-              </label>
-            {% endfor %}
-          </div>
-        </div>
-      {% endfor %}
-      {% if not source_groups %}
+      <p class="section-copy">Preferred sources narrow the story pool before your personalized ranking pass runs. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
+      <div class="toggle-grid">
+        {% for source in available_sources %}
+          <label class="toggle-card">
+            <div class="stack">
+              <strong>{{ source.source_name }}</strong>
+              {% if source.enabled %}
+                <span class="pill">Available</span>
+              {% else %}
+                <span class="pill muted-pill">Unavailable</span>
+              {% endif %}
+            </div>
+            <div class="checkbox-row">
+              <input
+                type="checkbox"
+                name="preferred_source"
+                value="{{ source.source_name }}"
+                {% if source.selected %}checked{% endif %}
+                {% if not source.enabled %}disabled{% endif %}
+              />
+            </div>
+          </label>
+        {% endfor %}
+      </div>
+      {% if not available_sources %}
         <div class="state-shell is-empty">
           <p class="state-copy">No sources are in the catalog yet. Once the repository has stories, preferred-source controls will appear here.</p>
         </div>

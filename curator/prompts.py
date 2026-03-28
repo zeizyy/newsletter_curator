@@ -13,6 +13,19 @@ def persona_clause(persona_text: str) -> str:
     return f"\nUser persona:\n{cleaned}\n"
 
 
+def preferred_sources_clause(preferred_sources: list[str] | tuple[str, ...] | None) -> str:
+    normalized = [str(source).strip() for source in preferred_sources or [] if str(source).strip()]
+    if not normalized:
+        return ""
+    listed_sources = ", ".join(normalized)
+    return (
+        "\nPreferred sources to softly uprank when quality is otherwise comparable:\n"
+        f"{listed_sources}\n"
+        "Treat this as an uprank signal, not a hard filter. Do not exclude stronger stories solely "
+        "because they come from other sources.\n"
+    )
+
+
 def format_links_for_llm(items: list[dict]) -> str:
     lines = []
     for idx, item in enumerate(items, start=1):
@@ -45,7 +58,12 @@ def format_ingest_candidates_for_llm(items: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-def build_ranking_prompts(items: list[dict], top_stories: int, persona_text: str = "") -> tuple[str, str]:
+def build_ranking_prompts(
+    items: list[dict],
+    top_stories: int,
+    persona_text: str = "",
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
+) -> tuple[str, str]:
     system_prompt = (
         "You are a newsletter curator. Rank stories strictly by this priority order: "
         f"{DEFAULT_PRIORITY_TEXT} "
@@ -57,6 +75,7 @@ def build_ranking_prompts(items: list[dict], top_stories: int, persona_text: str
         "blogs/papers, and interesting datapoints. Exclude promos, subscriptions, and "
         "non-article links."
         f"{persona_clause(persona_text)}"
+        f"{preferred_sources_clause(preferred_sources)}"
     )
     user_prompt = (
         "Here are extracted links with context. Select the top stories.\n"
@@ -72,6 +91,8 @@ def build_ranking_prompts(items: list[dict], top_stories: int, persona_text: str
         "preserve input order; reorder by your ranking.\n"
         "If a persona is provided, interpret relevance through that reader's priorities while "
         "still respecting the global tier ordering.\n"
+        "If preferred sources are provided, use them only as a soft uprank signal when story "
+        "quality is otherwise close.\n"
         "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
     )

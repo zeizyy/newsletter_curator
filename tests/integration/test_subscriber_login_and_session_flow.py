@@ -19,6 +19,7 @@ def test_subscriber_login_attempts_email_delivery_and_hashes_token(monkeypatch, 
         overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
     )
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://localhost:8080")
 
     deliveries: list[dict] = []
 
@@ -45,7 +46,7 @@ def test_subscriber_login_attempts_email_delivery_and_hashes_token(monkeypatch, 
     assert "/login/confirm?token=" not in page
     assert len(deliveries) == 1
     assert deliveries[0]["to_address"] == "reader@example.com"
-    assert deliveries[0]["confirm_url"].startswith("http://localhost/login/confirm?token=")
+    assert deliveries[0]["confirm_url"].startswith("http://localhost:8080/login/confirm?token=")
 
     repository = _repository_for_admin(admin_app)
     parsed = urlparse(deliveries[0]["confirm_url"])
@@ -86,6 +87,7 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setenv("CURATOR_EXPOSE_LOGIN_LINKS", "1")
     monkeypatch.setenv("CURATOR_ADMIN_TOKEN", "ops-secret")
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://localhost:8080")
 
     def fake_send_login_email(config: dict, to_address: str, confirm_url: str) -> dict:
         return {"sent": False, "error": "gmail unavailable"}
@@ -101,7 +103,7 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
 
     assert login_response.status_code == 200
     assert "temporary sign-in link" in login_page.lower()
-    marker = "http://localhost/login/confirm?token="
+    marker = "http://localhost:8080/login/confirm?token="
     token_start = login_page.index(marker)
     token_end = login_page.index("</pre>", token_start)
     confirm_url = login_page[token_start:token_end].strip()
@@ -165,3 +167,36 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
     assert "localhost" not in str(session_row["session_token_hash"])
     assert token_row is not None
     assert token_row["consumed_at"]
+
+
+def test_subscriber_login_falls_back_to_request_host_and_port_when_public_base_url_is_unset(
+    monkeypatch,
+    tmp_path,
+):
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("CURATOR_PUBLIC_BASE_URL", raising=False)
+
+    deliveries: list[dict] = []
+
+    def fake_send_login_email(config: dict, to_address: str, confirm_url: str) -> dict:
+        deliveries.append(confirm_url)
+        return {"sent": True, "error": ""}
+
+    monkeypatch.setattr(admin_app, "send_subscriber_login_email", fake_send_login_email)
+
+    client = admin_app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email_address": "reader@example.com"},
+        base_url="http://localhost:8080",
+    )
+
+    assert response.status_code == 200
+    assert len(deliveries) == 1
+    assert deliveries[0].startswith("http://localhost:8080/login/confirm?token=")
