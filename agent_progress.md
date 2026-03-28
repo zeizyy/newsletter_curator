@@ -547,3 +547,11 @@ Add new entries below this line.
 - Outcome: The repo now has a newline-delimited stdio MCP server that supports `initialize`, `tools/list`, `ping`, and `tools/call`, exposes exactly one read-only `list_recent_stories` tool, reads the existing SQLite repository in read-only mode, and returns metadata-only stories from the last 24 hours with deterministic ordering and no fresh retrieval or summarization.
 - Open risks: The transport is a thin custom JSON-RPC implementation tuned to the current MCP stdio contract, so future client-compatibility changes should be revalidated if the project later adds another MCP transport or swaps to an SDK.
 - Next recommended task: `T64` Document and smoke-test the MCP server launch path.
+
+### 2026-03-28 - T64 documented the MCP launch path and added smoke coverage
+- Context: Tightened the new MCP server into a usable operator surface by documenting the checked-in launch command and making the entrypoint self-describing without reopening the story-feed semantics.
+- Files changed: `README.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T64_mcp_launch_docs_and_smoke.md`, `curator/mcp_server.py`, `scripts/newsletter_mcp_server.py`, `tests/integration/test_mcp_story_feed_help.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_story_feed_help.py -q`; `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `git diff --check`
+- Outcome: The MCP server now has a thin CLI wrapper with `--help` and optional `--config-path`, the README documents the exact read-only stdio launch path and config expectations, and the new smoke test proves the checked-in entrypoint is callable locally and can answer `initialize` offline.
+- Open risks: This sprint intentionally avoids re-testing `tools/list` and `tools/call`; those semantics remain covered by the T63 integration test and should be rerun if the launch wrapper grows beyond config selection.
+- Next recommended task: `T65` Add optional query ergonomics to the recent-story MCP tool.

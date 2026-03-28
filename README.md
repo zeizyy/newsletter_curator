@@ -70,6 +70,20 @@ uv run python fetch_sources.py
 uv run python deliver_digest.py
 ```
 
+Read-only MCP story feed:
+
+```bash
+uv run python scripts/newsletter_mcp_server.py --config-path config.yaml
+```
+
+This launches a newline-delimited stdio MCP server. It exposes one tool, `list_recent_stories`, backed by the existing SQLite repository and returns only stored metadata from the last 24 hours. It does not trigger fresh retrieval, article fetching, or summarization.
+
+If you already export `NEWSLETTER_CONFIG`, `--config-path` is optional. For local launch details:
+
+```bash
+uv run python scripts/newsletter_mcp_server.py --help
+```
+
 For an end-to-end delivery dry run that sends only to one test inbox:
 
 ```bash

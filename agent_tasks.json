@@ -1537,7 +1537,7 @@
     {
       "id": "T64",
       "title": "Document and smoke-test the MCP server launch path",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T63"],
       "scope": [
         "Document how to launch the MCP server against the existing repository database.",

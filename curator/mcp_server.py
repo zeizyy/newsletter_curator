@@ -123,7 +123,7 @@ def _tool_success_result(payload: dict) -> dict:
     }
 
 
-def handle_request(message: dict) -> dict | None:
+def handle_request(message: dict, *, config_path: str | None = None) -> dict | None:
     method = str(message.get("method", ""))
     message_id = message.get("id")
     params = message.get("params") or {}
@@ -162,7 +162,7 @@ def handle_request(message: dict) -> dict | None:
         if arguments not in (None, {}):
             return _jsonrpc_error(message_id, -32602, "list_recent_stories does not accept arguments.")
         try:
-            payload = list_recent_story_feed(config_module.load_config())
+            payload = list_recent_story_feed(config_module.load_config(config_path))
         except Exception as exc:
             return _jsonrpc_result(message_id, _tool_error_result(str(exc)))
         return _jsonrpc_result(message_id, _tool_success_result(payload))
@@ -172,7 +172,7 @@ def handle_request(message: dict) -> dict | None:
     return _jsonrpc_error(message_id, -32601, f"Method not found: {method}")
 
 
-def run_server(*, input_stream=None, output_stream=None) -> int:
+def run_server(*, input_stream=None, output_stream=None, config_path: str | None = None) -> int:
     input_stream = input_stream or sys.stdin
     output_stream = output_stream or sys.stdout
     for raw_line in input_stream:
@@ -184,7 +184,7 @@ def run_server(*, input_stream=None, output_stream=None) -> int:
         except json.JSONDecodeError:
             print("Skipping invalid JSON-RPC message.", file=sys.stderr)
             continue
-        response = handle_request(message)
+        response = handle_request(message, config_path=config_path)
         if response is None:
             continue
         output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
