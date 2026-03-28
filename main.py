@@ -122,6 +122,24 @@ def process_story(
     )
 
 
+def _filter_links_by_preferred_sources(
+    links: list[dict],
+    preferred_sources: list[str],
+) -> list[dict]:
+    normalized_sources = {
+        str(source).strip().lower()
+        for source in preferred_sources
+        if str(source).strip()
+    }
+    if not normalized_sources:
+        return links
+    return [
+        item
+        for item in links
+        if str(item.get("source_name", "")).strip().lower() in normalized_sources
+    ]
+
+
 def run_job(config: dict, service, *, recipient_override: str | None = None) -> dict:
     return _run_delivery(
         config,
@@ -150,76 +168,171 @@ def preview_job(config: dict) -> dict:
 
 
 def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
-    from curator.jobs import run_delivery_job
+    from curator.jobs import (
+        DEFAULT_AUDIENCE_KEY,
+        group_delivery_subscribers,
+        resolve_delivery_subscribers,
+        run_delivery_job,
+    )
 
     development_cfg = config.get("development", {})
-    persona_text = str(config.get("persona", {}).get("text", "")).strip()
-    select_top_stories_fn = (
-        (lambda items, usage_by_model, top_stories, reasoning_model: dev.fake_select_top_stories(
-            items,
-            usage_by_model,
-            top_stories,
-            reasoning_model,
-            persona_text=persona_text,
-        ))
-        if development_cfg.get("fake_inference", False)
-        else (lambda items, usage_by_model, top_stories, reasoning_model: select_top_stories(
-            items,
-            usage_by_model,
-            top_stories,
-            reasoning_model,
-            persona_text=persona_text,
-        ))
-    )
-    summarize_fn = (
-        (lambda article_text, usage_by_model, lock, summary_model: dev.fake_summarize_article(
-            article_text,
-            usage_by_model,
-            lock,
-            summary_model,
-            persona_text=persona_text,
-        ))
-        if development_cfg.get("fake_inference", False)
-        else (lambda article_text, usage_by_model, lock, summary_model: summarize_article_with_llm(
-            article_text,
-            usage_by_model,
-            lock,
-            summary_model,
-            persona_text=persona_text,
-        ))
-    )
-
-    def process_story_fn(item, usage_by_model, lock, max_article_chars, summary_model):
-        return pipeline.process_story(
-            item,
-            usage_by_model,
-            lock,
-            max_article_chars,
-            summary_model,
-            article_fetcher=lambda url, chars, timeout=25, retries=3: "",
-            summarize_article_with_llm_fn=summarize_fn,
-        )
-
-    delivery_kwargs = {
-        "collect_gmail_links_fn": collect_gmail_links,
-        "collect_source_links_fn": collect_additional_source_links,
-        "select_top_stories_fn": select_top_stories_fn,
-        "process_story_fn": process_story_fn,
-        "group_summaries_by_category_fn": group_summaries_by_category,
-        "render_digest_html_fn": render_digest_html,
-        "send_email_fn": send_email_fn,
-        "telemetry_enabled": service is not None and telemetry_enabled_for_config(config),
-    }
-    if str(recipient_override or "").strip():
-        delivery_kwargs["resolve_digest_recipients_fn"] = (
-            lambda cfg: ([recipient_override.strip()], "dry_run_override")
-        )
-
-    return run_delivery_job(
+    default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    subscribers, recipient_source = resolve_delivery_subscribers(
         config,
-        service,
-        **delivery_kwargs,
+        recipient_override=recipient_override,
     )
+
+    def run_profile_delivery(
+        *,
+        persona_text: str,
+        preferred_sources: list[str],
+        recipients: list[str],
+        use_cached_newsletter: bool,
+        persist_newsletter: bool,
+        audience_key: str,
+    ) -> dict:
+        select_top_stories_fn = (
+            (lambda items, usage_by_model, top_stories, reasoning_model: dev.fake_select_top_stories(
+                items,
+                usage_by_model,
+                top_stories,
+                reasoning_model,
+                persona_text=persona_text,
+            ))
+            if development_cfg.get("fake_inference", False)
+            else (lambda items, usage_by_model, top_stories, reasoning_model: select_top_stories(
+                items,
+                usage_by_model,
+                top_stories,
+                reasoning_model,
+                persona_text=persona_text,
+            ))
+        )
+        summarize_fn = (
+            (lambda article_text, usage_by_model, lock, summary_model: dev.fake_summarize_article(
+                article_text,
+                usage_by_model,
+                lock,
+                summary_model,
+                persona_text=persona_text,
+            ))
+            if development_cfg.get("fake_inference", False)
+            else (
+                lambda article_text, usage_by_model, lock, summary_model: summarize_article_with_llm(
+                    article_text,
+                    usage_by_model,
+                    lock,
+                    summary_model,
+                    persona_text=persona_text,
+                )
+            )
+        )
+
+        def process_story_fn(item, usage_by_model, lock, max_article_chars, summary_model):
+            return pipeline.process_story(
+                item,
+                usage_by_model,
+                lock,
+                max_article_chars,
+                summary_model,
+                article_fetcher=lambda url, chars, timeout=25, retries=3: "",
+                summarize_article_with_llm_fn=summarize_fn,
+            )
+
+        def collect_profile_gmail_links(cfg, svc):
+            return _filter_links_by_preferred_sources(
+                collect_gmail_links(cfg, svc),
+                preferred_sources,
+            )
+
+        def collect_profile_source_links(cfg):
+            return _filter_links_by_preferred_sources(
+                collect_additional_source_links(cfg),
+                preferred_sources,
+            )
+
+        return run_delivery_job(
+            config,
+            service,
+            collect_gmail_links_fn=collect_profile_gmail_links,
+            collect_source_links_fn=collect_profile_source_links,
+            select_top_stories_fn=select_top_stories_fn,
+            process_story_fn=process_story_fn,
+            group_summaries_by_category_fn=group_summaries_by_category,
+            render_digest_html_fn=render_digest_html,
+            send_email_fn=send_email_fn,
+            resolve_digest_recipients_fn=lambda cfg: (list(recipients), recipient_source),
+            telemetry_enabled=service is not None and telemetry_enabled_for_config(config),
+            use_cached_newsletter=use_cached_newsletter,
+            persist_newsletter=persist_newsletter,
+            audience_key=audience_key,
+        )
+
+    personalized_delivery = service is not None and any(
+        subscriber["persona_text"] != default_persona_text or subscriber["preferred_sources"]
+        for subscriber in subscribers
+    )
+    if not personalized_delivery:
+        return run_profile_delivery(
+            persona_text=default_persona_text,
+            preferred_sources=[],
+            recipients=[subscriber["email"] for subscriber in subscribers],
+            use_cached_newsletter=True,
+            persist_newsletter=True,
+            audience_key=DEFAULT_AUDIENCE_KEY,
+        )
+
+    delivery_groups = group_delivery_subscribers(subscribers)
+    group_results: list[dict] = []
+    total_sent_recipients = 0
+    group_statuses: list[str] = []
+    for group in delivery_groups:
+        profile_result = run_profile_delivery(
+            persona_text=group["persona_text"],
+            preferred_sources=group["preferred_sources"],
+            recipients=group["recipients"],
+            use_cached_newsletter=True,
+            persist_newsletter=True,
+            audience_key=group["profile_key"],
+        )
+        group_status = str(profile_result.get("status", "")).strip() or "unknown"
+        group_statuses.append(group_status)
+        total_sent_recipients += int(profile_result.get("sent_recipients", 0) or 0)
+        group_results.append(
+            {
+                "profile_key": group["profile_key"],
+                "audience_key": str(profile_result.get("audience_key", "")).strip(),
+                "persona_text": group["persona_text"],
+                "preferred_sources": group["preferred_sources"],
+                "recipients": group["recipients"],
+                "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),
+                "status": group_status,
+                "cached_newsletter": bool(profile_result.get("cached_newsletter", False)),
+                "daily_newsletter_id": profile_result.get("daily_newsletter_id"),
+                "digest_subject": str(profile_result.get("digest_subject", "")).strip(),
+                "digest_body": str(profile_result.get("digest_body", "")).strip(),
+            }
+        )
+
+    overall_status = "completed"
+    if any(status != "completed" for status in group_statuses):
+        non_completed = [status for status in group_statuses if status != "completed"]
+        overall_status = (
+            non_completed[0]
+            if len(non_completed) == len(group_statuses) and len(set(non_completed)) == 1
+            else "partial_failure"
+        )
+
+    return {
+        "status": overall_status,
+        "personalized_delivery": True,
+        "cached_newsletter": all(
+            bool(group_result.get("cached_newsletter", False)) for group_result in group_results
+        ),
+        "recipient_source": recipient_source,
+        "sent_recipients": total_sent_recipients,
+        "delivery_groups": group_results,
+    }
 
 
 def main():

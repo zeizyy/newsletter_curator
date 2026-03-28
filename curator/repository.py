@@ -15,6 +15,9 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+DEFAULT_AUDIENCE_KEY = "default"
+
+
 def canonicalize_url(url: str) -> str:
     parsed = urlparse(url.strip())
     query = [
@@ -56,6 +59,7 @@ class SQLiteRepository:
 
     def initialize(self, *, allow_schema_reset: bool = False) -> None:
         with self.connect() as connection:
+            self._migrate_compatible_schema(connection)
             reset_reason = self._schema_reset_reason(connection)
             if reset_reason and not allow_schema_reset:
                 raise SchemaResetRequiredError(
@@ -96,6 +100,7 @@ class SQLiteRepository:
             "daily_newsletters": {
                 "id",
                 "newsletter_date",
+                "audience_key",
                 "delivery_run_id",
                 "subject",
                 "body",
@@ -190,6 +195,151 @@ class SQLiteRepository:
                 return f"{table_name} is missing expected columns: {', '.join(missing)}"
         return None
 
+    def _migrate_compatible_schema(self, connection: sqlite3.Connection) -> None:
+        self._migrate_daily_newsletters_audience_keys(connection)
+
+    def _migrate_daily_newsletters_audience_keys(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "daily_newsletters")
+        if not columns or "audience_key" in columns:
+            return
+
+        connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            connection.executescript(
+                f"""
+                CREATE TABLE daily_newsletters_migrated (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    newsletter_date TEXT NOT NULL,
+                    audience_key TEXT NOT NULL DEFAULT '{DEFAULT_AUDIENCE_KEY}',
+                    delivery_run_id INTEGER REFERENCES delivery_runs(id) ON DELETE SET NULL,
+                    subject TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    html_body TEXT NOT NULL,
+                    content_json TEXT NOT NULL DEFAULT '{{}}',
+                    selected_items_json TEXT NOT NULL DEFAULT '[]',
+                    metadata_json TEXT NOT NULL DEFAULT '{{}}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(newsletter_date, audience_key)
+                );
+
+                INSERT INTO daily_newsletters_migrated (
+                    id,
+                    newsletter_date,
+                    audience_key,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    content_json,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                )
+                SELECT
+                    id,
+                    newsletter_date,
+                    '{DEFAULT_AUDIENCE_KEY}',
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    content_json,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM daily_newsletters;
+                """
+            )
+
+            dependent_tables = {
+                "newsletter_telemetry": """
+                    CREATE TABLE newsletter_telemetry_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL UNIQUE REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL UNIQUE,
+                        created_at TEXT NOT NULL
+                    )
+                """,
+                "tracked_links": """
+                    CREATE TABLE tracked_links_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL UNIQUE,
+                        target_url TEXT NOT NULL,
+                        story_title TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        UNIQUE(daily_newsletter_id, target_url)
+                    )
+                """,
+                "newsletter_open_events": """
+                    CREATE TABLE newsletter_open_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL,
+                        opened_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+                "newsletter_click_events": """
+                    CREATE TABLE newsletter_click_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL,
+                        clicked_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+            }
+
+            for table_name, create_sql in dependent_tables.items():
+                if not self._table_exists(connection, table_name):
+                    continue
+                connection.execute(create_sql)
+                column_names = [
+                    str(row["name"])
+                    for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+                ]
+                joined_columns = ", ".join(column_names)
+                connection.execute(
+                    f"""
+                    INSERT INTO {table_name}_migrated ({joined_columns})
+                    SELECT {joined_columns}
+                    FROM {table_name}
+                    """
+                )
+
+            for table_name in [
+                "newsletter_click_events",
+                "newsletter_open_events",
+                "tracked_links",
+                "newsletter_telemetry",
+            ]:
+                if self._table_exists(connection, table_name):
+                    connection.execute(f"DROP TABLE {table_name}")
+
+            connection.execute("DROP TABLE daily_newsletters")
+            connection.execute("ALTER TABLE daily_newsletters_migrated RENAME TO daily_newsletters")
+
+            for table_name in [
+                "newsletter_telemetry",
+                "tracked_links",
+                "newsletter_open_events",
+                "newsletter_click_events",
+            ]:
+                migrated_table = f"{table_name}_migrated"
+                if self._table_exists(connection, migrated_table):
+                    connection.execute(
+                        f"ALTER TABLE {migrated_table} RENAME TO {table_name}"
+                    )
+        finally:
+            connection.execute("PRAGMA foreign_keys = ON")
+
     def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
         for table_name in [
             "schema_migrations",
@@ -239,7 +389,8 @@ class SQLiteRepository:
 
             CREATE TABLE IF NOT EXISTS daily_newsletters (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                newsletter_date TEXT NOT NULL UNIQUE,
+                newsletter_date TEXT NOT NULL,
+                audience_key TEXT NOT NULL DEFAULT 'default',
                 delivery_run_id INTEGER REFERENCES delivery_runs(id) ON DELETE SET NULL,
                 subject TEXT NOT NULL,
                 body TEXT NOT NULL,
@@ -248,8 +399,12 @@ class SQLiteRepository:
                 selected_items_json TEXT NOT NULL DEFAULT '[]',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                UNIQUE(newsletter_date, audience_key)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_daily_newsletters_date_audience
+            ON daily_newsletters(newsletter_date, audience_key);
 
             CREATE TABLE IF NOT EXISTS preview_generations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -446,13 +601,19 @@ class SQLiteRepository:
             ).fetchone()
         return self._run_row_to_dict(row)
 
-    def get_daily_newsletter(self, newsletter_date: str) -> dict | None:
+    def get_daily_newsletter(
+        self,
+        newsletter_date: str,
+        *,
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
+    ) -> dict | None:
         with self.connect() as connection:
             row = connection.execute(
                 """
                 SELECT
                     id,
                     newsletter_date,
+                    audience_key,
                     delivery_run_id,
                     subject,
                     body,
@@ -464,9 +625,10 @@ class SQLiteRepository:
                     updated_at
                 FROM daily_newsletters
                 WHERE newsletter_date = ?
+                  AND audience_key = ?
                 LIMIT 1
                 """,
-                (newsletter_date,),
+                (newsletter_date, audience_key),
             ).fetchone()
         if row is None:
             return None
@@ -478,13 +640,23 @@ class SQLiteRepository:
         payload["metadata"] = json.loads(str(payload.pop("metadata_json", "") or "{}"))
         return payload
 
-    def list_daily_newsletters(self, *, limit: int = 30) -> list[dict]:
+    def list_daily_newsletters(
+        self,
+        *,
+        limit: int = 30,
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
+        include_all_audiences: bool = False,
+    ) -> list[dict]:
+        where_clause = "" if include_all_audiences else "WHERE audience_key = ?"
+        params: tuple[int] | tuple[str, int]
+        params = (limit,) if include_all_audiences else (audience_key, limit)
         with self.connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT
                     id,
                     newsletter_date,
+                    audience_key,
                     delivery_run_id,
                     subject,
                     body,
@@ -495,10 +667,11 @@ class SQLiteRepository:
                     created_at,
                     updated_at
                 FROM daily_newsletters
+                {where_clause}
                 ORDER BY newsletter_date DESC, id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                params,
             ).fetchall()
 
         newsletters: list[dict] = []
@@ -634,6 +807,7 @@ class SQLiteRepository:
         self,
         *,
         newsletter_date: str,
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
         subject: str,
         body: str,
         html_body: str,
@@ -648,6 +822,7 @@ class SQLiteRepository:
                 """
                 INSERT INTO daily_newsletters (
                     newsletter_date,
+                    audience_key,
                     delivery_run_id,
                     subject,
                     body,
@@ -658,8 +833,8 @@ class SQLiteRepository:
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(newsletter_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(newsletter_date, audience_key)
                 DO UPDATE SET
                     delivery_run_id = excluded.delivery_run_id,
                     subject = excluded.subject,
@@ -672,6 +847,7 @@ class SQLiteRepository:
                 """,
                 (
                     newsletter_date,
+                    audience_key,
                     delivery_run_id,
                     subject,
                     body,
@@ -684,8 +860,13 @@ class SQLiteRepository:
                 ),
             )
             row = connection.execute(
-                "SELECT id FROM daily_newsletters WHERE newsletter_date = ?",
-                (newsletter_date,),
+                """
+                SELECT id
+                FROM daily_newsletters
+                WHERE newsletter_date = ?
+                  AND audience_key = ?
+                """,
+                (newsletter_date, audience_key),
             ).fetchone()
             return int(row["id"])
 
@@ -940,7 +1121,12 @@ class SQLiteRepository:
             "END"
         )
 
-    def list_newsletter_analytics(self, *, limit: int = 14) -> list[dict]:
+    def list_newsletter_analytics(
+        self,
+        *,
+        limit: int = 14,
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
+    ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
         with self.connect() as connection:
@@ -949,6 +1135,7 @@ class SQLiteRepository:
                 SELECT
                     dn.id,
                     dn.newsletter_date,
+                    dn.audience_key,
                     dn.subject,
                     dn.created_at,
                     dn.selected_items_json,
@@ -1000,10 +1187,11 @@ class SQLiteRepository:
                     FROM newsletter_click_events nce
                     GROUP BY nce.daily_newsletter_id
                 ) AS clicks ON clicks.daily_newsletter_id = dn.id
+                WHERE dn.audience_key = ?
                 ORDER BY dn.newsletter_date DESC, dn.id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                (audience_key, limit),
             ).fetchall()
 
         analytics: list[dict] = []
@@ -1023,6 +1211,7 @@ class SQLiteRepository:
         self,
         *,
         trailing_days: tuple[int, ...] = (7, 30),
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
     ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
@@ -1038,6 +1227,7 @@ class SQLiteRepository:
                         SELECT id, newsletter_date
                         FROM daily_newsletters
                         WHERE newsletter_date >= ?
+                          AND audience_key = ?
                     ),
                     open_stats AS (
                         SELECT
@@ -1064,7 +1254,7 @@ class SQLiteRepository:
                         COALESCE((SELECT SUM(total_clicks) FROM click_stats), 0) AS total_clicks,
                         COALESCE((SELECT SUM(unique_clicks) FROM click_stats), 0) AS unique_clicks
                     """,
-                    (since_date,),
+                    (since_date, audience_key),
                 ).fetchone()
                 payload = dict(row or {})
                 unique_opens = int(payload.get("unique_opens", 0) or 0)
@@ -1082,6 +1272,7 @@ class SQLiteRepository:
         *,
         trailing_days: int = 30,
         limit: int = 10,
+        audience_key: str = DEFAULT_AUDIENCE_KEY,
     ) -> list[dict]:
         click_visitor_key = self._event_visitor_key_sql("nce")
         since_date = (datetime.now(UTC).date() - timedelta(days=max(trailing_days - 1, 0))).isoformat()
@@ -1099,11 +1290,12 @@ class SQLiteRepository:
                 JOIN tracked_links tl ON tl.id = nce.tracked_link_id
                 JOIN daily_newsletters dn ON dn.id = nce.daily_newsletter_id
                 WHERE dn.newsletter_date >= ?
+                  AND dn.audience_key = ?
                 GROUP BY tl.story_title, tl.target_url
                 ORDER BY total_clicks DESC, unique_clicks DESC, last_newsletter_date DESC
                 LIMIT ?
                 """,
-                (since_date, limit),
+                (since_date, audience_key, limit),
             ).fetchall()
         return [dict(row) for row in rows]
 

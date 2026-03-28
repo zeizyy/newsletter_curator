@@ -35,6 +35,26 @@ persona:
     Avoid:
     PR fluff, hype, generic macro, repetitive benchmark news, shallow summaries
 
+subscribers:
+  # Subscribers only override matched resolved recipients. They do not add
+  # recipients by themselves; delivery still comes from --dry-run-recipient,
+  # Buttondown, or email.digest_recipients.
+  #
+  # - email: analyst@example.com
+  #   persona:
+  #     text: |
+  #       Macro investor focused on rates, valuations, and software demand shifts.
+  #   preferred_sources:
+  #     - Macro Wire
+  #     - General Tech
+  # - email: infra@example.com
+  #   persona:
+  #     text: |
+  #       AI infrastructure builder focused on model costs, chips, and inference economics.
+  #   preferred_sources:
+  #     - Chip Insider
+  []
+
 additional_sources:
   enabled: true
   script_path: skills/daily-news-curator/scripts/build_daily_digest.py
