@@ -507,3 +507,11 @@ Add new entries below this line.
 - Outcome: The app now supports passwordless subscriber login through one-time magic links, stores only hashed login and session tokens in SQLite, attempts Gmail-backed login email delivery when credentials are available, exposes a debug or offline fallback link path for local verification, and keeps subscriber sessions separate from `CURATOR_ADMIN_TOKEN` operator auth.
 - Open risks: The live login-email path still depends on the server's Gmail OAuth token setup; a misconfigured mail environment will not send links unless the operator enables the debug or offline fallback path.
 - Next recommended task: `T59` Add subscriber settings persistence for persona text and preferred sources.
+
+### 2026-03-28 - T59 added subscriber settings persistence on top of the new session layer
+- Context: Extended the new subscriber account system with a real settings surface so persona text and preferred-source choices now persist in SQLite without switching delivery reads yet.
+- Files changed: `agent_contracts/T59_subscriber_settings_persistence.md`, `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/repository.py`, `templates/subscriber_login.html`, `templates/subscriber_account.html`, `templates/subscriber_settings.html`, `tests/integration/test_subscriber_settings_page_persists_profile.py`
+- Tests run: `uv run pytest tests/integration/test_subscriber_settings_page_persists_profile.py -q`; `uv run pytest tests/integration/test_subscriber_login_and_session_flow.py -q`; `uv run pytest tests/integration/test_admin_config_page_uses_shared_shell.py -q`
+- Outcome: Subscribers can now open `/settings`, save trimmed persona text plus canonical preferred-source selections into a new `subscriber_profiles` table, and keep admin-disabled sources visible as unavailable without silently dropping them from the saved profile.
+- Open risks: Delivery still ignores the new DB-backed subscriber profile data until `T60`, so settings persistence exists ahead of delivery adoption by design.
+- Next recommended task: `T60` Switch delivery personalization to DB-backed profiles and append the signup CTA.

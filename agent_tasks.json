@@ -1383,7 +1383,7 @@
     {
       "id": "T59",
       "title": "Add subscriber settings persistence for persona text and preferred sources",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T58"],
       "scope": [
         "Add a subscriber settings page in the existing Flask app",

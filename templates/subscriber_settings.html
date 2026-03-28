@@ -1,0 +1,95 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Subscriber Settings | Newsletter Curator{% endblock %}
+{% block eyebrow %}Subscriber Access{% endblock %}
+{% block page_title %}Your digest settings{% endblock %}
+{% block page_lead %}Save the persona guidance and source preferences that will later feed into personalized delivery once the DB-backed delivery switch lands.{% endblock %}
+{% block utility_label %}Subscriber Rail{% endblock %}
+{% block utility_copy %}Adjust your subscriber profile without touching operator controls. Disabled sources stay visible so your preferences do not disappear when the catalog changes.{% endblock %}
+{% block utility_nav %}
+  <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
+  <a class="nav-pill {% if request.endpoint == 'subscriber_account' %}is-active{% endif %}" href="{{ url_for('subscriber_account') }}">Account</a>
+  <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
+{% endblock %}
+{% block page_actions %}
+  <form method="post" action="{{ url_for('subscriber_logout') }}">
+    <button type="submit" class="primary-button">Sign out</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  {% if message %}
+    <section class="banner-ok">{{ message }}</section>
+  {% endif %}
+  {% for error in errors %}
+    <section class="banner-err">{{ error }}</section>
+  {% endfor %}
+
+  <form method="post" class="content-stack">
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Persona</div>
+          <h2>What should the digest optimize for?</h2>
+        </div>
+      </div>
+      <p class="section-copy">Describe the reader lens you want the eventual personalized ranking pass to use. This sprint only stores the preference; the delivery pipeline still changes in a later task.</p>
+      <div class="field">
+        <label class="field-label" for="persona_text">Persona text</label>
+        <textarea id="persona_text" name="persona_text">{{ profile.persona_text }}</textarea>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Preferred Sources</div>
+          <h2>Choose the sources you care about most</h2>
+        </div>
+      </div>
+      <p class="section-copy">Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
+      {% for group in source_groups %}
+        <div class="stack">
+          <div>
+            <div class="table-title">{{ group.label }}</div>
+          </div>
+          <div class="toggle-grid">
+            {% for source in group.sources %}
+              <label class="toggle-card">
+                <div class="stack">
+                  <strong>{{ source.source_name }}</strong>
+                  {% if source.enabled %}
+                    <span class="pill">Available</span>
+                  {% else %}
+                    <span class="pill muted-pill">Unavailable</span>
+                  {% endif %}
+                </div>
+                <div class="checkbox-row">
+                  <input
+                    type="checkbox"
+                    name="preferred_source"
+                    value="{{ source.source_name }}"
+                    {% if source.selected %}checked{% endif %}
+                    {% if not source.enabled %}disabled{% endif %}
+                  />
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+      {% if not source_groups %}
+        <div class="state-shell is-empty">
+          <p class="state-copy">No sources are in the catalog yet. Once the repository has stories, preferred-source controls will appear here.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="surface surface-section">
+      <div class="button-row">
+        <button type="submit">Save settings</button>
+        <a class="button-link ghost" href="{{ url_for('subscriber_account') }}">Back to account</a>
+      </div>
+    </section>
+  </form>
+{% endblock %}

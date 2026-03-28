@@ -321,6 +321,116 @@ def render_subscriber_login_page(
     return response
 
 
+def require_subscriber_session(repository):
+    subscriber = get_current_subscriber(repository)
+    if subscriber is not None:
+        return subscriber, None
+    response = redirect(url_for("subscriber_login"))
+    clear_subscriber_session_cookie(response)
+    return None, response
+
+
+def source_type_label(source_type: str) -> str:
+    normalized = str(source_type or "").strip().lower()
+    if normalized == "gmail":
+        return "Gmail newsletters"
+    if normalized == "additional_source":
+        return "Publisher feeds"
+    return normalized.replace("_", " ").title() or "Sources"
+
+
+def group_subscriber_settings_sources(available_sources: list[dict], selected_sources: list[str]) -> list[dict]:
+    selected_lookup = {str(source).strip().lower() for source in selected_sources if str(source).strip()}
+    grouped: dict[str, dict] = {}
+    for source in available_sources:
+        source_type = str(source.get("source_type", "")).strip() or "other"
+        group = grouped.get(source_type)
+        if group is None:
+            group = {
+                "source_type": source_type,
+                "label": source_type_label(source_type),
+                "sources": [],
+            }
+            grouped[source_type] = group
+        source_name = str(source.get("source_name", "")).strip()
+        group["sources"].append(
+            {
+                "id": int(source.get("id", 0) or 0),
+                "source_name": source_name,
+                "enabled": bool(source.get("enabled", True)),
+                "selected": source_name.lower() in selected_lookup,
+            }
+        )
+    return list(grouped.values())
+
+
+def normalize_subscriber_preferred_sources(
+    form,
+    *,
+    available_sources: list[dict],
+    current_profile: dict,
+) -> list[str]:
+    from curator.jobs import normalize_preferred_sources
+
+    selected_sources = normalize_preferred_sources(form.getlist("preferred_source"))
+    source_by_lower = {
+        str(source.get("source_name", "")).strip().lower(): str(source.get("source_name", "")).strip()
+        for source in available_sources
+        if str(source.get("source_name", "")).strip()
+    }
+    enabled_sources = {
+        str(source.get("source_name", "")).strip().lower(): str(source.get("source_name", "")).strip()
+        for source in available_sources
+        if str(source.get("source_name", "")).strip() and bool(source.get("enabled", True))
+    }
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for raw_source in selected_sources:
+        lowered = raw_source.lower()
+        canonical = enabled_sources.get(lowered) or source_by_lower.get(lowered)
+        if not canonical or canonical.lower() in seen:
+            continue
+        normalized.append(canonical)
+        seen.add(canonical.lower())
+
+    for raw_source in current_profile.get("preferred_sources", []):
+        lowered = str(raw_source).strip().lower()
+        if not lowered or lowered in seen:
+            continue
+        canonical = source_by_lower.get(lowered, str(raw_source).strip())
+        source_row = next(
+            (source for source in available_sources if str(source.get("source_name", "")).strip().lower() == lowered),
+            None,
+        )
+        if source_row is not None and not bool(source_row.get("enabled", True)):
+            normalized.append(canonical)
+            seen.add(lowered)
+    return normalized
+
+
+def render_subscriber_settings_page(
+    *,
+    subscriber: dict,
+    profile: dict,
+    source_groups: list[dict],
+    message: str = "",
+    errors: list[str] | None = None,
+    status_code: int = 200,
+):
+    return make_response(
+        render_template(
+            "subscriber_settings.html",
+            subscriber=subscriber,
+            profile=profile,
+            source_groups=source_groups,
+            message=message,
+            errors=errors or [],
+        ),
+        status_code,
+    )
+
+
 def update_config_from_form(raw_config: dict, form) -> tuple[dict, list[str]]:
     errors: list[str] = []
     updated = dict(raw_config)
@@ -549,16 +659,63 @@ def confirm_subscriber_login():
 def subscriber_account():
     merged = load_merged_config()
     repository = load_repository(merged)
-    subscriber = get_current_subscriber(repository)
-    if subscriber is None:
-        response = redirect(url_for("subscriber_login"))
-        clear_subscriber_session_cookie(response)
-        return response
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
     return make_response(
         render_template(
             "subscriber_account.html",
             subscriber=subscriber,
         )
+    )
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def subscriber_settings():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
+
+    available_sources = repository.list_sources_with_selection() if repository else []
+    profile = repository.get_subscriber_profile(int(subscriber["id"])) if repository else {
+        "subscriber_id": int(subscriber["id"]),
+        "persona_text": "",
+        "preferred_sources": [],
+        "created_at": "",
+        "updated_at": "",
+    }
+    errors: list[str] = []
+    message = ""
+
+    if request.method == "POST":
+        persona_text = str(request.form.get("persona_text", "") or "").strip()
+        preferred_sources = normalize_subscriber_preferred_sources(
+            request.form,
+            available_sources=available_sources,
+            current_profile=profile,
+        )
+        profile = repository.upsert_subscriber_profile(
+            int(subscriber["id"]),
+            persona_text=persona_text,
+            preferred_sources=preferred_sources,
+        )
+        return redirect(url_for("subscriber_settings", saved="1"))
+
+    if request.args.get("saved", "").strip() == "1":
+        message = "Subscriber settings saved."
+
+    source_groups = group_subscriber_settings_sources(
+        available_sources,
+        profile.get("preferred_sources", []),
+    )
+    return render_subscriber_settings_page(
+        subscriber=subscriber,
+        profile=profile,
+        source_groups=source_groups,
+        message=message,
+        errors=errors,
     )
 
 

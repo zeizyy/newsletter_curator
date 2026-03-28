@@ -3,14 +3,16 @@
 {% block title %}Your Account | Newsletter Curator{% endblock %}
 {% block eyebrow %}Subscriber Access{% endblock %}
 {% block page_title %}Your subscriber account{% endblock %}
-{% block page_lead %}You are signed in. Settings editing lands in the next sprint; this page confirms the new SQLite-backed session flow is active.{% endblock %}
+{% block page_lead %}You are signed in. Use the settings page to tune persona guidance and preferred sources for your future personalized digest.{% endblock %}
 {% block utility_label %}Subscriber Rail{% endblock %}
 {% block utility_copy %}Your sign-in state is now tracked through one-time login links and revocable sessions stored in the repository, separate from operator access.{% endblock %}
 {% block utility_nav %}
   <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
   <a class="nav-pill {% if request.endpoint == 'subscriber_account' %}is-active{% endif %}" href="{{ url_for('subscriber_account') }}">Account</a>
+  <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
 {% endblock %}
 {% block page_actions %}
+  <a class="button-link primary" href="{{ url_for('subscriber_settings') }}">Edit settings</a>
   <form method="post" action="{{ url_for('subscriber_logout') }}">
     <button type="submit" class="primary-button">Sign out</button>
   </form>
@@ -38,6 +40,10 @@
       <article class="stat-card">
         <div class="stat-label">Last login</div>
         <div class="stat-sub">{{ subscriber.last_login_at or "First session" }}</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Next step</div>
+        <div class="stat-sub">Open settings to save your persona text and preferred source mix.</div>
       </article>
     </div>
   </section>

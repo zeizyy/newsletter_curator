@@ -188,6 +188,13 @@ class SQLiteRepository:
                 "ip_address",
                 "user_agent",
             },
+            "subscriber_profiles": {
+                "subscriber_id",
+                "persona_text",
+                "preferred_sources_json",
+                "created_at",
+                "updated_at",
+            },
             "newsletter_telemetry": {
                 "id",
                 "daily_newsletter_id",
@@ -379,6 +386,7 @@ class SQLiteRepository:
             "user_source_selections",
             "subscriber_sessions",
             "subscriber_login_tokens",
+            "subscriber_profiles",
             "subscribers",
             "newsletter_click_events",
             "newsletter_open_events",
@@ -535,6 +543,14 @@ class SQLiteRepository:
 
             CREATE INDEX IF NOT EXISTS idx_subscriber_sessions_subscriber_id
             ON subscriber_sessions(subscriber_id);
+
+            CREATE TABLE IF NOT EXISTS subscriber_profiles (
+                subscriber_id INTEGER PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
+                persona_text TEXT NOT NULL DEFAULT '',
+                preferred_sources_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS newsletter_telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1263,6 +1279,91 @@ class SQLiteRepository:
                 (utc_now(), hash_secret_token(normalized_token)),
             )
 
+    def get_subscriber_profile(self, subscriber_id: int) -> dict:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    subscriber_id,
+                    persona_text,
+                    preferred_sources_json,
+                    created_at,
+                    updated_at
+                FROM subscriber_profiles
+                WHERE subscriber_id = ?
+                LIMIT 1
+                """,
+                (subscriber_id,),
+            ).fetchone()
+        if row is None:
+            return {
+                "subscriber_id": int(subscriber_id),
+                "persona_text": "",
+                "preferred_sources": [],
+                "created_at": "",
+                "updated_at": "",
+            }
+        return self._subscriber_profile_row_to_dict(row)
+
+    def upsert_subscriber_profile(
+        self,
+        subscriber_id: int,
+        *,
+        persona_text: str = "",
+        preferred_sources: list[str] | tuple[str, ...] | None = None,
+    ) -> dict:
+        normalized_persona = str(persona_text or "").strip()
+        normalized_sources: list[str] = []
+        seen: set[str] = set()
+        for raw_source in preferred_sources or []:
+            source_name = str(raw_source or "").strip()
+            lowered = source_name.lower()
+            if not source_name or lowered in seen:
+                continue
+            normalized_sources.append(source_name)
+            seen.add(lowered)
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscriber_profiles (
+                    subscriber_id,
+                    persona_text,
+                    preferred_sources_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(subscriber_id)
+                DO UPDATE SET
+                    persona_text = excluded.persona_text,
+                    preferred_sources_json = excluded.preferred_sources_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    subscriber_id,
+                    normalized_persona,
+                    json.dumps(normalized_sources),
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT
+                    subscriber_id,
+                    persona_text,
+                    preferred_sources_json,
+                    created_at,
+                    updated_at
+                FROM subscriber_profiles
+                WHERE subscriber_id = ?
+                LIMIT 1
+                """,
+                (subscriber_id,),
+            ).fetchone()
+        return self._subscriber_profile_row_to_dict(row)
+
     def _run_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
         if row is None:
             return None
@@ -1282,6 +1383,16 @@ class SQLiteRepository:
         payload["updated_at"] = str(payload.get("updated_at", "") or "")
         payload["last_login_at"] = str(payload.get("last_login_at", "") or "")
         return payload
+
+    def _subscriber_profile_row_to_dict(self, row: sqlite3.Row | None) -> dict:
+        payload = dict(row or {})
+        return {
+            "subscriber_id": int(payload.get("subscriber_id") or 0),
+            "persona_text": str(payload.get("persona_text", "") or ""),
+            "preferred_sources": json.loads(str(payload.get("preferred_sources_json", "[]") or "[]")),
+            "created_at": str(payload.get("created_at", "") or ""),
+            "updated_at": str(payload.get("updated_at", "") or ""),
+        }
 
     def ensure_newsletter_open_token(self, daily_newsletter_id: int) -> str:
         open_token = hashlib.sha1(f"open|{daily_newsletter_id}".encode("utf-8")).hexdigest()[:24]
