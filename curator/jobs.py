@@ -97,11 +97,21 @@ def _buttondown_subscriber_email(subscriber: dict) -> str:
     return str(subscriber.get("email_address") or "").strip().lower()
 
 
-def fetch_buttondown_recipients(
+def _buttondown_subscriber_persona(subscriber: dict) -> str:
+    metadata = subscriber.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return ""
+    raw_persona = metadata.get("persona", "")
+    if isinstance(raw_persona, dict):
+        return str(raw_persona.get("text", "")).strip()
+    return str(raw_persona or "").strip()
+
+
+def fetch_buttondown_subscribers(
     *,
     api_key: str,
     requests_get=None,
-) -> list[str]:
+) -> list[dict]:
     requests_get = requests_get or requests.get
     headers = {
         "Authorization": f"Token {api_key}",
@@ -109,7 +119,7 @@ def fetch_buttondown_recipients(
     }
     params: list[tuple[str, str | int]] | None = [("per_page", BUTTONDOWN_PAGE_SIZE)]
     params.extend(("-type", subscriber_type) for subscriber_type in BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES)
-    recipients: list[str] = []
+    subscribers: list[dict] = []
     seen: set[str] = set()
     next_url: str | None = BUTTONDOWN_SUBSCRIBERS_URL
     while next_url:
@@ -132,28 +142,44 @@ def fetch_buttondown_recipients(
             email_address = _buttondown_subscriber_email(subscriber)
             if not email_address or email_address in seen:
                 continue
-            recipients.append(email_address)
+            subscribers.append(
+                {
+                    "email": email_address,
+                    "persona_text": _buttondown_subscriber_persona(subscriber),
+                }
+            )
             seen.add(email_address)
         next_value = payload.get("next")
         next_url = str(next_value).strip() if next_value else None
         params = None
-    return recipients
+    return subscribers
 
 
-def resolve_digest_recipients(
-    config: dict,
+def fetch_buttondown_recipients(
+    *,
+    api_key: str,
+    requests_get=None,
+) -> list[str]:
+    return [
+        subscriber["email"]
+        for subscriber in fetch_buttondown_subscribers(
+            api_key=api_key,
+            requests_get=requests_get,
+        )
+    ]
+
+
+def _resolve_buttondown_subscribers(
+    configured_recipients: list[str],
     *,
     requests_get=None,
-) -> tuple[list[str], str]:
+) -> tuple[list[dict], str]:
     requests_get = requests_get or requests.get
-    configured_recipients = normalize_digest_recipients(
-        config.get("email", {}).get("digest_recipients", [])
-    )
     buttondown_api_key = os.getenv("BUTTONDOWN_API_KEY", "").strip()
     if not buttondown_api_key:
-        return configured_recipients, "config"
+        return [], "config"
     try:
-        buttondown_recipients = fetch_buttondown_recipients(
+        buttondown_subscribers = fetch_buttondown_subscribers(
             api_key=buttondown_api_key,
             requests_get=requests_get,
         )
@@ -168,9 +194,9 @@ def resolve_digest_recipients(
                 sort_keys=True,
             )
         )
-        return configured_recipients, "config_fallback"
-    if buttondown_recipients:
-        return buttondown_recipients, "buttondown"
+        return [], "config_fallback"
+    if buttondown_subscribers:
+        return buttondown_subscribers, "buttondown"
     print(
         json.dumps(
             {
@@ -180,7 +206,24 @@ def resolve_digest_recipients(
             sort_keys=True,
         )
     )
-    return configured_recipients, "config_fallback"
+    return [], "config_fallback"
+
+
+def resolve_digest_recipients(
+    config: dict,
+    *,
+    requests_get=None,
+) -> tuple[list[str], str]:
+    configured_recipients = normalize_digest_recipients(
+        config.get("email", {}).get("digest_recipients", [])
+    )
+    buttondown_subscribers, recipient_source = _resolve_buttondown_subscribers(
+        configured_recipients,
+        requests_get=requests_get,
+    )
+    if buttondown_subscribers:
+        return [subscriber["email"] for subscriber in buttondown_subscribers], recipient_source
+    return configured_recipients, recipient_source
 
 
 def normalize_preferred_sources(
@@ -235,21 +278,36 @@ def resolve_delivery_subscribers(
     requests_get=None,
     recipient_override: str | None = None,
 ) -> tuple[list[dict], str]:
+    buttondown_persona_by_email: dict[str, str] = {}
     if str(recipient_override or "").strip():
         recipients = normalize_digest_recipients([recipient_override])
         recipient_source = "dry_run_override"
     else:
-        recipients, recipient_source = resolve_digest_recipients(
-            config,
+        configured_recipients = normalize_digest_recipients(
+            config.get("email", {}).get("digest_recipients", [])
+        )
+        buttondown_subscribers, recipient_source = _resolve_buttondown_subscribers(
+            configured_recipients,
             requests_get=requests_get,
         )
+        if buttondown_subscribers:
+            recipients = [subscriber["email"] for subscriber in buttondown_subscribers]
+            buttondown_persona_by_email = {
+                subscriber["email"]: str(subscriber.get("persona_text", "")).strip()
+                for subscriber in buttondown_subscribers
+            }
+        else:
+            recipients = configured_recipients
 
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
     overrides = _subscriber_override_map(config)
     subscribers: list[dict] = []
     for email in recipients:
         override = overrides.get(email, {})
-        persona_text = str(override.get("persona_text") or default_persona_text).strip()
+        if recipient_source == "buttondown":
+            persona_text = str(buttondown_persona_by_email.get(email) or default_persona_text).strip()
+        else:
+            persona_text = str(override.get("persona_text") or default_persona_text).strip()
         preferred_sources = list(override.get("preferred_sources") or [])
         subscribers.append(
             {
