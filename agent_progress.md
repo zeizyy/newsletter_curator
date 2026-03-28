@@ -491,3 +491,11 @@ Add new entries below this line.
 - Outcome: `deliver_digest.py` now accepts `--dry-run-recipient`, the override bypasses Buttondown and config recipients while still using the normal delivery pipeline, and generated wrapper scripts now forward CLI arguments so `run_deliver_digest.sh --dry-run-recipient you@example.com` works on the server.
 - Open risks: The override currently trusts the CLI input as-is and only trims whitespace, so invalid email strings will still make it down to the Gmail send path.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-03-28 - T57 quiesced the admin service around the generated daily wrapper
+- Context: Started the new subscriber-personalization feature wave with the production unblocker first, keeping the RAM-saving stop/start logic in the generated server wrapper rather than inside the Python pipeline.
+- Files changed: `agent_spec.md`, `agent_contracts/T57_admin_service_orchestration.md`, `agent_tasks.json`, `agent_progress.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `python3 -m json.tool agent_tasks.json >/dev/null`; `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`
+- Outcome: The bootstrap now emits `CURATOR_ADMIN_SERVICE_NAME` and `CURATOR_PAUSE_ADMIN_DURING_DAILY`, generated `run_daily_pipeline.sh` stops the configured `systemd --user` admin service before running `daily_pipeline.py`, and trap-based cleanup restarts it on success, non-zero exit, and already-stopped-service scenarios while preserving the pipeline exit code.
+- Open risks: Signal-interruption cleanup is statically asserted in the generated wrapper tests rather than exercised with a live `SIGINT` or `SIGTERM`.
+- Next recommended task: `T58` Add subscriber login and session storage in SQLite.

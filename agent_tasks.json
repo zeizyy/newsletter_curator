@@ -1,7 +1,17 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-26",
+  "updated_at": "2026-03-28",
+  "agent_roles": {
+    "planner": "Maintains agent_spec.md, keeps the task map aligned to the product shape, and drafts each sprint contract before coding.",
+    "generator": "Implements exactly one bounded task per session, updates tests, and leaves the repo mergeable.",
+    "evaluator": "Reviews the sprint contract before coding, then independently verifies the finished sprint before completion."
+  },
+  "evaluation_criteria": [
+    "Each task ends with a passing integration test and a separate evaluator pass.",
+    "Compatibility shims are preferred during migrations; dead paths are removed only in cleanup tasks.",
+    "Progress notes capture concrete outcomes, tests run, open risks, and the next recommended task."
+  ],
   "session_contract": [
     "Run `pwd`, read `agent_progress.md`, read `agent_tasks.json`, and run `./init.sh`.",
     "Pick exactly one pending task whose dependencies are complete.",
@@ -1306,6 +1316,189 @@
         "A dry run sends to exactly that address and to no Buttondown or config recipients",
         "The normal delivery path is unchanged when dry-run mode is not requested",
         "The integration test passes offline"
+      ]
+    },
+    {
+      "id": "T57",
+      "title": "Quiesce and restart the admin app around the daily pipeline",
+      "status": "completed",
+      "depends_on": ["T56"],
+      "scope": [
+        "Update the generated daily server wrapper so it stops the admin app service before running the pipeline",
+        "Restart the admin app after the pipeline on success, failure, and shell interruption",
+        "Treat an already-stopped service as non-fatal so the pipeline still runs"
+      ],
+      "artifacts": [
+        "agent_spec.md",
+        "agent_contracts/T57_admin_service_orchestration.md",
+        "scripts/bootstrap_server.py",
+        "tests/integration/test_deployment_bootstrap_assets.py"
+      ],
+      "contract_file": "agent_contracts/T57_admin_service_orchestration.md",
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "evaluator_checks": [
+        "Stop and restart logic lives in the generated wrapper, not inside the Python pipeline",
+        "Restart cleanup runs on success, non-zero exit, and already-stopped-service scenarios",
+        "The wrapper preserves the daily pipeline exit code"
+      ],
+      "done_when": [
+        "The generated daily wrapper stops the configured admin service before running the pipeline",
+        "The wrapper still runs the pipeline when stop returns non-zero and still attempts restart",
+        "The wrapper restarts the admin service on success and on failure while preserving the pipeline exit code",
+        "The deployment bootstrap integration test passes"
+      ]
+    },
+    {
+      "id": "T58",
+      "title": "Add subscriber login and session storage in SQLite",
+      "status": "pending",
+      "depends_on": ["T57"],
+      "scope": [
+        "Add repository tables for subscriber identity, profile, login tokens, and session state",
+        "Expose subscriber-facing login routes in the existing Flask app",
+        "Use passwordless login and avoid raw password storage"
+      ],
+      "artifacts": [
+        "agent_contracts/T58_subscriber_login_and_session.md",
+        "admin_app.py",
+        "curator/repository.py",
+        "subscriber auth templates",
+        "integration coverage for login and session flow"
+      ],
+      "contract_file": "agent_contracts/T58_subscriber_login_and_session.md",
+      "test_command": "uv run pytest tests/integration/test_subscriber_login_and_session_flow.py -q",
+      "integration_test": "tests/integration/test_subscriber_login_and_session_flow.py",
+      "evaluator_checks": [
+        "Subscriber auth uses the existing Flask app and SQLite repository",
+        "Login/session state is persisted without storing raw passwords",
+        "The login flow is covered by an integration test"
+      ],
+      "done_when": [
+        "Subscribers can authenticate through a dedicated login flow",
+        "Identity and session state persist in SQLite",
+        "The integration test passes offline"
+      ]
+    },
+    {
+      "id": "T59",
+      "title": "Add subscriber settings persistence for persona text and preferred sources",
+      "status": "pending",
+      "depends_on": ["T58"],
+      "scope": [
+        "Add a subscriber settings page in the existing Flask app",
+        "Persist persona text and preferred sources in the database",
+        "Keep the UI simple while leaving room for future subscriber settings"
+      ],
+      "artifacts": [
+        "agent_contracts/T59_subscriber_settings_persistence.md",
+        "admin_app.py",
+        "curator/repository.py",
+        "subscriber settings templates",
+        "integration coverage for settings edits"
+      ],
+      "contract_file": "agent_contracts/T59_subscriber_settings_persistence.md",
+      "test_command": "uv run pytest tests/integration/test_subscriber_settings_page_persists_profile.py -q",
+      "integration_test": "tests/integration/test_subscriber_settings_page_persists_profile.py",
+      "evaluator_checks": [
+        "Subscriber settings persist in SQLite instead of YAML or Buttondown metadata",
+        "Preferred sources are normalized and stored durably",
+        "The settings flow is covered end to end"
+      ],
+      "done_when": [
+        "A logged-in subscriber can update persona text and preferred sources",
+        "The database becomes the source of truth for saved subscriber settings",
+        "The integration test passes offline"
+      ]
+    },
+    {
+      "id": "T60",
+      "title": "Switch delivery personalization to DB-backed profiles and append the signup CTA",
+      "status": "pending",
+      "depends_on": ["T59"],
+      "scope": [
+        "Resolve subscriber personalization from the database during delivery",
+        "Keep compatibility fallbacks until cleanup",
+        "Append a Buttondown signup CTA to the plain-text and HTML newsletter footer"
+      ],
+      "artifacts": [
+        "agent_contracts/T60_db_backed_delivery_and_signup_cta.md",
+        "delivery subscriber resolution logic",
+        "newsletter rendering updates",
+        "integration coverage for DB-backed personalized delivery"
+      ],
+      "contract_file": "agent_contracts/T60_db_backed_delivery_and_signup_cta.md",
+      "test_command": "uv run pytest tests/integration/test_delivery_uses_db_backed_subscriber_profiles.py tests/integration/test_newsletter_footer_signup_cta.py -q",
+      "integration_test": "tests/integration/test_delivery_uses_db_backed_subscriber_profiles.py",
+      "evaluator_checks": [
+        "Delivery reads persona text and preferred sources from SQLite-backed subscriber profiles",
+        "Fallback behavior remains intact for un-migrated users during rollout",
+        "The signup CTA is appended to both plain-text and HTML newsletter output"
+      ],
+      "done_when": [
+        "Personalized delivery uses DB-backed subscriber profiles",
+        "The newsletter footer includes the Buttondown signup CTA in both text and HTML output",
+        "The targeted integration tests pass offline"
+      ]
+    },
+    {
+      "id": "T61",
+      "title": "Restrict persona to final selection and widen initial discovery recall",
+      "status": "pending",
+      "depends_on": ["T60"],
+      "scope": [
+        "Apply persona text only to the final ranking or selection LLM call",
+        "Increase the early candidate budget so more stories are fetched and stored before final selection",
+        "Keep final newsletter size and source quotas unchanged"
+      ],
+      "artifacts": [
+        "agent_contracts/T61_persona_and_discovery_tuning.md",
+        "ranking or selection prompt logic",
+        "ingest and discovery limit tuning",
+        "integration coverage for persona-scoping and recall changes"
+      ],
+      "contract_file": "agent_contracts/T61_persona_and_discovery_tuning.md",
+      "test_command": "uv run pytest tests/integration/test_persona_only_affects_final_selection.py tests/integration/test_discovery_fetch_budget_increases_recall.py -q",
+      "integration_test": "tests/integration/test_persona_only_affects_final_selection.py",
+      "evaluator_checks": [
+        "Persona text no longer affects ingest-time scoring or summarization",
+        "The final ranking or selection step still honors persona text",
+        "Discovery fetch limits increase recall without increasing final digest size"
+      ],
+      "done_when": [
+        "Persona text is limited to the final selection step",
+        "The system fetches and stores a modestly larger early candidate pool",
+        "The targeted integration tests pass offline"
+      ]
+    },
+    {
+      "id": "T62",
+      "title": "Clean up legacy subscriber-personalization paths and document rollout",
+      "status": "pending",
+      "depends_on": ["T61"],
+      "scope": [
+        "Remove obsolete YAML and Buttondown personalization reads once DB-backed profiles are authoritative",
+        "Document the subscriber login and settings rollout for operators",
+        "Leave compatibility only where still needed for delivery safety"
+      ],
+      "artifacts": [
+        "agent_contracts/T62_subscriber_personalization_cleanup.md",
+        "cleanup of legacy personalization code paths",
+        "README.md",
+        "integration coverage for the final subscriber flow"
+      ],
+      "contract_file": "agent_contracts/T62_subscriber_personalization_cleanup.md",
+      "test_command": "uv run pytest tests/integration/test_delivery_uses_db_backed_subscriber_profiles.py tests/integration/test_subscriber_settings_page_persists_profile.py -q",
+      "integration_test": "tests/integration/test_delivery_uses_db_backed_subscriber_profiles.py",
+      "evaluator_checks": [
+        "Legacy personalization paths are removed only after the DB-backed flow is proven",
+        "Operator docs describe the rollout and migration expectations clearly",
+        "The final subscriber flow remains covered by integration tests"
+      ],
+      "done_when": [
+        "The DB-backed subscriber profile flow is the documented and implemented default",
+        "Legacy personalization reads are removed or isolated behind an explicit compatibility shim",
+        "The targeted regression tests pass"
       ]
     }
   ]
