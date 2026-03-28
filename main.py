@@ -170,6 +170,7 @@ def preview_job(config: dict) -> dict:
 def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
     from curator.jobs import (
         DEFAULT_AUDIENCE_KEY,
+        get_repository_from_config,
         group_delivery_subscribers,
         resolve_delivery_subscribers,
         run_delivery_job,
@@ -177,8 +178,10 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
 
     development_cfg = config.get("development", {})
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
+    repository = get_repository_from_config(config)
     subscribers, recipient_source = resolve_delivery_subscribers(
         config,
+        repository=repository,
         recipient_override=recipient_override,
     )
     delivery_subscribers = [
@@ -263,6 +266,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         return run_delivery_job(
             config,
             service,
+            repository=repository,
             collect_gmail_links_fn=collect_profile_gmail_links,
             collect_source_links_fn=collect_profile_source_links,
             select_top_stories_fn=select_top_stories_fn,

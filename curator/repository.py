@@ -1088,6 +1088,55 @@ class SQLiteRepository:
             ).fetchone()
         return self._subscriber_row_to_dict(row)
 
+    def get_subscriber_delivery_profile(self, email_address: str) -> dict | None:
+        normalized_email = str(email_address).strip().lower()
+        if not normalized_email:
+            return None
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    s.id,
+                    s.email_address,
+                    s.created_at,
+                    s.updated_at,
+                    s.last_login_at,
+                    p.subscriber_id AS profile_subscriber_id,
+                    p.persona_text,
+                    p.preferred_sources_json
+                FROM subscribers s
+                LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
+                WHERE s.email_address = ?
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+        return self._subscriber_delivery_profile_row_to_dict(row)
+
+    def list_subscriber_delivery_profiles(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    s.id,
+                    s.email_address,
+                    s.created_at,
+                    s.updated_at,
+                    s.last_login_at,
+                    p.subscriber_id AS profile_subscriber_id,
+                    p.persona_text,
+                    p.preferred_sources_json
+                FROM subscribers s
+                LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
+                ORDER BY s.email_address ASC
+                """
+            ).fetchall()
+        return [
+            profile
+            for profile in (self._subscriber_delivery_profile_row_to_dict(row) for row in rows)
+            if profile is not None
+        ]
+
     def create_subscriber_login_token(
         self,
         subscriber_id: int,
@@ -1392,6 +1441,22 @@ class SQLiteRepository:
             "preferred_sources": json.loads(str(payload.get("preferred_sources_json", "[]") or "[]")),
             "created_at": str(payload.get("created_at", "") or ""),
             "updated_at": str(payload.get("updated_at", "") or ""),
+        }
+
+    def _subscriber_delivery_profile_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
+        if row is None:
+            return None
+        payload = dict(row)
+        preferred_sources = json.loads(str(payload.get("preferred_sources_json", "[]") or "[]"))
+        return {
+            "id": int(payload.get("id") or 0),
+            "email_address": str(payload.get("email_address", "") or ""),
+            "persona_text": str(payload.get("persona_text", "") or ""),
+            "preferred_sources": preferred_sources,
+            "profile_exists": payload.get("profile_subscriber_id") is not None,
+            "created_at": str(payload.get("created_at", "") or ""),
+            "updated_at": str(payload.get("updated_at", "") or ""),
+            "last_login_at": str(payload.get("last_login_at", "") or ""),
         }
 
     def ensure_newsletter_open_token(self, daily_newsletter_id: int) -> str:

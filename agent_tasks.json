@@ -1414,7 +1414,7 @@
     {
       "id": "T60",
       "title": "Switch delivery personalization to DB-backed profiles and append the signup CTA",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T59"],
       "scope": [
         "Resolve subscriber personalization from the database during delivery",

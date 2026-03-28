@@ -56,6 +56,11 @@ from .telemetry import (
 BUTTONDOWN_SUBSCRIBERS_URL = "https://api.buttondown.com/v1/subscribers"
 BUTTONDOWN_API_VERSION = "2025-06-01"
 BUTTONDOWN_PAGE_SIZE = 100
+NEWSLETTER_SIGNUP_CTA_URL = "https://buttondown.com/zeizyynewsletter"
+NEWSLETTER_SIGNUP_CTA_TEXT = (
+    "Was this email forwarded to you? Don't miss out on future stories - "
+    "subscribe to Snacks and get your daily dose of financial news straight to your inbox."
+)
 BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
     "blocked",
     "complained",
@@ -337,9 +342,41 @@ def _subscriber_override_map(config: dict) -> dict[str, dict]:
     return overrides
 
 
+def append_signup_cta_to_newsletter(body: str, html_body: str) -> tuple[str, str]:
+    normalized_body = str(body or "").strip()
+    normalized_html = str(html_body or "").strip()
+    cta_plain = f"{NEWSLETTER_SIGNUP_CTA_TEXT} {NEWSLETTER_SIGNUP_CTA_URL}"
+    if NEWSLETTER_SIGNUP_CTA_URL not in normalized_body:
+        normalized_body = (
+            f"{normalized_body}\n\n===\n\n{cta_plain}" if normalized_body else cta_plain
+        )
+
+    if NEWSLETTER_SIGNUP_CTA_URL not in normalized_html:
+        cta_html = (
+            '<div style="margin:18px 0 0 0;padding:14px 16px;border:1px solid #d5dde8;'
+            'background:#f8fbff;font-size:14px;line-height:1.6;color:#31424a;">'
+            "Was this email forwarded to you? Don't miss out on future stories - "
+            f'<a href="{NEWSLETTER_SIGNUP_CTA_URL}" '
+            'style="color:#0f8661;font-weight:700;text-decoration:none;">subscribe to Snacks</a> '
+            "and get your daily dose of financial news straight to your inbox."
+            "</div>"
+        )
+        if "</body>" in normalized_html.lower():
+            closing_index = normalized_html.lower().rfind("</body>")
+            normalized_html = (
+                normalized_html[:closing_index]
+                + cta_html
+                + normalized_html[closing_index:]
+            )
+        else:
+            normalized_html = f"{normalized_html}{cta_html}"
+    return normalized_body, normalized_html
+
+
 def resolve_delivery_subscribers(
     config: dict,
     *,
+    repository: SQLiteRepository | None = None,
     requests_get=None,
     recipient_override: str | None = None,
 ) -> tuple[list[dict], str]:
@@ -371,19 +408,35 @@ def resolve_delivery_subscribers(
         else:
             recipients = configured_recipients
 
+    db_profiles_by_email: dict[str, dict] = {}
+    if repository is not None:
+        db_profiles_by_email = {
+            profile["email_address"]: profile
+            for profile in repository.list_subscriber_delivery_profiles()
+            if str(profile.get("email_address", "")).strip()
+        }
+
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
     overrides = _subscriber_override_map(config)
     subscribers: list[dict] = []
     for email in recipients:
         override = overrides.get(email, {})
         buttondown_persona_text = str(buttondown_persona_by_email.get(email) or "").strip()
-        if buttondown_persona_text:
+        db_profile = db_profiles_by_email.get(email)
+        if db_profile and bool(db_profile.get("profile_exists")):
+            persona_text = str(db_profile.get("persona_text") or default_persona_text).strip()
+            preferred_sources = normalize_preferred_sources(
+                db_profile.get("preferred_sources", [])
+            )
+        elif buttondown_persona_text:
             persona_text = buttondown_persona_text
+            preferred_sources = list(override.get("preferred_sources") or [])
         elif recipient_source == "buttondown":
             persona_text = str(buttondown_persona_by_email.get(email) or default_persona_text).strip()
+            preferred_sources = list(override.get("preferred_sources") or [])
         else:
             persona_text = str(override.get("persona_text") or default_persona_text).strip()
-        preferred_sources = list(override.get("preferred_sources") or [])
+            preferred_sources = list(override.get("preferred_sources") or [])
         subscribers.append(
             {
                 "email": email,
@@ -1608,9 +1661,13 @@ def run_delivery_job(
                 cached_content,
                 str(cached_newsletter.get("html_body", "")).strip(),
             )
+            digest_body, delivery_html = append_signup_cta_to_newsletter(
+                str(cached_newsletter.get("body", "")).strip(),
+                delivery_html,
+            )
             sent_recipients = send_digest(
                 subject=cached_newsletter["subject"],
-                body=cached_newsletter["body"],
+                body=digest_body,
                 html_body=delivery_html,
                 selected_items=cached_newsletter.get("selected_items", []),
                 daily_newsletter_id=int(cached_newsletter["id"]),
@@ -1636,7 +1693,7 @@ def run_delivery_job(
                 "recipient_source": recipient_source,
                 "sent_recipients": sent_recipients,
                 "digest_subject": cached_newsletter["subject"],
-                "digest_body": cached_newsletter["body"],
+                "digest_body": digest_body,
                 "digest_html": delivery_html,
                 "email_safe_digest_html": delivery_html,
                 "content": cached_content,
@@ -1683,13 +1740,17 @@ def run_delivery_job(
                 str(pipeline_result.get("email_safe_digest_html", "")).strip()
                 or str(pipeline_result.get("digest_html", "")).strip(),
             )
+            digest_body, delivery_html = append_signup_cta_to_newsletter(
+                str(pipeline_result.get("digest_body", "")).strip(),
+                delivery_html,
+            )
             if persist_newsletter:
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,
                     audience_key=audience_key,
                     delivery_run_id=run_id,
                     subject=str(pipeline_result.get("digest_subject", "")).strip(),
-                    body=str(pipeline_result.get("digest_body", "")).strip(),
+                    body=digest_body,
                     html_body=delivery_html,
                     content=newsletter_content,
                     selected_items=list(pipeline_result.get("accepted_story_items", [])),
@@ -1705,14 +1766,16 @@ def run_delivery_job(
                 )
             pipeline_result["sent_recipients"] = send_digest(
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
-                body=str(pipeline_result.get("digest_body", "")).strip(),
+                body=digest_body,
                 html_body=delivery_html,
                 selected_items=list(pipeline_result.get("accepted_story_items", [])),
                 daily_newsletter_id=daily_newsletter_id,
             )
+            pipeline_result["digest_body"] = digest_body
             pipeline_result["recipient_source"] = recipient_source
             pipeline_result["content"] = newsletter_content
             pipeline_result["delivery_digest_html"] = delivery_html
+            pipeline_result["email_safe_digest_html"] = delivery_html
             pipeline_result["daily_newsletter_id"] = daily_newsletter_id
             pipeline_result["audience_key"] = audience_key
         runtime = finish_runtime_capture(runtime_capture)
