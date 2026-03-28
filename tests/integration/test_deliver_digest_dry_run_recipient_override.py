@@ -156,6 +156,14 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
     assert result["cached_newsletter"] is True
     assert result["recipient_source"] == "dry_run_override"
     assert result["sent_recipients"] == 1
+    assert result["delivery_subscribers"] == [
+        {
+            "email": "dry-run@example.com",
+            "persona_text": "",
+            "preferred_sources": [],
+            "profile_key": result["delivery_subscribers"][0]["profile_key"],
+        }
+    ]
     assert len(seen_calls) == 1
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
 
@@ -272,6 +280,14 @@ def test_dry_run_recipient_uses_buttondown_metadata_persona(monkeypatch, tmp_pat
     assert result["personalized_delivery"] is True
     assert result["cached_newsletter"] is False
     assert result["sent_recipients"] == 1
+    assert result["delivery_subscribers"] == [
+        {
+            "email": "dry-run@example.com",
+            "persona_text": "Macro investor focused on rates and valuations.",
+            "preferred_sources": [],
+            "profile_key": result["delivery_subscribers"][0]["profile_key"],
+        }
+    ]
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
     assert "Rates reset changes software valuations" in sent_messages[0]["body"]
     assert "Model pricing shifted inference budgets" not in sent_messages[0]["body"]

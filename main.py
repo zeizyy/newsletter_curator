@@ -181,6 +181,15 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         config,
         recipient_override=recipient_override,
     )
+    delivery_subscribers = [
+        {
+            "email": str(subscriber.get("email", "")).strip().lower(),
+            "persona_text": str(subscriber.get("persona_text", "")).strip(),
+            "preferred_sources": list(subscriber.get("preferred_sources") or []),
+            "profile_key": str(subscriber.get("profile_key", "")).strip(),
+        }
+        for subscriber in subscribers
+    ]
 
     def run_profile_delivery(
         *,
@@ -273,7 +282,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         for subscriber in subscribers
     )
     if not personalized_delivery:
-        return run_profile_delivery(
+        profile_result = run_profile_delivery(
             persona_text=default_persona_text,
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
@@ -281,6 +290,10 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             persist_newsletter=True,
             audience_key=DEFAULT_AUDIENCE_KEY,
         )
+        return {
+            **profile_result,
+            "delivery_subscribers": delivery_subscribers,
+        }
 
     delivery_groups = group_delivery_subscribers(subscribers)
     group_results: list[dict] = []
@@ -331,6 +344,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         ),
         "recipient_source": recipient_source,
         "sent_recipients": total_sent_recipients,
+        "delivery_subscribers": delivery_subscribers,
         "delivery_groups": group_results,
     }
 
