@@ -24,6 +24,15 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Preserve compatibility shims during migration so existing users still get a working digest.
 - Do not make the pending evaluation tasks (`T43` through `T46`) prerequisites for this feature wave.
 
+# MCP Tooling
+- Add a local, read-only MCP server so agents and automation can inspect stored newsletter stories without going through the admin UI.
+- Expose one recent-story tool first and keep the initial scope to the last 24 hours of repository data.
+- Do not trigger fresh retrieval, article fetching, enrichment, or summarization at tool-call time.
+- Return metadata only, including source fields, anchor text, stored summary fields, and repository timestamps.
+- Query the SQLite repository in read-only mode so the MCP server never initializes, resets, or mutates schema state during normal use.
+- Keep the initial transport minimal by implementing newline-delimited JSON-RPC over stdio, matching the current MCP stdio transport.
+- This wave is intentionally separate from the pending evaluation tasks (`T43` through `T46`); do not make them prerequisites for the MCP work.
+
 # Task Map
 - `T57` admin-service quiesce and restart wrapper
 - `T58` subscriber login and session model
@@ -31,3 +40,6 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T60` DB-backed delivery personalization plus signup CTA
 - `T61` persona and discovery tuning
 - `T62` compatibility cleanup and rollout
+- `T63` read-only recent-story MCP server vertical slice
+- `T64` launch docs and smoke coverage for the MCP server
+- `T65` optional query ergonomics for the recent-story MCP tool

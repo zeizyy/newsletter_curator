@@ -1500,6 +1500,98 @@
         "Legacy personalization reads are removed or isolated behind an explicit compatibility shim",
         "The targeted regression tests pass"
       ]
+    },
+    {
+      "id": "T63",
+      "title": "Expose a read-only recent-story feed through a stdio MCP server",
+      "status": "completed",
+      "depends_on": ["T62"],
+      "scope": [
+        "Add a minimal newline-delimited JSON-RPC stdio server that answers MCP initialize, tools/list, and tools/call requests.",
+        "Expose a single read-only tool named list_recent_stories backed only by the existing SQLite repository.",
+        "Return metadata-only story objects from the last 24 hours and omit article text plus raw payload blobs.",
+        "Open the repository read-only so normal MCP use never initializes, resets, or mutates schema state."
+      ],
+      "artifacts": [
+        "agent_contracts/T63_recent_story_feed_mcp_server.md",
+        "curator/story_feed.py",
+        "curator/mcp_server.py",
+        "scripts/newsletter_mcp_server.py",
+        "tests/integration/test_mcp_recent_story_feed_server.py"
+      ],
+      "contract_file": "agent_contracts/T63_recent_story_feed_mcp_server.md",
+      "test_command": "uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q",
+      "integration_test": "tests/integration/test_mcp_recent_story_feed_server.py",
+      "evaluator_checks": [
+        "The server is launchable with `uv run python scripts/newsletter_mcp_server.py` and speaks newline-delimited JSON-RPC over stdio.",
+        "tools/list advertises exactly one read-only tool named list_recent_stories with a pinned output schema.",
+        "tools/call returns only metadata from the last 24 hours using COALESCE(NULLIF(published_at, ''), first_seen_at) for both filtering and sort order, with id DESC as the tiebreaker.",
+        "The server opens the SQLite database read-only and does not create, initialize, reset, or mutate repository state during normal calls."
+      ],
+      "done_when": [
+        "A local MCP client can initialize the server, discover the recent-story tool, and call it successfully.",
+        "The tool returns JSON-serializable metadata-only story objects from the last 24 hours in deterministic newest-first order.",
+        "The integration test passes offline against a seeded repository without triggering fresh retrieval or summarization."
+      ]
+    },
+    {
+      "id": "T64",
+      "title": "Document and smoke-test the MCP server launch path",
+      "status": "pending",
+      "depends_on": ["T63"],
+      "scope": [
+        "Document how to launch the MCP server against the existing repository database.",
+        "Add smoke coverage for the launch or help path so the operator workflow is reproducible.",
+        "Keep the rollout read-only and avoid touching fetch or delivery behavior."
+      ],
+      "artifacts": [
+        "README.md",
+        "agent_contracts/T64_mcp_launch_docs_and_smoke.md",
+        "tests/integration/test_mcp_story_feed_help.py"
+      ],
+      "contract_file": "agent_contracts/T64_mcp_launch_docs_and_smoke.md",
+      "test_command": "uv run pytest tests/integration/test_mcp_story_feed_help.py -q",
+      "integration_test": "tests/integration/test_mcp_story_feed_help.py",
+      "evaluator_checks": [
+        "Launch instructions are concrete enough for an operator or MCP client setup to follow without guessing.",
+        "The smoke test proves the checked-in entrypoint is callable locally.",
+        "No unrelated newsletter pipeline behavior changes are introduced."
+      ],
+      "done_when": [
+        "The MCP launch path is documented.",
+        "A minimal smoke test passes offline.",
+        "The read-only MCP server is ready for handoff."
+      ]
+    },
+    {
+      "id": "T65",
+      "title": "Add optional query ergonomics to the recent-story MCP tool",
+      "status": "pending",
+      "depends_on": ["T64"],
+      "scope": [
+        "Add bounded optional filters or arguments to the MCP story feed without breaking the default 24-hour use case.",
+        "Keep the server read-only and deterministic while improving practical client ergonomics.",
+        "Preserve the metadata-only response contract."
+      ],
+      "artifacts": [
+        "agent_contracts/T65_mcp_story_feed_query_ergonomics.md",
+        "curator/story_feed.py",
+        "curator/mcp_server.py",
+        "tests/integration/test_mcp_recent_story_feed_server.py"
+      ],
+      "contract_file": "agent_contracts/T65_mcp_story_feed_query_ergonomics.md",
+      "test_command": "uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q",
+      "integration_test": "tests/integration/test_mcp_recent_story_feed_server.py",
+      "evaluator_checks": [
+        "Any new arguments stay bounded and do not introduce live retrieval or mutation paths.",
+        "The default tool behavior remains the same for the last-24-hour read-only feed.",
+        "The integration coverage still exercises the end-to-end MCP flow."
+      ],
+      "done_when": [
+        "The tool supports the agreed ergonomic arguments.",
+        "The default behavior remains stable.",
+        "The targeted MCP integration test passes."
+      ]
     }
   ]
 }

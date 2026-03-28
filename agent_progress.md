@@ -539,3 +539,11 @@ Add new entries below this line.
 - Outcome: Delivery now personalizes only from SQLite-backed subscriber profiles, auto-upserts bare recipient rows during sends, ignores Buttondown metadata plus legacy YAML subscriber overrides for personalization, and documents rollout verification plus rollback steps in the README.
 - Open risks: Delivery now ignores legacy `config.yaml` `subscribers` blocks entirely, so operators who still maintain those blocks must remove them manually; the repo documents that change but does not rewrite existing config files automatically.
 - Next recommended task: none from this feature wave; `T57` through `T62` are complete.
+
+### 2026-03-28 - T63 exposed a read-only recent-story MCP server over stdio
+- Context: Started the new MCP feature wave on a separate worktree branch by shipping a real end-to-end vertical slice first instead of only planning scaffolding.
+- Files changed: `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T63_recent_story_feed_mcp_server.md`, `curator/story_feed.py`, `curator/mcp_server.py`, `scripts/newsletter_mcp_server.py`, `tests/integration/test_mcp_recent_story_feed_server.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `git diff --check`
+- Outcome: The repo now has a newline-delimited stdio MCP server that supports `initialize`, `tools/list`, `ping`, and `tools/call`, exposes exactly one read-only `list_recent_stories` tool, reads the existing SQLite repository in read-only mode, and returns metadata-only stories from the last 24 hours with deterministic ordering and no fresh retrieval or summarization.
+- Open risks: The transport is a thin custom JSON-RPC implementation tuned to the current MCP stdio contract, so future client-compatibility changes should be revalidated if the project later adds another MCP transport or swaps to an SDK.
+- Next recommended task: `T64` Document and smoke-test the MCP server launch path.
