@@ -232,6 +232,24 @@ uv run python scripts/render_preview_review_pack.py \
 
 This is a macOS-only inspection helper that uses Quick Look (`qlmanage`) to write HTML fixtures plus PNG screenshots into a temp or explicit output directory.
 
+Browser-driven admin/subscriber regression harness with seeded local data:
+```bash
+uv run python scripts/run_admin_ui_e2e_harness.py
+```
+
+This starts a temporary local `admin_app.py`, drives the subscriber login/settings flow plus the admin preview flow through Playwright, saves screenshots into `output/playwright/admin-ui-e2e/`, and writes a `manifest.json` with the saved-profile assertions and artifact paths.
+
+For the corresponding pytest coverage:
+```bash
+uv run pytest tests/integration/test_admin_ui_e2e_harness.py -q
+```
+
+If you want Codex to stop asking for one-off approval on every Playwright subcommand, prefer approving a stable repo-local prefix such as:
+- `["uv", "run", "python", "scripts/run_admin_ui_e2e_harness.py"]`
+- or, if you are comfortable granting a broader reusable rule, `["uv", "run", "python"]`
+
+That is more durable than approving long shell lines with `export CODEX_HOME=... && bash "$PWCLI" ...`, because the exact command text changes across steps and misses the prefix matcher.
+
 ## Configuration
 Edit `config.yaml`:
 - `gmail.label` (default `Newsletters`)

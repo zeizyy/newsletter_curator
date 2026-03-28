@@ -25,5 +25,8 @@ data/
 deploy/generated/
 deploy/*.env
 
+# Playwright browser artifacts
+output/playwright/
+
 # macOS metadata
 .DS_Store
