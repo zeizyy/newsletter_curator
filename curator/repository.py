@@ -29,6 +29,10 @@ def canonicalize_url(url: str) -> str:
     return urlunparse(cleaned)
 
 
+def hash_secret_token(token: str) -> str:
+    return hashlib.sha256(str(token).encode("utf-8", errors="ignore")).hexdigest()
+
+
 class SchemaResetRequiredError(RuntimeError):
     pass
 
@@ -156,6 +160,34 @@ class SQLiteRepository:
                 "summarized_at",
             },
             "user_source_selections": {"id", "source_id", "enabled", "updated_at"},
+            "subscribers": {
+                "id",
+                "email_address",
+                "created_at",
+                "updated_at",
+                "last_login_at",
+            },
+            "subscriber_login_tokens": {
+                "id",
+                "subscriber_id",
+                "token_hash",
+                "created_at",
+                "expires_at",
+                "consumed_at",
+                "request_ip",
+                "user_agent",
+            },
+            "subscriber_sessions": {
+                "id",
+                "subscriber_id",
+                "session_token_hash",
+                "created_at",
+                "expires_at",
+                "last_seen_at",
+                "revoked_at",
+                "ip_address",
+                "user_agent",
+            },
             "newsletter_telemetry": {
                 "id",
                 "daily_newsletter_id",
@@ -345,6 +377,9 @@ class SQLiteRepository:
             "schema_migrations",
             "article_snapshots",
             "user_source_selections",
+            "subscriber_sessions",
+            "subscriber_login_tokens",
+            "subscribers",
             "newsletter_click_events",
             "newsletter_open_events",
             "tracked_links",
@@ -463,6 +498,43 @@ class SQLiteRepository:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS subscribers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email_address TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS subscriber_login_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT,
+                request_ip TEXT NOT NULL DEFAULT '',
+                user_agent TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_subscriber_login_tokens_subscriber_id
+            ON subscriber_login_tokens(subscriber_id);
+
+            CREATE TABLE IF NOT EXISTS subscriber_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+                session_token_hash TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                revoked_at TEXT,
+                ip_address TEXT NOT NULL DEFAULT '',
+                user_agent TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_subscriber_sessions_subscriber_id
+            ON subscriber_sessions(subscriber_id);
 
             CREATE TABLE IF NOT EXISTS newsletter_telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -958,12 +1030,257 @@ class SQLiteRepository:
             "click_events_deleted": click_events_deleted,
         }
 
+    def upsert_subscriber(self, email_address: str) -> dict:
+        normalized_email = str(email_address).strip().lower()
+        if not normalized_email:
+            raise ValueError("email_address is required")
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscribers (email_address, created_at, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(email_address)
+                DO UPDATE SET updated_at = excluded.updated_at
+                """,
+                (normalized_email, now, now),
+            )
+            row = connection.execute(
+                """
+                SELECT id, email_address, created_at, updated_at, last_login_at
+                FROM subscribers
+                WHERE email_address = ?
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+        return self._subscriber_row_to_dict(row)
+
+    def get_subscriber_by_email(self, email_address: str) -> dict | None:
+        normalized_email = str(email_address).strip().lower()
+        if not normalized_email:
+            return None
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, email_address, created_at, updated_at, last_login_at
+                FROM subscribers
+                WHERE email_address = ?
+                LIMIT 1
+                """,
+                (normalized_email,),
+            ).fetchone()
+        return self._subscriber_row_to_dict(row)
+
+    def create_subscriber_login_token(
+        self,
+        subscriber_id: int,
+        *,
+        ttl_minutes: int = 20,
+        request_ip: str = "",
+        user_agent: str = "",
+    ) -> dict:
+        raw_token = secrets.token_urlsafe(24)
+        now = utc_now()
+        expires_at = (datetime.now(UTC) + timedelta(minutes=max(ttl_minutes, 1))).isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscriber_login_tokens (
+                    subscriber_id,
+                    token_hash,
+                    created_at,
+                    expires_at,
+                    request_ip,
+                    user_agent
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    subscriber_id,
+                    hash_secret_token(raw_token),
+                    now,
+                    expires_at,
+                    str(request_ip or ""),
+                    str(user_agent or ""),
+                ),
+            )
+        return {
+            "token": raw_token,
+            "subscriber_id": int(subscriber_id),
+            "created_at": now,
+            "expires_at": expires_at,
+        }
+
+    def consume_subscriber_login_token(self, raw_token: str) -> dict | None:
+        normalized_token = str(raw_token or "").strip()
+        if not normalized_token:
+            return None
+        token_hash = hash_secret_token(normalized_token)
+        now = utc_now()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    t.id AS token_id,
+                    s.id,
+                    s.email_address,
+                    s.created_at,
+                    s.updated_at,
+                    s.last_login_at
+                FROM subscriber_login_tokens t
+                JOIN subscribers s ON s.id = t.subscriber_id
+                WHERE t.token_hash = ?
+                  AND t.consumed_at IS NULL
+                  AND t.expires_at >= ?
+                LIMIT 1
+                """,
+                (token_hash, now),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                """
+                UPDATE subscriber_login_tokens
+                SET consumed_at = ?
+                WHERE id = ?
+                """,
+                (now, int(row["token_id"])),
+            )
+        return self._subscriber_row_to_dict(row)
+
+    def create_subscriber_session(
+        self,
+        subscriber_id: int,
+        *,
+        ttl_days: int = 30,
+        ip_address: str = "",
+        user_agent: str = "",
+    ) -> dict:
+        raw_token = secrets.token_urlsafe(32)
+        now = utc_now()
+        expires_at = (datetime.now(UTC) + timedelta(days=max(ttl_days, 1))).isoformat()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscriber_sessions (
+                    subscriber_id,
+                    session_token_hash,
+                    created_at,
+                    expires_at,
+                    last_seen_at,
+                    ip_address,
+                    user_agent
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    subscriber_id,
+                    hash_secret_token(raw_token),
+                    now,
+                    expires_at,
+                    now,
+                    str(ip_address or ""),
+                    str(user_agent or ""),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE subscribers
+                SET last_login_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, subscriber_id),
+            )
+        return {
+            "token": raw_token,
+            "subscriber_id": int(subscriber_id),
+            "created_at": now,
+            "expires_at": expires_at,
+            "last_seen_at": now,
+        }
+
+    def get_subscriber_by_session_token(self, raw_token: str) -> dict | None:
+        normalized_token = str(raw_token or "").strip()
+        if not normalized_token:
+            return None
+        token_hash = hash_secret_token(normalized_token)
+        now = utc_now()
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    s.id,
+                    s.email_address,
+                    s.created_at,
+                    s.updated_at,
+                    s.last_login_at,
+                    ss.id AS session_id,
+                    ss.created_at AS session_created_at,
+                    ss.expires_at AS session_expires_at,
+                    ss.last_seen_at AS session_last_seen_at
+                FROM subscriber_sessions ss
+                JOIN subscribers s ON s.id = ss.subscriber_id
+                WHERE ss.session_token_hash = ?
+                  AND ss.revoked_at IS NULL
+                  AND ss.expires_at >= ?
+                LIMIT 1
+                """,
+                (token_hash, now),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                """
+                UPDATE subscriber_sessions
+                SET last_seen_at = ?
+                WHERE id = ?
+                """,
+                (now, int(row["session_id"])),
+            )
+        payload = self._subscriber_row_to_dict(row)
+        if payload is not None:
+            payload["session"] = {
+                "id": int(row["session_id"]),
+                "created_at": str(row["session_created_at"] or ""),
+                "expires_at": str(row["session_expires_at"] or ""),
+                "last_seen_at": now,
+            }
+        return payload
+
+    def revoke_subscriber_session(self, raw_token: str) -> None:
+        normalized_token = str(raw_token or "").strip()
+        if not normalized_token:
+            return
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE subscriber_sessions
+                SET revoked_at = ?
+                WHERE session_token_hash = ?
+                  AND revoked_at IS NULL
+                """,
+                (utc_now(), hash_secret_token(normalized_token)),
+            )
+
     def _run_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
         if row is None:
             return None
         payload = dict(row)
         metadata_json = str(payload.pop("metadata_json", "") or "{}")
         payload["metadata"] = json.loads(metadata_json)
+        return payload
+
+    def _subscriber_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
+        if row is None:
+            return None
+        payload = dict(row)
+        payload.pop("token_id", None)
+        payload["id"] = int(payload["id"])
+        payload["email_address"] = str(payload.get("email_address", "") or "")
+        payload["created_at"] = str(payload.get("created_at", "") or "")
+        payload["updated_at"] = str(payload.get("updated_at", "") or "")
+        payload["last_login_at"] = str(payload.get("last_login_at", "") or "")
         return payload
 
     def ensure_newsletter_open_token(self, daily_newsletter_id: int) -> str:

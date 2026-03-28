@@ -1,5 +1,6 @@
 import datetime as dt
 import base64
+from email.utils import parseaddr
 import os
 from pathlib import Path
 import threading
@@ -18,6 +19,9 @@ DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 
 app = Flask(__name__)
 ADMIN_TOKEN_COOKIE = "curator_admin_token"
+SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
+SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
+SUBSCRIBER_SESSION_TTL_DAYS = 30
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
 
 
@@ -75,6 +79,13 @@ def load_repository(config: dict):
         return repository
     except Exception:
         return None
+
+
+def resolve_path_from_config(value: str) -> Path:
+    path = Path(str(value or "").strip())
+    if not path.is_absolute():
+        path = config_module.BASE_DIR / path
+    return path
 
 
 def normalize_story_source_name(story: dict) -> dict:
@@ -162,6 +173,102 @@ def get_provided_admin_token() -> str:
     )
 
 
+def normalize_email_address(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
+    _, parsed = parseaddr(raw)
+    parsed = parsed.strip().lower()
+    if parsed != raw or "@" not in parsed:
+        return ""
+    return parsed
+
+
+def subscriber_login_link_exposure_enabled() -> bool:
+    return app.testing or parse_bool(os.getenv("CURATOR_EXPOSE_LOGIN_LINKS", ""))
+
+
+def subscriber_cookie_secure() -> bool:
+    return bool(request.is_secure)
+
+
+def set_subscriber_session_cookie(response, session_token: str) -> None:
+    response.set_cookie(
+        SUBSCRIBER_SESSION_COOKIE,
+        session_token,
+        httponly=True,
+        samesite="Lax",
+        secure=subscriber_cookie_secure(),
+        path="/",
+    )
+
+
+def clear_subscriber_session_cookie(response) -> None:
+    response.set_cookie(
+        SUBSCRIBER_SESSION_COOKIE,
+        "",
+        expires=0,
+        max_age=0,
+        httponly=True,
+        samesite="Lax",
+        secure=subscriber_cookie_secure(),
+        path="/",
+    )
+
+
+def subscriber_public_base_url() -> str:
+    configured = str(os.getenv("CURATOR_PUBLIC_BASE_URL", "")).strip()
+    if configured:
+        return configured.rstrip("/")
+    return request.url_root.rstrip("/")
+
+
+def build_subscriber_login_confirm_url(raw_token: str) -> str:
+    return f"{subscriber_public_base_url()}{url_for('confirm_subscriber_login', token=raw_token)}"
+
+
+def send_subscriber_login_email(config: dict, to_address: str, confirm_url: str) -> dict:
+    from curator.gmail import get_gmail_service, send_email
+
+    credentials_path = resolve_path_from_config(config.get("paths", {}).get("credentials", ""))
+    token_path = resolve_path_from_config(config.get("paths", {}).get("token", ""))
+    if not credentials_path.exists() or not token_path.exists():
+        return {"sent": False, "error": "gmail_credentials_unavailable"}
+    subject = "Your Newsletter Curator sign-in link"
+    body = (
+        "Use this secure sign-in link to access your Newsletter Curator account:\n\n"
+        f"{confirm_url}\n\n"
+        f"This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
+        "If you did not request it, you can ignore this email."
+    )
+    html_body = (
+        "<html><body>"
+        "<p>Use this secure sign-in link to access your Newsletter Curator account:</p>"
+        f'<p><a href="{confirm_url}">{confirm_url}</a></p>'
+        f"<p>This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
+        "If you did not request it, you can ignore this email.</p>"
+        "</body></html>"
+    )
+    try:
+        service = get_gmail_service(
+            {
+                "credentials": str(credentials_path),
+                "token": str(token_path),
+            }
+        )
+        send_email(service, to_address, subject, body, html_body)
+    except Exception as exc:
+        return {"sent": False, "error": str(exc)}
+    return {"sent": True, "error": ""}
+
+
+def get_current_subscriber(repository) -> dict | None:
+    if repository is None:
+        return None
+    session_token = request.cookies.get(SUBSCRIBER_SESSION_COOKIE, "").strip()
+    if not session_token:
+        return None
+    return repository.get_subscriber_by_session_token(session_token)
+
+
 def require_admin_token() -> str:
     expected = os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
     if not expected:
@@ -189,6 +296,29 @@ def parse_int(name: str, value: str, min_value: int = 0) -> int:
     if parsed < min_value:
         raise ValueError(f"{name} must be >= {min_value}")
     return parsed
+
+
+def render_subscriber_login_page(
+    *,
+    email_address: str = "",
+    message: str = "",
+    errors: list[str] | None = None,
+    login_link: str = "",
+    login_delivery_status: str = "",
+    status_code: int = 200,
+):
+    response = make_response(
+        render_template(
+            "subscriber_login.html",
+            email_address=email_address,
+            message=message,
+            errors=errors or [],
+            login_link=login_link,
+            login_delivery_status=login_delivery_status,
+        ),
+        status_code,
+    )
+    return response
 
 
 def update_config_from_form(raw_config: dict, form) -> tuple[dict, list[str]]:
@@ -328,6 +458,120 @@ def unauthorized(_):
         "or header 'X-Admin-Token'.",
         401,
     )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def subscriber_login():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    current_subscriber = get_current_subscriber(repository)
+    if current_subscriber is not None and request.method == "GET":
+        return redirect(url_for("subscriber_account"))
+
+    message = ""
+    errors: list[str] = []
+    login_link = ""
+    login_delivery_status = ""
+    email_address = ""
+
+    if request.method == "POST":
+        email_address = normalize_email_address(request.form.get("email_address", ""))
+        if not email_address:
+            errors.append("Enter a valid email address.")
+        elif repository is None:
+            errors.append("Subscriber login is unavailable because the repository could not be opened.")
+        else:
+            subscriber = repository.upsert_subscriber(email_address)
+            token_payload = repository.create_subscriber_login_token(
+                int(subscriber["id"]),
+                ttl_minutes=SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES,
+                request_ip=_request_ip(),
+                user_agent=request.headers.get("User-Agent", ""),
+            )
+            login_link = build_subscriber_login_confirm_url(token_payload["token"])
+            delivery = send_subscriber_login_email(merged, email_address, login_link)
+            login_delivery_status = "sent" if delivery.get("sent") else "fallback"
+            if delivery.get("sent"):
+                message = f"Sign-in link sent to {email_address}."
+                if not subscriber_login_link_exposure_enabled():
+                    login_link = ""
+            elif subscriber_login_link_exposure_enabled():
+                message = (
+                    "Email delivery is unavailable on this server right now. "
+                    "Use the temporary sign-in link below."
+                )
+            else:
+                errors.append("Sign-in email delivery is unavailable right now. Contact the operator.")
+                login_link = ""
+                login_delivery_status = "failed"
+
+    if request.args.get("logged_out", "").strip() == "1" and not (message or errors):
+        message = "You have been signed out."
+    return render_subscriber_login_page(
+        email_address=email_address,
+        message=message,
+        errors=errors,
+        login_link=login_link if subscriber_login_link_exposure_enabled() else "",
+        login_delivery_status=login_delivery_status,
+    )
+
+
+@app.route("/login/confirm", methods=["GET"])
+def confirm_subscriber_login():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    if repository is None:
+        return render_subscriber_login_page(
+            errors=["Subscriber login is unavailable because the repository could not be opened."],
+            status_code=503,
+        )
+
+    raw_token = request.args.get("token", "").strip()
+    subscriber = repository.consume_subscriber_login_token(raw_token)
+    if subscriber is None:
+        return render_subscriber_login_page(
+            errors=["This sign-in link is invalid or has expired."],
+            status_code=400,
+        )
+
+    session_payload = repository.create_subscriber_session(
+        int(subscriber["id"]),
+        ttl_days=SUBSCRIBER_SESSION_TTL_DAYS,
+        ip_address=_request_ip(),
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+    response = redirect(url_for("subscriber_account"))
+    set_subscriber_session_cookie(response, session_payload["token"])
+    return response
+
+
+@app.route("/account", methods=["GET"])
+def subscriber_account():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    subscriber = get_current_subscriber(repository)
+    if subscriber is None:
+        response = redirect(url_for("subscriber_login"))
+        clear_subscriber_session_cookie(response)
+        return response
+    return make_response(
+        render_template(
+            "subscriber_account.html",
+            subscriber=subscriber,
+        )
+    )
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def subscriber_logout():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    session_token = request.cookies.get(SUBSCRIBER_SESSION_COOKIE, "").strip()
+    if repository is not None and session_token:
+        repository.revoke_subscriber_session(session_token)
+    response = redirect(url_for("subscriber_login", logged_out="1"))
+    clear_subscriber_session_cookie(response)
+    return response
 
 
 @app.route("/", methods=["GET", "POST"])

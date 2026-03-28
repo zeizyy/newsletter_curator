@@ -499,3 +499,11 @@ Add new entries below this line.
 - Outcome: The bootstrap now emits `CURATOR_ADMIN_SERVICE_NAME` and `CURATOR_PAUSE_ADMIN_DURING_DAILY`, generated `run_daily_pipeline.sh` stops the configured `systemd --user` admin service before running `daily_pipeline.py`, and trap-based cleanup restarts it on success, non-zero exit, and already-stopped-service scenarios while preserving the pipeline exit code.
 - Open risks: Signal-interruption cleanup is statically asserted in the generated wrapper tests rather than exercised with a live `SIGINT` or `SIGTERM`.
 - Next recommended task: `T58` Add subscriber login and session storage in SQLite.
+
+### 2026-03-28 - T58 added passwordless subscriber login and SQLite-backed sessions
+- Context: Established the first subscriber-facing auth layer in the existing Flask app so per-user settings can land on a real account model instead of piggybacking on operator auth or Buttondown metadata.
+- Files changed: `agent_contracts/T58_subscriber_login_and_session.md`, `agent_tasks.json`, `agent_progress.md`, `admin_app.py`, `curator/repository.py`, `templates/admin_base.html`, `templates/subscriber_login.html`, `templates/subscriber_account.html`, `tests/integration/test_subscriber_login_and_session_flow.py`
+- Tests run: `uv run pytest tests/integration/test_subscriber_login_and_session_flow.py -q`; `uv run pytest tests/integration/test_admin_config_page_uses_shared_shell.py -q`
+- Outcome: The app now supports passwordless subscriber login through one-time magic links, stores only hashed login and session tokens in SQLite, attempts Gmail-backed login email delivery when credentials are available, exposes a debug or offline fallback link path for local verification, and keeps subscriber sessions separate from `CURATOR_ADMIN_TOKEN` operator auth.
+- Open risks: The live login-email path still depends on the server's Gmail OAuth token setup; a misconfigured mail environment will not send links unless the operator enables the debug or offline fallback path.
+- Next recommended task: `T59` Add subscriber settings persistence for persona text and preferred sources.

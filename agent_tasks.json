@@ -1352,7 +1352,7 @@
     {
       "id": "T58",
       "title": "Add subscriber login and session storage in SQLite",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T57"],
       "scope": [
         "Add repository tables for subscriber identity, profile, login tokens, and session state",

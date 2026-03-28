@@ -1,0 +1,60 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Subscriber Login | Newsletter Curator{% endblock %}
+{% block eyebrow %}Subscriber Access{% endblock %}
+{% block page_title %}Sign in to Newsletter Curator{% endblock %}
+{% block page_lead %}Use a one-time email link to access your subscriber account without managing a password.{% endblock %}
+{% block utility_label %}Subscriber Rail{% endblock %}
+{% block utility_copy %}Request a fresh sign-in link, confirm your active session, and move into your subscriber account without exposing operator controls.{% endblock %}
+{% block utility_nav %}
+  <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
+  <a class="nav-pill {% if request.endpoint == 'subscriber_account' %}is-active{% endif %}" href="{{ url_for('subscriber_account') }}">Account</a>
+{% endblock %}
+
+{% block content %}
+  {% if message %}
+    <section class="banner-ok">{{ message }}</section>
+  {% endif %}
+  {% for error in errors %}
+    <section class="banner-err">{{ error }}</section>
+  {% endfor %}
+
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Magic Link Login</div>
+        <h2>Request a fresh sign-in email</h2>
+      </div>
+      {% if login_delivery_status == "sent" %}
+        <span class="pill">Email sent</span>
+      {% elif login_delivery_status == "fallback" %}
+        <span class="pill muted-pill">Offline fallback</span>
+      {% endif %}
+    </div>
+    <p class="section-copy">Enter the email address you want to use for your subscriber account. The server will attempt to deliver a one-time sign-in link when Gmail credentials are configured.</p>
+    <form method="post" class="stack">
+      <div class="field">
+        <label class="field-label" for="email_address">Email address</label>
+        <input id="email_address" name="email_address" type="email" autocomplete="email" required value="{{ email_address }}" />
+      </div>
+      <div class="button-row">
+        <button type="submit">Send sign-in link</button>
+      </div>
+    </form>
+  </section>
+
+  {% if login_link %}
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Offline Access</div>
+          <h2>Temporary sign-in link</h2>
+        </div>
+      </div>
+      <p class="section-copy">This link is exposed because offline or debug mode is enabled. Treat it like a password reset link: it can be used only once before it expires.</p>
+      <div class="state-shell is-info">
+        <pre>{{ login_link }}</pre>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
