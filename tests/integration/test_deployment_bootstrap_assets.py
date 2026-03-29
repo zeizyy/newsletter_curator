@@ -153,14 +153,20 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     admin_script_text = admin_script.read_text(encoding="utf-8")
     assert "admin_app.py" in admin_script_text
     assert str(env_file) in admin_script_text
+    assert 'error: OPENAI_API_KEY is empty after loading' in admin_script_text
+    assert 'error: BUTTONDOWN_API_KEY is empty after loading' in admin_script_text
     assert "\"$@\"" in admin_script_text
     assert oct(admin_script.stat().st_mode & 0o777) == "0o700"
 
     deliver_script_text = deliver_script.read_text(encoding="utf-8")
     assert "deliver_digest.py" in deliver_script_text
+    assert 'error: OPENAI_API_KEY is empty after loading' in deliver_script_text
+    assert 'error: BUTTONDOWN_API_KEY is empty after loading' in deliver_script_text
     assert "\"$@\"" in deliver_script_text
 
     daily_script_text = daily_script.read_text(encoding="utf-8")
+    assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
+    assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
     assert 'systemctl --user start "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
     assert "trap resume_admin_service EXIT" in daily_script_text
@@ -274,6 +280,41 @@ def test_generated_daily_wrapper_continues_when_admin_stop_fails(tmp_path, repo_
         "uv run python daily_pipeline.py",
         "systemctl --user start newsletter-curator-admin",
     ]
+
+
+def test_generated_daily_wrapper_fails_when_api_keys_are_empty(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    _write_fake_runtime(fake_bin, command_log)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    env_file = paths["env_file"]
+    env_file.write_text(
+        env_file.read_text(encoding="utf-8")
+        .replace("OPENAI_API_KEY=test-openai-key", "OPENAI_API_KEY=")
+        .replace("BUTTONDOWN_API_KEY=test-buttondown-key", "BUTTONDOWN_API_KEY="),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"])],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "FAKE_UV_EXIT_CODE": "0",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "error: OPENAI_API_KEY is empty after loading" in result.stderr
+    assert not command_log.exists()
 
 
 def test_install_systemd_user_service_is_rerunnable(monkeypatch, tmp_path):
