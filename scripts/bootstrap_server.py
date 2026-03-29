@@ -22,6 +22,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--admin-host", default="127.0.0.1")
     parser.add_argument("--admin-port", type=int, default=8080)
     parser.add_argument("--admin-token", default=os.getenv("CURATOR_ADMIN_TOKEN", ""))
+    parser.add_argument(
+        "--mcp-token",
+        default=os.getenv("CURATOR_MCP_TOKEN", ""),
+        help=(
+            "Bearer token for the remote HTTP /mcp endpoint. "
+            "Defaults to CURATOR_MCP_TOKEN, and falls back to --admin-token when omitted."
+        ),
+    )
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--buttondown-api-key", default=os.getenv("BUTTONDOWN_API_KEY", ""))
     parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
@@ -63,6 +71,7 @@ def build_env_file(
     admin_host: str,
     admin_port: int,
     admin_token: str,
+    mcp_token: str,
     admin_service_name: str,
     openai_api_key: str,
     buttondown_api_key: str,
@@ -76,6 +85,7 @@ def build_env_file(
             f"CURATOR_ADMIN_HOST={admin_host}",
             f"CURATOR_ADMIN_PORT={admin_port}",
             f"CURATOR_ADMIN_TOKEN={admin_token}",
+            f"CURATOR_MCP_TOKEN={mcp_token}",
             f"CURATOR_ADMIN_SERVICE_NAME={admin_service_name}",
             "CURATOR_PAUSE_ADMIN_DURING_DAILY=1",
             f"OPENAI_API_KEY={openai_api_key}",
@@ -253,6 +263,8 @@ def install_crontab(cron_file: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    if not str(args.mcp_token or "").strip():
+        args.mcp_token = args.admin_token
     repo_dir = args.repo_dir.resolve()
     output_dir = (
         args.output_dir.resolve()
@@ -281,6 +293,7 @@ def main() -> None:
             admin_host=args.admin_host,
             admin_port=args.admin_port,
             admin_token=args.admin_token,
+            mcp_token=args.mcp_token,
             admin_service_name=args.service_name,
             openai_api_key=args.openai_api_key,
             buttondown_api_key=args.buttondown_api_key,

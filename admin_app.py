@@ -1,6 +1,7 @@
 import datetime as dt
 import base64
 from email.utils import parseaddr
+import json
 import os
 from pathlib import Path
 import threading
@@ -11,6 +12,12 @@ import yaml
 
 from curator import config as config_module
 from curator.gmail import normalize_gmail_source_name
+from curator.mcp_server import (
+    MCP_PROTOCOL_VERSION,
+    build_jsonrpc_error,
+    handle_request,
+    supports_http_protocol_version,
+)
 from curator.repository import SQLiteRepository
 from curator.telemetry import strip_tracking_pixel
 
@@ -24,6 +31,8 @@ SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
 SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
 SUBSCRIBER_SESSION_TTL_DAYS = 30
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
+MCP_ENDPOINT_PATH = "/mcp"
+MCP_TOKEN_HEADER = "X-MCP-Token"
 
 
 def load_config_file() -> dict:
@@ -172,6 +181,16 @@ def get_provided_admin_token() -> str:
     )
 
 
+def get_provided_mcp_token() -> str:
+    authorization = request.headers.get("Authorization", "").strip()
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return (
+        request.headers.get(MCP_TOKEN_HEADER, "").strip()
+        or request.headers.get("X-Admin-Token", "").strip()
+    )
+
+
 def normalize_email_address(value: str | None) -> str:
     raw = str(value or "").strip().lower()
     _, parsed = parseaddr(raw)
@@ -308,6 +327,84 @@ def require_admin_token() -> str:
     if provided != expected:
         abort(401)
     return provided
+
+
+def configured_mcp_token() -> str:
+    return (
+        os.getenv("CURATOR_MCP_TOKEN", "").strip()
+        or os.getenv("CURATOR_ADMIN_TOKEN", "").strip()
+    )
+
+
+def _normalize_origin(value: str) -> str:
+    parsed = urlsplit(str(value or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def allowed_mcp_origins() -> set[str]:
+    configured = str(os.getenv("CURATOR_MCP_ALLOWED_ORIGINS", "")).strip()
+    if configured:
+        origins = {
+            _normalize_origin(candidate)
+            for candidate in configured.split(",")
+            if _normalize_origin(candidate)
+        }
+        return origins
+    origins = {
+        origin
+        for origin in {
+            _normalize_origin(os.getenv("CURATOR_PUBLIC_BASE_URL", "")),
+            _normalize_origin(request.url_root),
+        }
+        if origin
+    }
+    return origins
+
+
+def mcp_origin_allowed() -> bool:
+    origin = request.headers.get("Origin", "").strip()
+    if not origin:
+        return True
+    normalized_origin = _normalize_origin(origin)
+    return bool(normalized_origin) and normalized_origin in allowed_mcp_origins()
+
+
+def make_mcp_json_response(payload: dict, *, status: int = 200):
+    response = make_response(json.dumps(payload, separators=(",", ":")), status)
+    response.headers["Content-Type"] = "application/json"
+    response.headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
+    return response
+
+
+def make_mcp_http_error(status: int, code: int, message: str):
+    return make_mcp_json_response(build_jsonrpc_error(code, message, message_id=None), status=status)
+
+
+def validate_mcp_http_request():
+    protocol_version = request.headers.get("MCP-Protocol-Version")
+    if not supports_http_protocol_version(protocol_version):
+        return make_mcp_http_error(
+            400,
+            -32600,
+            f"Unsupported MCP-Protocol-Version: {protocol_version}",
+        )
+    if not mcp_origin_allowed():
+        return make_mcp_http_error(403, -32600, "Forbidden origin.")
+    expected_token = configured_mcp_token()
+    if not expected_token:
+        if app.testing:
+            return None
+        return make_mcp_http_error(
+            503,
+            -32603,
+            "CURATOR_MCP_TOKEN or CURATOR_ADMIN_TOKEN must be configured for /mcp.",
+        )
+    provided_token = get_provided_mcp_token()
+    if provided_token != expected_token:
+        return make_mcp_http_error(401, -32600, "Unauthorized.")
+    return None
 
 
 def render_admin_template(template_name: str, **context):
@@ -624,6 +721,36 @@ def update_source_selections(repository, form) -> None:
 @app.route("/health", methods=["GET"])
 def health():
     return {"ok": True}
+
+
+@app.route(MCP_ENDPOINT_PATH, methods=["GET", "POST", "DELETE"])
+def remote_mcp():
+    error_response = validate_mcp_http_request()
+    if error_response is not None:
+        return error_response
+
+    if request.method == "GET":
+        return ("", 405)
+
+    if request.method == "DELETE":
+        return ("", 405)
+
+    try:
+        message = request.get_json(force=True)
+    except Exception:
+        return make_mcp_http_error(400, -32700, "Invalid JSON body.")
+
+    if not isinstance(message, dict):
+        return make_mcp_http_error(400, -32600, "Expected a single JSON-RPC object.")
+
+    method = message.get("method")
+    if not method:
+        return ("", 202)
+
+    response_payload = handle_request(message, config_path=CONFIG_PATH)
+    if response_payload is None:
+        return ("", 202)
+    return make_mcp_json_response(response_payload, status=200)
 
 
 @app.errorhandler(401)

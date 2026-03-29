@@ -122,6 +122,40 @@ Use `CURATOR_MCP_TARGET=local` during development if you want the published plug
 
 If `CURATOR_MCP_SSH_HOST` is set manually, it must be a raw SSH host or IP. URL-shaped values like `http://159.65.104.249` are rejected intentionally so they are never emitted into the SSH command.
 
+Remote HTTP MCP endpoint on the admin host:
+
+- endpoint: `https://YOUR_PUBLIC_CURATOR_HOST/mcp`
+- auth: `Authorization: Bearer $CURATOR_MCP_TOKEN`
+- fallback auth for older setups: `X-Admin-Token: $CURATOR_ADMIN_TOKEN`
+
+This endpoint serves the same read-only `list_recent_stories` tool over Streamable HTTP-style POST requests on the existing Flask/admin host. The current implementation is stateless and returns JSON responses over `POST`; it intentionally returns `405 Method Not Allowed` on `GET`, which is allowed for servers that do not offer an SSE stream.
+
+Example initialize request:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer YOUR_MCP_TOKEN' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2025-11-25' \
+  https://YOUR_PUBLIC_CURATOR_HOST/mcp \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"manual","version":"0.0.0"}}}'
+```
+
+Example tool call:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer YOUR_MCP_TOKEN' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H 'MCP-Protocol-Version: 2025-11-25' \
+  https://YOUR_PUBLIC_CURATOR_HOST/mcp \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_recent_stories","arguments":{"hours":24}}}'
+```
+
+If you bootstrap the server with `scripts/bootstrap_server.py`, it now writes `CURATOR_MCP_TOKEN` into the generated env file. By default that token matches `CURATOR_ADMIN_TOKEN`; pass `--mcp-token` if you want a separate read-only token for shared MCP access.
+
 For an end-to-end delivery dry run that sends only to one test inbox:
 
 ```bash

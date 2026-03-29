@@ -141,6 +141,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "CURATOR_ADMIN_HOST=0.0.0.0" in env_text
     assert "CURATOR_ADMIN_PORT=9090" in env_text
     assert "CURATOR_ADMIN_TOKEN=test-admin-token" in env_text
+    assert "CURATOR_MCP_TOKEN=test-admin-token" in env_text
     assert "CURATOR_ADMIN_SERVICE_NAME=newsletter-curator-admin" in env_text
     assert "CURATOR_PAUSE_ADMIN_DURING_DAILY=1" in env_text
     assert "OPENAI_API_KEY=test-openai-key" in env_text

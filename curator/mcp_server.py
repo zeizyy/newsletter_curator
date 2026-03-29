@@ -7,6 +7,7 @@ from . import config as config_module
 from .story_feed import RECENT_STORY_WINDOW_HOURS, list_recent_story_feed
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
+LEGACY_MCP_PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "newsletter-curator-story-feed"
 SERVER_VERSION = "0.1.0"
 RECENT_STORIES_TOOL = "list_recent_stories"
@@ -120,6 +121,10 @@ def _jsonrpc_error(message_id, code: int, message: str) -> dict:
     }
 
 
+def build_jsonrpc_error(code: int, message: str, *, message_id=None) -> dict:
+    return _jsonrpc_error(message_id, code, message)
+
+
 def _tool_error_result(message: str) -> dict:
     return {
         "content": [{"type": "text", "text": message}],
@@ -160,6 +165,13 @@ def _parse_list_recent_stories_arguments(arguments: object) -> tuple[int, str | 
         source_type = raw_source_type.strip() or None
 
     return raw_hours, source_type
+
+
+def supports_http_protocol_version(protocol_version: str | None) -> bool:
+    if protocol_version is None:
+        return True
+    normalized = str(protocol_version).strip()
+    return normalized in {MCP_PROTOCOL_VERSION, LEGACY_MCP_PROTOCOL_VERSION}
 
 
 def handle_request(message: dict, *, config_path: str | None = None) -> dict | None:
