@@ -539,3 +539,51 @@ Add new entries below this line.
 - Outcome: Delivery now personalizes only from SQLite-backed subscriber profiles, auto-upserts bare recipient rows during sends, ignores Buttondown metadata plus legacy YAML subscriber overrides for personalization, and documents rollout verification plus rollback steps in the README.
 - Open risks: Delivery now ignores legacy `config.yaml` `subscribers` blocks entirely, so operators who still maintain those blocks must remove them manually; the repo documents that change but does not rewrite existing config files automatically.
 - Next recommended task: none from this feature wave; `T57` through `T62` are complete.
+
+### 2026-03-28 - T63 exposed a read-only recent-story MCP server over stdio
+- Context: Started the new MCP feature wave on a separate worktree branch by shipping a real end-to-end vertical slice first instead of only planning scaffolding.
+- Files changed: `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T63_recent_story_feed_mcp_server.md`, `curator/story_feed.py`, `curator/mcp_server.py`, `scripts/newsletter_mcp_server.py`, `tests/integration/test_mcp_recent_story_feed_server.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `git diff --check`
+- Outcome: The repo now has a newline-delimited stdio MCP server that supports `initialize`, `tools/list`, `ping`, and `tools/call`, exposes exactly one read-only `list_recent_stories` tool, reads the existing SQLite repository in read-only mode, and returns metadata-only stories from the last 24 hours with deterministic ordering and no fresh retrieval or summarization.
+- Open risks: The transport is a thin custom JSON-RPC implementation tuned to the current MCP stdio contract, so future client-compatibility changes should be revalidated if the project later adds another MCP transport or swaps to an SDK.
+- Next recommended task: `T64` Document and smoke-test the MCP server launch path.
+
+### 2026-03-28 - T64 documented the MCP launch path and added smoke coverage
+- Context: Tightened the new MCP server into a usable operator surface by documenting the checked-in launch command and making the entrypoint self-describing without reopening the story-feed semantics.
+- Files changed: `README.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T64_mcp_launch_docs_and_smoke.md`, `curator/mcp_server.py`, `scripts/newsletter_mcp_server.py`, `tests/integration/test_mcp_story_feed_help.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_story_feed_help.py -q`; `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `git diff --check`
+- Outcome: The MCP server now has a thin CLI wrapper with `--help` and optional `--config-path`, the README documents the exact read-only stdio launch path and config expectations, and the new smoke test proves the checked-in entrypoint is callable locally and can answer `initialize` offline.
+- Open risks: This sprint intentionally avoids re-testing `tools/list` and `tools/call`; those semantics remain covered by the T63 integration test and should be rerun if the launch wrapper grows beyond config selection.
+- Next recommended task: `T65` Add optional query ergonomics to the recent-story MCP tool.
+
+### 2026-03-28 - T65 added bounded query ergonomics and queued publish plus Codex tasks
+- Context: Kept the next MCP sprint narrowly focused on practical filtering for `list_recent_stories`, while also extending the harness so publish and Codex-consumption work are explicitly queued behind the stable tool contract.
+- Files changed: `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T65_mcp_story_feed_query_ergonomics.md`, `curator/story_feed.py`, `curator/mcp_server.py`, `tests/integration/test_mcp_recent_story_feed_server.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py -q`; `uv run pytest tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: `list_recent_stories` now accepts bounded `hours` and exact-match `source_type` arguments while preserving the default 24-hour behavior, invalid arguments now surface as MCP-visible tool errors, and the harness now includes follow-on tasks for publishing the MCP as a local plugin plus adding a Codex-oriented workflow on top of it.
+- Open risks: The server now has a slightly larger argument surface, so any future additions should stay bounded or they will blur into pagination or discovery work that belongs in a separate sprint.
+- Next recommended task: `T66` Publish the MCP server as a Codex-discoverable local plugin.
+
+### 2026-03-28 - T66 published the MCP server as a repo-local Codex plugin
+- Context: Turned the read-only MCP server into a repo-local publish surface that Codex can discover through a local marketplace entry, without changing server behavior.
+- Files changed: `README.md`, `.agents/plugins/marketplace.json`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T66_mcp_publish_and_manifest.md`, `plugins/newsletter-curator-story-feed/.codex-plugin/plugin.json`, `plugins/newsletter-curator-story-feed/.mcp.json`, `tests/integration/test_mcp_publish_manifest.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_publish_manifest.py -q`; `uv run pytest tests/integration/test_mcp_recent_story_feed_server.py tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: The repo now publishes a local `newsletter-curator-story-feed` plugin with a real plugin manifest, a stdio `.mcp.json` that launches the checked-in server from the plugin root, a local marketplace entry under `.agents/plugins/marketplace.json`, and a manifest smoke test that proves the published plugin can negotiate `initialize` offline.
+- Open risks: This publish path is repo-local, so any future home-local or global Codex installation flow still needs a separate validation step rather than assuming the same relative paths.
+- Next recommended task: `T67` Add a Codex agent workflow that uses the MCP story feed.
+
+### 2026-03-28 - T67 added a Codex skill and helper for the published story-feed plugin
+- Context: Added a repo-local Codex workflow on top of the published MCP plugin so agents can query stored stories through the manifest contract instead of calling repository code directly.
+- Files changed: `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T67_codex_mcp_story_feed.md`, `docs/codex-mcp-story-feed.md`, `skills/codex-mcp-story-feed/SKILL.md`, `skills/codex-mcp-story-feed/agents/openai.yaml`, `skills/codex-mcp-story-feed/scripts/query_story_feed.py`, `tests/integration/test_codex_mcp_story_feed_smoke.py`
+- Tests run: `uv run pytest tests/integration/test_codex_mcp_story_feed_smoke.py -q`; `uv run pytest tests/integration/test_mcp_publish_manifest.py tests/integration/test_mcp_recent_story_feed_server.py tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: The repo now has a `$codex-mcp-story-feed` skill, a helper that reads `plugins/newsletter-curator-story-feed/.mcp.json`, starts the published MCP server, completes `initialize`, and calls `list_recent_stories`, plus a smoke test that proves the workflow works offline against a seeded SQLite repo.
+- Open risks: The helper currently exercises the repo-local published plugin path only, so any future global Codex install flow should be tested separately rather than assuming the same relative manifest paths.
+- Next recommended task: none; `T67` is complete.
+
+### 2026-03-28 - Reverted T67 and added a production-host MCP launch contract
+- Context: Removed the Codex-specific skill layer, then changed the published MCP launch path so the same read-only server can run locally by default or over SSH on the real curator host where the SQLite database actually lives.
+- Files changed: `README.md`, `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `agent_contracts/T67_codex_mcp_story_feed.md`, `docs/codex-mcp-story-feed.md`, `plugins/newsletter-curator-story-feed/.mcp.json`, `scripts/newsletter_mcp_launch.py`, `skills/codex-mcp-story-feed/SKILL.md`, `skills/codex-mcp-story-feed/agents/openai.yaml`, `skills/codex-mcp-story-feed/scripts/query_story_feed.py`, `tests/integration/test_codex_mcp_story_feed_smoke.py`, `tests/integration/test_mcp_launch_wrapper.py`, `tests/integration/test_mcp_publish_manifest.py`
+- Tests run: `uv run pytest tests/integration/test_mcp_launch_wrapper.py tests/integration/test_mcp_publish_manifest.py tests/integration/test_mcp_recent_story_feed_server.py tests/integration/test_mcp_story_feed_help.py -q`; `git diff --check`
+- Outcome: T67 was removed from the harness, the Codex skill artifacts were deleted, and the published plugin now launches through `scripts/newsletter_mcp_launch.py`, which preserves the local offline path but also supports `CURATOR_MCP_TARGET=ssh` so the actual MCP server can run on the production host and read that host's SQLite file locally.
+- Open risks: The branch now has the correct remote-launch mechanism, but the real target still needs concrete `CURATOR_MCP_SSH_HOST`, `CURATOR_MCP_REMOTE_REPO_DIR`, and usually `CURATOR_MCP_REMOTE_CONFIG_PATH` values before it can point at the production database.
+- Next recommended task: set the production SSH and path parameters for the real curator host.

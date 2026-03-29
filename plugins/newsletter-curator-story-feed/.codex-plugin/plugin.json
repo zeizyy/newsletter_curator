@@ -1,0 +1,39 @@
+{
+  "name": "newsletter-curator-story-feed",
+  "version": "0.1.0",
+  "description": "Read-only MCP plugin for inspecting stored Newsletter Curator stories.",
+  "author": {
+    "name": "Newsletter Curator",
+    "url": "https://github.com/zeizyy/newsletter_curator"
+  },
+  "homepage": "https://github.com/zeizyy/newsletter_curator",
+  "repository": "https://github.com/zeizyy/newsletter_curator",
+  "license": "UNLICENSED",
+  "keywords": [
+    "newsletter",
+    "mcp",
+    "sqlite",
+    "stories",
+    "codex"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Newsletter Story Feed",
+    "shortDescription": "Read stored newsletter stories through MCP",
+    "longDescription": "Expose the Newsletter Curator SQLite repository as a read-only MCP tool so Codex can inspect recent stored stories without triggering new retrieval or summarization.",
+    "developerName": "Newsletter Curator",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/zeizyy/newsletter_curator",
+    "defaultPrompt": [
+      "List the latest stored newsletter stories from this repo",
+      "Show only Gmail stories from the recent story feed",
+      "Check the last hour of repository stories"
+    ],
+    "brandColor": "#1F6F5C",
+    "screenshots": []
+  }
+}

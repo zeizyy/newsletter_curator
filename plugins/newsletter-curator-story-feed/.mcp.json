@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "newsletter-curator-story-feed": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "../../scripts/newsletter_mcp_launch.py",
+        "--local-config-path",
+        "../../config.yaml"
+      ],
+      "note": "Read-only MCP server for stored newsletter stories. By default this launches over SSH against root@159.65.104.249 in /root/newsletter_curator so SQLite is read locally on the production host; set CURATOR_MCP_TARGET=local to force the repo-local development database."
+    }
+  }
+}

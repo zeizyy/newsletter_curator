@@ -70,6 +70,58 @@ uv run python fetch_sources.py
 uv run python deliver_digest.py
 ```
 
+Read-only MCP story feed:
+
+```bash
+uv run python scripts/newsletter_mcp_server.py --config-path config.yaml
+```
+
+This launches a newline-delimited stdio MCP server. It exposes one tool, `list_recent_stories`, backed by the existing SQLite repository and returns only stored metadata from the last 24 hours. It does not trigger fresh retrieval, article fetching, or summarization.
+
+If you already export `NEWSLETTER_CONFIG`, `--config-path` is optional. For local launch details:
+
+```bash
+uv run python scripts/newsletter_mcp_server.py --help
+```
+
+Repo-local Codex plugin publish path:
+
+- plugin root: `plugins/newsletter-curator-story-feed`
+- plugin manifest: `plugins/newsletter-curator-story-feed/.codex-plugin/plugin.json`
+- MCP server manifest: `plugins/newsletter-curator-story-feed/.mcp.json`
+- local marketplace entry: `.agents/plugins/marketplace.json`
+
+The published plugin launches the checked-in MCP server through:
+
+```bash
+uv run python ../../scripts/newsletter_mcp_launch.py --local-config-path ../../config.yaml
+```
+
+That command is stored in the plugin-local `.mcp.json` and is intended to run from the plugin root.
+
+By default it targets the real curator host over SSH and runs the checked-in read-only MCP server there:
+
+```bash
+ssh -T root@159.65.104.249 \
+  'cd /root/newsletter_curator && exec uv run python scripts/newsletter_mcp_server.py --config-path config.yaml'
+```
+
+That means the SQLite file is read locally on the production server instead of over the network.
+
+The published defaults are:
+
+```bash
+export CURATOR_MCP_TARGET=ssh
+export CURATOR_MCP_SSH_HOST=159.65.104.249
+export CURATOR_MCP_SSH_USER=root
+export CURATOR_MCP_REMOTE_REPO_DIR=/root/newsletter_curator
+export CURATOR_MCP_REMOTE_CONFIG_PATH=config.yaml
+```
+
+Use `CURATOR_MCP_TARGET=local` during development if you want the published plugin to read the repo-local SQLite database through `../../config.yaml` instead.
+
+If `CURATOR_MCP_SSH_HOST` is set manually, it must be a raw SSH host or IP. URL-shaped values like `http://159.65.104.249` are rejected intentionally so they are never emitted into the SSH command.
+
 For an end-to-end delivery dry run that sends only to one test inbox:
 
 ```bash
