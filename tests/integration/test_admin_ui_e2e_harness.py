@@ -86,7 +86,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 [
                     '- heading "Your subscriber account" [level=1] [ref=e7]',
                     '- heading "existing@example.com" [level=2] [ref=e25]',
-                    '- link "Edit settings" [ref=e17] [cursor=pointer]:',
+                    '- link "Settings" [ref=e17] [cursor=pointer]:',
                 ]
             )
         if page == "settings":

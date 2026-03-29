@@ -119,6 +119,7 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
     assert account_response.status_code == 200
     assert "subscriber@example.com" in account_page
     assert "Session active" in account_page
+    assert "Subscriber ID" not in account_page
 
     admin_response = client.get("/")
     assert admin_response.status_code == 302

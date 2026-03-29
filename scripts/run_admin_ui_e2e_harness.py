@@ -514,7 +514,7 @@ def main() -> int:
                 )
             )
 
-            edit_settings_ref = extract_ref(account_snapshot, role="link", accessible_name="Edit settings")
+            edit_settings_ref = extract_ref(account_snapshot, role="link", accessible_name="Settings")
             run_playwright_command(
                 "click",
                 edit_settings_ref,

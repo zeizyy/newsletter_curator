@@ -8,8 +8,6 @@
 {% block utility_copy %}Request a fresh sign-in link, confirm your active session, and move into your subscriber account without exposing operator controls.{% endblock %}
 {% block utility_nav %}
   <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
-  <a class="nav-pill {% if request.endpoint == 'subscriber_account' %}is-active{% endif %}" href="{{ url_for('subscriber_account') }}">Account</a>
-  <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
 {% endblock %}
 
 {% block content %}
