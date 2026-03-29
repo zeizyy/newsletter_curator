@@ -94,10 +94,22 @@ Repo-local Codex plugin publish path:
 The published plugin launches the checked-in MCP server through:
 
 ```bash
-uv run python ../../scripts/newsletter_mcp_server.py --config-path ../../config.yaml
+uv run python ../../scripts/newsletter_mcp_launch.py --local-config-path ../../config.yaml
 ```
 
 That command is stored in the plugin-local `.mcp.json` and is intended to run from the plugin root.
+
+By default it uses the repo-local SQLite database referenced by `../../config.yaml`. To make the MCP session read from the real SQLite database on the real curator host, run the same published plugin with:
+
+```bash
+export CURATOR_MCP_TARGET=ssh
+export CURATOR_MCP_SSH_HOST=your-server.example.com
+export CURATOR_MCP_SSH_USER=deploy-user
+export CURATOR_MCP_REMOTE_REPO_DIR=/srv/newsletter_curator
+export CURATOR_MCP_REMOTE_CONFIG_PATH=/srv/newsletter_curator/config.yaml
+```
+
+In `ssh` mode the local manifest keeps the same stdio MCP interface, but the process actually executes `scripts/newsletter_mcp_server.py` on the remote host so SQLite is read locally on that server instead of over the network.
 
 For an end-to-end delivery dry run that sends only to one test inbox:
 

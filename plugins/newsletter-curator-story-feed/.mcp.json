@@ -6,11 +6,11 @@
       "args": [
         "run",
         "python",
-        "../../scripts/newsletter_mcp_server.py",
-        "--config-path",
+        "../../scripts/newsletter_mcp_launch.py",
+        "--local-config-path",
         "../../config.yaml"
       ],
-      "note": "Repo-local read-only MCP server for stored newsletter stories. Launch this from the plugin root so the relative repo paths resolve correctly."
+      "note": "Read-only MCP server for stored newsletter stories. By default this launches the repo-local SQLite-backed server; set CURATOR_MCP_TARGET=ssh plus CURATOR_MCP_SSH_HOST and CURATOR_MCP_REMOTE_REPO_DIR to run the same server on the real curator host over SSH stdio."
     }
   }
 }

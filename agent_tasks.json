@@ -1623,38 +1623,6 @@
         "The publish or install path is documented.",
         "The offline manifest smoke test passes."
       ]
-    },
-    {
-      "id": "T67",
-      "title": "Add a Codex agent workflow that uses the MCP story feed",
-      "status": "completed",
-      "depends_on": ["T66"],
-      "scope": [
-        "Add a Codex-oriented skill, workflow, or setup guide that starts the MCP server and queries list_recent_stories.",
-        "Keep the agent-side workflow separate from plugin publishing and from server implementation.",
-        "Provide a reproducible local example that remains read-only."
-      ],
-      "artifacts": [
-        "skills/codex-mcp-story-feed/SKILL.md",
-        "skills/codex-mcp-story-feed/agents/openai.yaml",
-        "skills/codex-mcp-story-feed/scripts/query_story_feed.py",
-        "docs/codex-mcp-story-feed.md",
-        "agent_contracts/T67_codex_mcp_story_feed.md",
-        "tests/integration/test_codex_mcp_story_feed_smoke.py"
-      ],
-      "contract_file": "agent_contracts/T67_codex_mcp_story_feed.md",
-      "test_command": "uv run pytest tests/integration/test_codex_mcp_story_feed_smoke.py -q",
-      "integration_test": "tests/integration/test_codex_mcp_story_feed_smoke.py",
-      "evaluator_checks": [
-        "The agent workflow can start the local MCP server and call list_recent_stories.",
-        "The workflow stays read-only and does not introduce new story-feed semantics.",
-        "The example is reproducible offline."
-      ],
-      "done_when": [
-        "A Codex-oriented workflow exists for querying the MCP server.",
-        "The workflow is documented and testable.",
-        "The smoke test passes offline."
-      ]
     }
   ]
 }

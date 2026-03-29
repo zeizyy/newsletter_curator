@@ -47,4 +47,3 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T64` launch docs and smoke coverage for the MCP server
 - `T65` optional query ergonomics for the recent-story MCP tool
 - `T66` publish the MCP server for local agent discovery
-- `T67` add a Codex-oriented workflow that uses the MCP server

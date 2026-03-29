@@ -37,7 +37,7 @@ def test_mcp_publish_manifest(repo_root):
     server = mcp_manifest["mcpServers"]["newsletter-curator-story-feed"]
     assert server["type"] == "stdio"
     assert server["command"] == "uv"
-    assert "../../scripts/newsletter_mcp_server.py" in server["args"]
+    assert "../../scripts/newsletter_mcp_launch.py" in server["args"]
     assert "../../config.yaml" in server["args"]
 
     entry = marketplace["plugins"][0]
