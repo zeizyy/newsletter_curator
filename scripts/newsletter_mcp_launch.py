@@ -18,6 +18,12 @@ SSH_PORT_ENV = "CURATOR_MCP_SSH_PORT"
 REMOTE_REPO_ENV = "CURATOR_MCP_REMOTE_REPO_DIR"
 REMOTE_CONFIG_ENV = "CURATOR_MCP_REMOTE_CONFIG_PATH"
 
+DEFAULT_TARGET = "ssh"
+DEFAULT_SSH_HOST = "159.65.104.249"
+DEFAULT_SSH_USER = "root"
+DEFAULT_REMOTE_REPO_DIR = "/root/newsletter_curator"
+DEFAULT_REMOTE_CONFIG_PATH = "config.yaml"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -31,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="../../config.yaml",
         help=(
             "Config path forwarded to the local MCP server when "
-            f"{TARGET_ENV}=local or unset."
+            f"{TARGET_ENV}=local."
         ),
     )
     parser.add_argument(
@@ -49,6 +55,15 @@ def _require_env(env: dict[str, str], name: str) -> str:
     return value
 
 
+def _validate_ssh_host(raw_host: str) -> str:
+    ssh_host = raw_host.strip()
+    if ssh_host.startswith(("http://", "https://")):
+        raise ValueError(
+            f"{SSH_HOST_ENV} must be an SSH host or IP, not a URL: {ssh_host}"
+        )
+    return ssh_host
+
+
 def _build_remote_command(remote_repo_dir: str, remote_config_path: str) -> str:
     return (
         f"cd {shlex.quote(remote_repo_dir)} && "
@@ -63,7 +78,7 @@ def build_launch_command(
     env: dict[str, str] | None = None,
 ) -> tuple[str, list[str]]:
     env = dict(env or os.environ)
-    target = str(env.get(TARGET_ENV, "local")).strip().lower() or "local"
+    target = str(env.get(TARGET_ENV, DEFAULT_TARGET)).strip().lower() or DEFAULT_TARGET
 
     if target == "local":
         return target, [
@@ -76,11 +91,16 @@ def build_launch_command(
     if target != "ssh":
         raise ValueError(f"Unsupported {TARGET_ENV} value: {target}")
 
-    ssh_host = _require_env(env, SSH_HOST_ENV)
-    remote_repo_dir = _require_env(env, REMOTE_REPO_ENV)
-    remote_config_path = str(env.get(REMOTE_CONFIG_ENV, "config.yaml")).strip() or "config.yaml"
-    ssh_user = str(env.get(SSH_USER_ENV, "")).strip()
+    ssh_host = _validate_ssh_host(str(env.get(SSH_HOST_ENV, DEFAULT_SSH_HOST)))
+    remote_repo_dir = str(env.get(REMOTE_REPO_ENV, DEFAULT_REMOTE_REPO_DIR)).strip()
+    remote_config_path = (
+        str(env.get(REMOTE_CONFIG_ENV, DEFAULT_REMOTE_CONFIG_PATH)).strip()
+        or DEFAULT_REMOTE_CONFIG_PATH
+    )
+    ssh_user = str(env.get(SSH_USER_ENV, DEFAULT_SSH_USER)).strip() or DEFAULT_SSH_USER
     ssh_port = str(env.get(SSH_PORT_ENV, "")).strip()
+    if not remote_repo_dir:
+        raise ValueError(f"{REMOTE_REPO_ENV} must not be empty when {TARGET_ENV}=ssh.")
 
     destination = ssh_host if not ssh_user else f"{ssh_user}@{ssh_host}"
     command = ["ssh", "-T"]
@@ -92,7 +112,11 @@ def build_launch_command(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    target, command = build_launch_command(local_config_path=args.local_config_path)
+    try:
+        target, command = build_launch_command(local_config_path=args.local_config_path)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if args.describe_command:
         json.dump({"target": target, "command": command}, sys.stdout, indent=2)
         sys.stdout.write("\n")

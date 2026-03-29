@@ -99,17 +99,28 @@ uv run python ../../scripts/newsletter_mcp_launch.py --local-config-path ../../c
 
 That command is stored in the plugin-local `.mcp.json` and is intended to run from the plugin root.
 
-By default it uses the repo-local SQLite database referenced by `../../config.yaml`. To make the MCP session read from the real SQLite database on the real curator host, run the same published plugin with:
+By default it targets the real curator host over SSH and runs the checked-in read-only MCP server there:
+
+```bash
+ssh -T root@159.65.104.249 \
+  'cd /root/newsletter_curator && exec uv run python scripts/newsletter_mcp_server.py --config-path config.yaml'
+```
+
+That means the SQLite file is read locally on the production server instead of over the network.
+
+The published defaults are:
 
 ```bash
 export CURATOR_MCP_TARGET=ssh
-export CURATOR_MCP_SSH_HOST=your-server.example.com
-export CURATOR_MCP_SSH_USER=deploy-user
-export CURATOR_MCP_REMOTE_REPO_DIR=/srv/newsletter_curator
-export CURATOR_MCP_REMOTE_CONFIG_PATH=/srv/newsletter_curator/config.yaml
+export CURATOR_MCP_SSH_HOST=159.65.104.249
+export CURATOR_MCP_SSH_USER=root
+export CURATOR_MCP_REMOTE_REPO_DIR=/root/newsletter_curator
+export CURATOR_MCP_REMOTE_CONFIG_PATH=config.yaml
 ```
 
-In `ssh` mode the local manifest keeps the same stdio MCP interface, but the process actually executes `scripts/newsletter_mcp_server.py` on the remote host so SQLite is read locally on that server instead of over the network.
+Use `CURATOR_MCP_TARGET=local` during development if you want the published plugin to read the repo-local SQLite database through `../../config.yaml` instead.
+
+If `CURATOR_MCP_SSH_HOST` is set manually, it must be a raw SSH host or IP. URL-shaped values like `http://159.65.104.249` are rejected intentionally so they are never emitted into the SSH command.
 
 For an end-to-end delivery dry run that sends only to one test inbox:
 

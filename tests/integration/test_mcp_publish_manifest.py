@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
@@ -39,6 +40,7 @@ def test_mcp_publish_manifest(repo_root):
     assert server["command"] == "uv"
     assert "../../scripts/newsletter_mcp_launch.py" in server["args"]
     assert "../../config.yaml" in server["args"]
+    assert "root@159.65.104.249" in server["note"]
 
     entry = marketplace["plugins"][0]
     assert marketplace["name"] == "newsletter-curator-local"
@@ -54,6 +56,7 @@ def test_mcp_publish_manifest(repo_root):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env={**os.environ, "CURATOR_MCP_TARGET": "local"},
     )
     try:
         _send_message(

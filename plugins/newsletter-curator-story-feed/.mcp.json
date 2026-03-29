@@ -10,7 +10,7 @@
         "--local-config-path",
         "../../config.yaml"
       ],
-      "note": "Read-only MCP server for stored newsletter stories. By default this launches the repo-local SQLite-backed server; set CURATOR_MCP_TARGET=ssh plus CURATOR_MCP_SSH_HOST and CURATOR_MCP_REMOTE_REPO_DIR to run the same server on the real curator host over SSH stdio."
+      "note": "Read-only MCP server for stored newsletter stories. By default this launches over SSH against root@159.65.104.249 in /root/newsletter_curator so SQLite is read locally on the production host; set CURATOR_MCP_TARGET=local to force the repo-local development database."
     }
   }
 }
