@@ -112,7 +112,7 @@ def seed_review_fixture(
             "database": {"path": str(root / "curator.sqlite3")},
             "email": {
                 "digest_recipients": [subscriber_email],
-                "digest_subject": "Snacks Daily Digest",
+                "digest_subject": "AI Signal Daily",
             },
             "additional_sources": {
                 "enabled": True,
@@ -178,20 +178,20 @@ def seed_review_fixture(
     newsletter_date = "2026-03-28"
     repository.upsert_daily_newsletter(
         newsletter_date=newsletter_date,
-        subject="Snacks Daily Digest",
+        subject="AI Signal Daily",
         body=(
             "1. Rates reset changes software valuations\n"
             "   https://example.com/markets/rates-reset\n\n"
-            "Was this email forwarded to you? Don't miss out on future stories — subscribe to "
-            "Snacks and get your daily dose of financial news straight to your inbox. "
+            "Was this email forwarded to you? Don't miss out on future stories - subscribe to "
+            "AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories. "
             "https://buttondown.com/zeizyynewsletter"
         ),
         html_body=(
-            "<html><body><h1>Snacks Daily Digest</h1>"
+            "<html><body><h1>AI Signal Daily</h1>"
             "<p>Rates reset changes software valuations</p>"
-            "<p>Was this email forwarded to you? Don't miss out on future stories — "
-            "subscribe to Snacks and get your daily dose of financial news straight to your inbox. "
-            '<a href="https://buttondown.com/zeizyynewsletter">Subscribe</a></p>'
+            "<p>Was this email forwarded to you? Don't miss out on future stories - "
+            '<a href="https://buttondown.com/zeizyynewsletter">subscribe to AI Signal Daily</a> '
+            "for a concise daily briefing on the highest-signal AI and tech stories.</p>"
             "</body></html>"
         ),
         selected_items=[
@@ -646,7 +646,7 @@ def main() -> int:
                 session=browser_session,
                 pwcli_path=pwcli_path,
             )
-            ensure_contains(preview_snapshot, "Snacks Daily Digest", context="preview snapshot")
+            ensure_contains(preview_snapshot, "AI Signal Daily", context="preview snapshot")
             ensure_contains(
                 preview_snapshot,
                 "Was this email forwarded to you?",

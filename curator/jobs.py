@@ -58,7 +58,7 @@ BUTTONDOWN_PAGE_SIZE = 100
 NEWSLETTER_SIGNUP_CTA_URL = "https://buttondown.com/zeizyynewsletter"
 NEWSLETTER_SIGNUP_CTA_TEXT = (
     "Was this email forwarded to you? Don't miss out on future stories - "
-    "subscribe to Snacks and get your daily dose of financial news straight to your inbox."
+    "subscribe to AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories."
 )
 BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
     "blocked",
@@ -256,8 +256,8 @@ def append_signup_cta_to_newsletter(body: str, html_body: str) -> tuple[str, str
             'background:#f8fbff;font-size:14px;line-height:1.6;color:#31424a;">'
             "Was this email forwarded to you? Don't miss out on future stories - "
             f'<a href="{NEWSLETTER_SIGNUP_CTA_URL}" '
-            'style="color:#0f8661;font-weight:700;text-decoration:none;">subscribe to Snacks</a> '
-            "and get your daily dose of financial news straight to your inbox."
+            'style="color:#0f8661;font-weight:700;text-decoration:none;">subscribe to AI Signal Daily</a> '
+            "for a concise daily briefing on the highest-signal AI and tech stories."
             "</div>"
         )
         if "</body>" in normalized_html.lower():

@@ -126,8 +126,8 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
         if page == "preview":
             return "\n".join(
                 [
-                    '- heading "Snacks Daily Digest" [level=2] [ref=e29]',
-                    "- generic [ref=e54]: 1. Rates reset changes software valuations https://example.com/markets/rates-reset Was this email forwarded to you? Don't miss out on future stories — subscribe to Snacks and get your daily dose of financial news straight to your inbox. https://buttondown.com/zeizyynewsletter",
+                    '- heading "AI Signal Daily" [level=2] [ref=e29]',
+                    "- generic [ref=e54]: 1. Rates reset changes software valuations https://example.com/markets/rates-reset Was this email forwarded to you? Don't miss out on future stories - subscribe to AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories. https://buttondown.com/zeizyynewsletter",
                 ]
             )
         raise AssertionError(f"Unexpected fake page state: {page}")
