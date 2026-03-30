@@ -64,6 +64,19 @@ def write_file(path: Path, content: str, mode: int = 0o644) -> None:
     path.chmod(mode)
 
 
+def read_env_assignments(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    assignments: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        assignments[key.strip()] = value
+    return assignments
+
+
 def build_env_file(
     *,
     repo_dir: Path,
@@ -295,6 +308,11 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     env_file = output_dir / "newsletter-curator.env"
+    existing_env = read_env_assignments(env_file)
+    openai_api_key = str(args.openai_api_key or "").strip() or existing_env.get("OPENAI_API_KEY", "")
+    buttondown_api_key = (
+        str(args.buttondown_api_key or "").strip() or existing_env.get("BUTTONDOWN_API_KEY", "")
+    )
     admin_script = output_dir / "start_admin_server.sh"
     daily_script = output_dir / "run_daily_pipeline.sh"
     fetch_gmail_script = output_dir / "run_fetch_gmail.sh"
@@ -313,8 +331,8 @@ def main() -> None:
             admin_token=args.admin_token,
             mcp_token=args.mcp_token,
             admin_service_name=args.service_name,
-            openai_api_key=args.openai_api_key,
-            buttondown_api_key=args.buttondown_api_key,
+            openai_api_key=openai_api_key,
+            buttondown_api_key=buttondown_api_key,
             public_base_url=args.public_base_url,
             enable_telemetry=args.enable_telemetry,
         ),

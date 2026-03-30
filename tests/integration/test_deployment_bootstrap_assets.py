@@ -15,6 +15,7 @@ def _run_bootstrap(
     *,
     extra_env: dict[str, str] | None = None,
     uv_bin: str = "/usr/local/bin/uv",
+    include_api_keys: bool = True,
 ):
     output_dir = tmp_path / "deploy-generated"
     script_path = repo_root / "scripts" / "bootstrap_server.py"
@@ -24,32 +25,39 @@ def _run_bootstrap(
     if extra_env:
         env.update(extra_env)
 
+    command = [
+        sys.executable,
+        str(script_path),
+        "--repo-dir",
+        str(repo_dir),
+        "--output-dir",
+        str(output_dir),
+        "--uv-bin",
+        uv_bin,
+        "--config-path",
+        str(config_path),
+        "--admin-host",
+        "0.0.0.0",
+        "--admin-port",
+        "9090",
+        "--admin-token",
+        "test-admin-token",
+        "--public-base-url",
+        "https://curator.example.com",
+        "--enable-telemetry",
+    ]
+    if include_api_keys:
+        command.extend(
+            [
+                "--openai-api-key",
+                "test-openai-key",
+                "--buttondown-api-key",
+                "test-buttondown-key",
+            ]
+        )
+
     result = subprocess.run(
-        [
-            sys.executable,
-            str(script_path),
-            "--repo-dir",
-            str(repo_dir),
-            "--output-dir",
-            str(output_dir),
-            "--uv-bin",
-            uv_bin,
-            "--config-path",
-            str(config_path),
-            "--admin-host",
-            "0.0.0.0",
-            "--admin-port",
-            "9090",
-            "--admin-token",
-            "test-admin-token",
-            "--openai-api-key",
-            "test-openai-key",
-            "--buttondown-api-key",
-            "test-buttondown-key",
-            "--public-base-url",
-            "https://curator.example.com",
-            "--enable-telemetry",
-        ],
+        command,
         check=True,
         capture_output=True,
         text=True,
@@ -218,6 +226,25 @@ def test_generated_daily_wrapper_stops_and_restarts_admin_service(tmp_path, repo
         "uv run python daily_pipeline.py --dry-run-recipient you@example.com",
         "systemctl --user start newsletter-curator-admin",
     ]
+
+
+def test_bootstrap_reuses_existing_api_keys_when_flags_are_omitted(tmp_path, repo_root):
+    _run_bootstrap(tmp_path, repo_root)
+
+    result, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={
+            "OPENAI_API_KEY": "",
+            "BUTTONDOWN_API_KEY": "",
+        },
+        include_api_keys=False,
+    )
+
+    env_text = paths["env_file"].read_text(encoding="utf-8")
+    assert "OPENAI_API_KEY=test-openai-key" in env_text
+    assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
+    assert "Generated deployment assets:" in result.stdout
 
 
 def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(tmp_path, repo_root):
