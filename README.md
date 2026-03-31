@@ -282,9 +282,9 @@ Notes:
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
 - `--install-logrotate` usually needs root if you leave `--logrotate-dir` at `/etc/logrotate.d`.
 - The generated cron schedule defaults to:
-  - `30 14 * * *` run `daily_pipeline.py`
+  - `0 13 * * *` run `daily_pipeline.py`
 - The default cron output now uses fixed UTC times instead of `CRON_TZ`, because some cron daemons ignore `CRON_TZ`.
-- `30 14 * * *` corresponds to `6:30 AM PST` exactly. On March 22, 2026 Los Angeles is on PDT, so that same fixed UTC schedule currently lands at `7:30 AM` local.
+- `0 13 * * *` corresponds to `5:00 AM PST` exactly. On March 22, 2026 Los Angeles is on PDT, so that same fixed UTC schedule currently lands at `6:00 AM` local.
 - Fixed UTC does not automatically follow DST, so update the schedule manually if you want a different winter/summer local time mapping.
 - Override schedules with:
   - `--daily-schedule`

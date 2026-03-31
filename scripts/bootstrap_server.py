@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
         in {"1", "true", "yes", "on"},
     )
     parser.add_argument("--cron-timezone", default="")
-    parser.add_argument("--daily-schedule", default="30 14 * * *")
+    parser.add_argument("--daily-schedule", default="0 13 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--debug-log-file", type=Path, default=None)
     parser.add_argument("--logrotate-file", type=Path, default=None)

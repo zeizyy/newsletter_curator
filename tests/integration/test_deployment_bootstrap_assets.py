@@ -199,7 +199,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
 
     cron_text = cron_file.read_text(encoding="utf-8")
     assert "CRON_TZ=" not in cron_text
-    assert "30 14 * * *" in cron_text
+    assert "0 13 * * *" in cron_text
     assert str(daily_script) in cron_text
     assert str(fetch_gmail_script) not in cron_text
     assert str(fetch_sources_script) not in cron_text
