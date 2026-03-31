@@ -62,6 +62,12 @@ Production default:
 uv run python daily_pipeline.py
 ```
 
+One-off full-pipeline dry run to a single inbox:
+
+```bash
+uv run python daily_pipeline.py --dry-run-recipient you@example.com
+```
+
 Manual debug entrypoints:
 
 ```bash
@@ -262,6 +268,17 @@ systemctl --user status newsletter-curator-admin
 ```
 
 For a one-off server-side dry run through the generated wrapper:
+
+```bash
+./deploy/generated/run_daily_pipeline.sh --dry-run-recipient you@example.com
+./deploy/generated/run_deliver_digest.sh --dry-run-recipient you@example.com
+```
+
+Use `run_daily_pipeline.sh` when you want the full fetch + render + deliver flow and the generated
+admin stop/start wrapper behavior. Use `run_deliver_digest.sh` when today’s stories are already in
+the repository and you only want to regenerate or resend the digest.
+
+For a delivery-only server-side dry run through the generated wrapper:
 
 ```bash
 ./deploy/generated/run_deliver_digest.sh --dry-run-recipient you@example.com
