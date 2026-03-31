@@ -42,6 +42,8 @@ def _run_bootstrap(
         "9090",
         "--admin-token",
         "test-admin-token",
+        "--debug-log-token",
+        "test-debug-log-token",
         "--public-base-url",
         "https://curator.example.com",
         "--enable-telemetry",
@@ -150,6 +152,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "CURATOR_ADMIN_PORT=9090" in env_text
     assert "CURATOR_ADMIN_TOKEN=test-admin-token" in env_text
     assert "CURATOR_MCP_TOKEN=test-admin-token" in env_text
+    assert "CURATOR_DEBUG_LOG_TOKEN=test-debug-log-token" in env_text
+    assert f"CURATOR_DEBUG_LOG_PATH={output_dir / 'debug.ndjson'}" in env_text
     assert "CURATOR_ADMIN_SERVICE_NAME=newsletter-curator-admin" in env_text
     assert "CURATOR_PAUSE_ADMIN_DURING_DAILY=1" in env_text
     assert "OPENAI_API_KEY=test-openai-key" in env_text
@@ -195,6 +199,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"ExecStart={admin_script}" in service_text
 
     assert "Generated deployment assets:" in result.stdout
+    assert f"- Debug log file: {output_dir / 'debug.ndjson'}" in result.stdout
     assert "Warning: --public-base-url has no explicit port while --admin-port is set to 9090." in result.stdout
 
 

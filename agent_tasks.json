@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-28",
+  "updated_at": "2026-03-31",
   "agent_roles": {
     "planner": "Maintains agent_spec.md, keeps the task map aligned to the product shape, and drafts each sprint contract before coding.",
     "generator": "Implements exactly one bounded task per session, updates tests, and leaves the repo mergeable.",
@@ -1107,6 +1107,35 @@
         "Classifier output is versioned and replayable against prior labels",
         "The agent can compare old and new classifier behavior before rollout",
         "The replay-loop integration test passes"
+      ]
+    },
+    {
+      "id": "T68",
+      "title": "Secure read-only debug log endpoint for production troubleshooting",
+      "status": "completed",
+      "depends_on": ["T34", "T66"],
+      "scope": [
+        "Persist structured debug events to one configured log file without changing the existing stdout behavior",
+        "Expose a token-gated GET /debug/logs endpoint on the Flask admin server that returns a bounded tail of that file",
+        "Keep the endpoint read-only, path-fixed, and safe to share with Codex for production debugging"
+      ],
+      "artifacts": [
+        "shared debug-log helpers",
+        "admin debug-log route and auth validation",
+        "integration coverage for authorized and unauthorized debug-log reads"
+      ],
+      "contract_file": "agent_contracts/T68_secure_debug_log_endpoint.md",
+      "test_command": "uv run pytest tests/integration/test_admin_debug_log_endpoint.py",
+      "integration_test": "tests/integration/test_admin_debug_log_endpoint.py",
+      "evaluator_checks": [
+        "The endpoint requires CURATOR_DEBUG_LOG_TOKEN and does not reuse admin, subscriber, or MCP auth",
+        "Only one configured absolute file path is readable and request parameters cannot switch files",
+        "The response is bounded, read-only, and safe for remote troubleshooting"
+      ],
+      "done_when": [
+        "Structured debug events can be mirrored into a configured debug log file",
+        "GET /debug/logs returns a bounded JSON tail from that file only when the dedicated token is present",
+        "The debug-log endpoint integration test passes"
       ]
     },
     {

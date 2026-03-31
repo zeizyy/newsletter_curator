@@ -16,6 +16,7 @@ Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to g
 - Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
 - Delivery readiness checks against ingest run history and stored fresh stories
 - Deterministic canned-data mode for local development and integration testing
+- Optional token-gated debug log endpoint for sharing bounded production log tails with Codex
 
 ## Pipeline Design
 1) `daily_pipeline.py` is the production entrypoint. It runs Gmail ingest, source ingest, then digest delivery in sequence.
@@ -162,6 +163,38 @@ curl -sS \
 
 If you bootstrap the server with `scripts/bootstrap_server.py`, it now writes `CURATOR_MCP_TOKEN` into the generated env file. By default that token matches `CURATOR_ADMIN_TOKEN`; pass `--mcp-token` if you want a separate read-only token for shared MCP access.
 
+Remote debug log endpoint on the admin host:
+
+- endpoint: `https://YOUR_PUBLIC_CURATOR_HOST/debug/logs`
+- auth: `Authorization: Bearer $CURATOR_DEBUG_LOG_TOKEN` or `X-Debug-Log-Token: $CURATOR_DEBUG_LOG_TOKEN`
+- env:
+  - `CURATOR_DEBUG_LOG_TOKEN` enables the route
+  - `CURATOR_DEBUG_LOG_PATH` points at the single absolute NDJSON log file to expose
+
+The route is read-only and returns a bounded JSON tail:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer YOUR_DEBUG_LOG_TOKEN' \
+  'https://YOUR_PUBLIC_CURATOR_HOST/debug/logs?lines=200'
+```
+
+Example response shape:
+
+```json
+{
+  "path": "/root/newsletter_curator/deploy/generated/debug.ndjson",
+  "line_count": 200,
+  "truncated": true,
+  "lines": [
+    "{\"event\":\"delivery_started\",...}",
+    "{\"event\":\"pipeline_completed\",...}"
+  ]
+}
+```
+
+This endpoint reads exactly one configured file path, does not accept a file parameter, and is intended for sharing a temporary read-only debug surface with Codex during production incidents by providing the endpoint URL plus the token separately.
+
 For an end-to-end delivery dry run that sends only to one test inbox:
 
 ```bash
@@ -211,6 +244,7 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --admin-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
+  --debug-log-token 'choose-a-separate-long-random-token' \
   --buttondown-api-key 'your_buttondown_api_key' \
   --enable-telemetry \
   --enable-linger \
@@ -226,6 +260,7 @@ What this writes by default:
 - `deploy/generated/run_deliver_digest.sh`
 - `deploy/generated/newsletter_curator.cron`
 - `deploy/generated/newsletter-curator-admin.service`
+- `deploy/generated/debug.ndjson`
 
 What the script installs when flags are passed:
 - `--install-systemd-user`: copies the generated admin service into `~/.config/systemd/user/`, reloads `systemd --user`, and enables it immediately
@@ -240,6 +275,7 @@ Notes:
 - Telemetry tracking is now disabled by default. Pass `--enable-telemetry` only when the `/track/*` endpoints are publicly reachable.
 - Set `--public-base-url` to the externally reachable admin origin for subscriber login links, telemetry links, and open-tracking pixels. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
+- Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The generated cron schedule defaults to:
   - `30 14 * * *` run `daily_pipeline.py`
 - The default cron output now uses fixed UTC times instead of `CRON_TZ`, because some cron daemons ignore `CRON_TZ`.

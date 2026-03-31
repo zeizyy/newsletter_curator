@@ -11,6 +11,14 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 import yaml
 
 from curator import config as config_module
+from curator.debug_logs import (
+    DEBUG_LOG_TOKEN_HEADER,
+    configured_debug_log_path,
+    configured_debug_log_token,
+    parse_debug_log_line_count,
+    read_debug_log_tail,
+    validate_configured_debug_log_path,
+)
 from curator.gmail import normalize_gmail_source_name
 from curator.mcp_server import (
     MCP_PROTOCOL_VERSION,
@@ -33,6 +41,7 @@ SUBSCRIBER_SESSION_TTL_DAYS = 30
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
 MCP_ENDPOINT_PATH = "/mcp"
 MCP_TOKEN_HEADER = "X-MCP-Token"
+DEBUG_LOG_ENDPOINT_PATH = "/debug/logs"
 
 
 def load_config_file() -> dict:
@@ -189,6 +198,13 @@ def get_provided_mcp_token() -> str:
         request.headers.get(MCP_TOKEN_HEADER, "").strip()
         or request.headers.get("X-Admin-Token", "").strip()
     )
+
+
+def get_provided_debug_log_token() -> str:
+    authorization = request.headers.get("Authorization", "").strip()
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return request.headers.get(DEBUG_LOG_TOKEN_HEADER, "").strip()
 
 
 def normalize_email_address(value: str | None) -> str:
@@ -721,6 +737,42 @@ def update_source_selections(repository, form) -> None:
 @app.route("/health", methods=["GET"])
 def health():
     return {"ok": True}
+
+
+@app.route(DEBUG_LOG_ENDPOINT_PATH, methods=["GET"])
+def debug_logs():
+    expected_token = configured_debug_log_token()
+    if not expected_token:
+        return {"error": "Debug log endpoint is not configured."}, 503
+
+    provided_token = get_provided_debug_log_token()
+    if provided_token != expected_token:
+        return {"error": "Unauthorized."}, 401
+
+    try:
+        requested_lines = parse_debug_log_line_count(request.args.get("lines"))
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    path, path_status = validate_configured_debug_log_path(configured_debug_log_path())
+    if path is None:
+        if path_status == "missing":
+            return {"error": "Debug log endpoint is not configured."}, 503
+        return {"error": "Debug log path is invalid."}, 503
+    if not path.exists():
+        return {"error": "Debug log file was not found."}, 404
+
+    try:
+        lines, truncated = read_debug_log_tail(path, lines=requested_lines)
+    except OSError:
+        return {"error": "Debug log file could not be read."}, 503
+
+    return {
+        "path": str(path),
+        "line_count": len(lines),
+        "truncated": truncated,
+        "lines": lines,
+    }
 
 
 @app.route(MCP_ENDPOINT_PATH, methods=["GET", "POST", "DELETE"])

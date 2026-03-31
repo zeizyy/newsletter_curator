@@ -30,6 +30,14 @@ def parse_args() -> argparse.Namespace:
             "Defaults to CURATOR_MCP_TOKEN, and falls back to --admin-token when omitted."
         ),
     )
+    parser.add_argument(
+        "--debug-log-token",
+        default=os.getenv("CURATOR_DEBUG_LOG_TOKEN", ""),
+        help=(
+            "Dedicated bearer or URL token for the read-only /debug/logs endpoint. "
+            "Leave empty to keep the endpoint disabled."
+        ),
+    )
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--buttondown-api-key", default=os.getenv("BUTTONDOWN_API_KEY", ""))
     parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
@@ -42,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cron-timezone", default="")
     parser.add_argument("--daily-schedule", default="30 14 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
+    parser.add_argument("--debug-log-file", type=Path, default=None)
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
     parser.add_argument(
@@ -85,6 +94,8 @@ def build_env_file(
     admin_port: int,
     admin_token: str,
     mcp_token: str,
+    debug_log_token: str,
+    debug_log_path: Path,
     admin_service_name: str,
     openai_api_key: str,
     buttondown_api_key: str,
@@ -99,6 +110,8 @@ def build_env_file(
             f"CURATOR_ADMIN_PORT={admin_port}",
             f"CURATOR_ADMIN_TOKEN={admin_token}",
             f"CURATOR_MCP_TOKEN={mcp_token}",
+            f"CURATOR_DEBUG_LOG_TOKEN={debug_log_token}",
+            f"CURATOR_DEBUG_LOG_PATH={debug_log_path}",
             f"CURATOR_ADMIN_SERVICE_NAME={admin_service_name}",
             "CURATOR_PAUSE_ADMIN_DURING_DAILY=1",
             f"OPENAI_API_KEY={openai_api_key}",
@@ -313,6 +326,19 @@ def main() -> None:
     buttondown_api_key = (
         str(args.buttondown_api_key or "").strip() or existing_env.get("BUTTONDOWN_API_KEY", "")
     )
+    debug_log_token = (
+        str(args.debug_log_token or "").strip() or existing_env.get("CURATOR_DEBUG_LOG_TOKEN", "")
+    )
+    debug_log_path = (
+        args.debug_log_file.resolve()
+        if args.debug_log_file is not None
+        else Path(
+            existing_env.get(
+                "CURATOR_DEBUG_LOG_PATH",
+                str((output_dir / "debug.ndjson").resolve()),
+            )
+        ).expanduser().resolve()
+    )
     admin_script = output_dir / "start_admin_server.sh"
     daily_script = output_dir / "run_daily_pipeline.sh"
     fetch_gmail_script = output_dir / "run_fetch_gmail.sh"
@@ -330,6 +356,8 @@ def main() -> None:
             admin_port=args.admin_port,
             admin_token=args.admin_token,
             mcp_token=args.mcp_token,
+            debug_log_token=debug_log_token,
+            debug_log_path=debug_log_path,
             admin_service_name=args.service_name,
             openai_api_key=openai_api_key,
             buttondown_api_key=buttondown_api_key,
@@ -432,6 +460,7 @@ def main() -> None:
     print(f"- Admin server script: {admin_script}")
     print(f"- Cron file: {cron_file}")
     print(f"- Log file: {log_file}")
+    print(f"- Debug log file: {debug_log_path}")
     if args.install_systemd_user:
         print("- Admin app service installed and restarted. Check: systemctl --user status "
               f"{args.service_name}")

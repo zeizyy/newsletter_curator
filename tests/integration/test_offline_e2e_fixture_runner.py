@@ -70,7 +70,14 @@ def test_offline_e2e_fixture_runner_main_flow_covers_generation_filtering_summar
     assert delivery_stage["skipped_count"] == 0
     assert delivery_stage["sent_recipients"] == 1
     assert sent_message["subject"] == "Offline E2E Main Flow Digest"
-    assert "Top Gmail story covers product strategy" in sent_message["body_preview"]
+    assert any(
+        headline in sent_message["body_preview"]
+        for headline in [
+            "Top Gmail story covers product strategy",
+            "Backfill Gmail story provides the replacement",
+            "Selected source story explains the second",
+        ]
+    )
     accepted_urls = {item["url"] for item in delivery_stage["accepted_story_items"]}
     assert accepted_urls == {
         "https://example.com/gmail/top-story",

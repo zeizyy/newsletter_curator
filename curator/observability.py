@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+from .debug_logs import append_debug_log_line
+
 
 def emit_event(event: str, /, **payload) -> None:
-    print(json.dumps({"event": event, **payload}), flush=True)
+    rendered = json.dumps({"event": event, **payload})
+    print(rendered, flush=True)
+    append_debug_log_line(rendered)
 
 
 def compact_model_usage(usage_by_model: Mapping[str, object] | None) -> dict[str, dict[str, int]]:

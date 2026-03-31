@@ -35,6 +35,7 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Package the server for local discovery by agent tooling after the tool contract is stable.
 - Add a Codex-oriented consumption workflow only after the plugin or manifest contract exists.
 - This wave is intentionally separate from the pending evaluation tasks (`T43` through `T46`); do not make them prerequisites for the MCP work.
+- Add a token-gated, read-only debug log endpoint on the existing Flask/admin server so operators can share bounded production log tails for remote debugging without exposing arbitrary file reads or admin control surfaces.
 
 # Task Map
 - `T57` admin-service quiesce and restart wrapper
@@ -47,3 +48,4 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T64` launch docs and smoke coverage for the MCP server
 - `T65` optional query ergonomics for the recent-story MCP tool
 - `T66` publish the MCP server for local agent discovery
+- `T68` secure read-only debug log endpoint for production troubleshooting
