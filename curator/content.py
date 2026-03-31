@@ -8,6 +8,8 @@ from bs4 import BeautifulSoup
 import requests
 from trafilatura import extract
 
+from .observability import emit_event
+
 MAX_FETCH_RESPONSE_BYTES = 2_000_000
 FETCH_CHUNK_SIZE_BYTES = 64 * 1024
 
@@ -395,7 +397,11 @@ def fetch_article_details(
         try:
             response_text, truncated = _read_response_text_limited(response)
             if truncated:
-                print(f"Truncated article response: {url} ({MAX_FETCH_RESPONSE_BYTES} bytes cap)")
+                emit_event(
+                    "article_fetch_truncated",
+                    url=url,
+                    max_response_bytes=MAX_FETCH_RESPONSE_BYTES,
+                )
             return extract_article_details_from_html(
                 response_text,
                 url=url,
@@ -404,7 +410,11 @@ def fetch_article_details(
         finally:
             response.close()
     except requests.RequestException as exc:
-        print(f"Failed to fetch article: {url} ({exc})")
+        emit_event(
+            "article_fetch_failed",
+            url=url,
+            error=str(exc),
+        )
         return {"article_text": "", "document_title": "", "document_excerpt": ""}
 
 

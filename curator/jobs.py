@@ -31,6 +31,7 @@ from .llm import (
     select_top_stories,
     summarize_article_with_llm,
 )
+from .observability import emit_event
 from .pipeline import process_story, run_job as run_pipeline_job
 from .rendering import (
     group_summaries_by_category,
@@ -174,27 +175,17 @@ def _resolve_buttondown_subscribers(
             requests_get=requests_get,
         )
     except (requests.RequestException, ValueError) as exc:
-        print(
-            json.dumps(
-                {
-                    "event": "buttondown_subscribers_fallback",
-                    "reason": str(exc),
-                    "fallback_recipient_count": len(configured_recipients),
-                },
-                sort_keys=True,
-            )
+        emit_event(
+            "buttondown_subscribers_fallback",
+            reason=str(exc),
+            fallback_recipient_count=len(configured_recipients),
         )
         return [], "config_fallback"
     if buttondown_subscribers:
         return buttondown_subscribers, "buttondown"
-    print(
-        json.dumps(
-            {
-                "event": "buttondown_subscribers_empty_fallback",
-                "fallback_recipient_count": len(configured_recipients),
-            },
-            sort_keys=True,
-        )
+    emit_event(
+        "buttondown_subscribers_empty_fallback",
+        fallback_recipient_count=len(configured_recipients),
     )
     return [], "config_fallback"
 
@@ -375,17 +366,11 @@ def summarize_for_ingest(
 
 
 def _log_ingest_progress(job_name: str, stage: str, **payload) -> None:
-    print(
-        json.dumps(
-            {
-                "event": "ingest_progress",
-                "job": job_name,
-                "stage": stage,
-                **payload,
-            },
-            sort_keys=True,
-        ),
-        flush=True,
+    emit_event(
+        "ingest_progress",
+        job=job_name,
+        stage=stage,
+        **payload,
     )
 
 
@@ -1225,6 +1210,7 @@ def run_daily_orchestrator_job(
 
     def run_stage(stage_name: str, stage_fn) -> None:
         stage_runtime_capture = start_runtime_capture()
+        emit_event("daily_orchestrator_stage_started", stage=stage_name)
         try:
             stage_result = dict(stage_fn())
         except Exception as exc:
@@ -1235,10 +1221,22 @@ def run_daily_orchestrator_job(
                 "runtime": runtime,
             }
             failures.append({"stage": stage_name, "error": str(exc), "runtime": runtime})
+            emit_event(
+                "daily_orchestrator_stage_failed",
+                stage=stage_name,
+                error=str(exc),
+                runtime=runtime,
+            )
             return
 
         stage_result.setdefault("runtime", finish_runtime_capture(stage_runtime_capture))
         stages[stage_name] = stage_result
+        emit_event(
+            "daily_orchestrator_stage_completed",
+            stage=stage_name,
+            status=stage_result.get("status", "unknown"),
+            runtime=stage_result.get("runtime", {}),
+        )
 
     run_stage(
         "fetch_gmail",
@@ -1291,7 +1289,7 @@ def run_daily_orchestrator_job(
         "failures": failures,
         "runtime": finish_runtime_capture(runtime_capture),
     }
-    print(json.dumps({"event": "daily_orchestrator", "result": result}, sort_keys=True))
+    emit_event("daily_orchestrator", result=result)
     return result
 
 
@@ -1398,23 +1396,28 @@ def run_delivery_job(
     newsletter_cleanup = run_newsletter_ttl_cleanup(config, repository)
     readiness = assess_delivery_readiness(config, repository)
     resolved_recipients, recipient_source = resolve_digest_recipients_fn(config)
-    print(
-        json.dumps(
-            {"event": "delivery_readiness", "readiness": readiness},
-            sort_keys=True,
-        )
+    emit_event("delivery_readiness", readiness=readiness)
+    emit_event(
+        "delivery_recipients",
+        recipient_count=len(resolved_recipients),
+        recipient_source=recipient_source,
     )
-    print(
-        json.dumps(
-            {
-                "event": "delivery_recipients",
-                "recipient_count": len(resolved_recipients),
-                "recipient_source": recipient_source,
-            },
-            sort_keys=True,
-        )
+    emit_event(
+        "delivery_started",
+        audience_key=audience_key,
+        cached_newsletter_available=cached_newsletter is not None,
+        telemetry_enabled=telemetry_enabled,
+        persist_newsletter=persist_newsletter,
+        recipient_count=len(resolved_recipients),
+        readiness_ok=readiness["ok"],
     )
     if not readiness["ok"] and cached_newsletter is None:
+        emit_event(
+            "delivery_blocked",
+            audience_key=audience_key,
+            reason="not_ready_and_no_cached_newsletter",
+            readiness=readiness,
+        )
         raise RuntimeError(
             "No delivery-ready repository data is available for the required source types."
         )
@@ -1441,9 +1444,9 @@ def run_delivery_job(
         *,
         html_body: str,
         selected_items: list[dict],
-    ) -> str:
+    ) -> tuple[str, int]:
         if not telemetry_enabled:
-            return html_body
+            return html_body, 0
 
         base_url = resolve_tracking_base_url(config)
         open_token = repository.ensure_newsletter_open_token(daily_newsletter_id)
@@ -1455,10 +1458,20 @@ def run_delivery_job(
             }
             for row in tracked_links
         ]
-        return rewrite_newsletter_html_for_tracking(
-            html_body,
-            tracked_links=tracked_link_rows,
-            open_pixel_url=build_open_pixel_url(base_url, open_token),
+        emit_event(
+            "delivery_tracking_prepared",
+            audience_key=audience_key,
+            daily_newsletter_id=daily_newsletter_id,
+            tracked_link_count=len(tracked_links),
+            tracking_base_url=base_url,
+        )
+        return (
+            rewrite_newsletter_html_for_tracking(
+                html_body,
+                tracked_links=tracked_link_rows,
+                open_pixel_url=build_open_pixel_url(base_url, open_token),
+            ),
+            len(tracked_links),
         )
 
     def send_digest(
@@ -1469,14 +1482,24 @@ def run_delivery_job(
         selected_items: list[dict],
         daily_newsletter_id: int | None,
     ) -> int:
-        send_html = (
-            build_tracked_send_html(
+        tracked_link_count = 0
+        if daily_newsletter_id is not None:
+            send_html, tracked_link_count = build_tracked_send_html(
                 daily_newsletter_id,
                 html_body=html_body,
                 selected_items=selected_items,
             )
-            if daily_newsletter_id is not None
-            else html_body
+        else:
+            send_html = html_body
+        emit_event(
+            "delivery_send_started",
+            audience_key=audience_key,
+            daily_newsletter_id=daily_newsletter_id,
+            recipient_count=len(resolved_recipients),
+            selected_item_count=len(selected_items),
+            tracked_link_count=tracked_link_count,
+            telemetry_enabled=telemetry_enabled and daily_newsletter_id is not None,
+            subject=subject,
         )
         sent_count = 0
         for recipient in resolved_recipients:
@@ -1488,6 +1511,13 @@ def run_delivery_job(
                 html_body=send_html,
             )
             sent_count += 1
+        emit_event(
+            "delivery_send_completed",
+            audience_key=audience_key,
+            daily_newsletter_id=daily_newsletter_id,
+            sent_recipients=sent_count,
+            selected_item_count=len(selected_items),
+        )
         return sent_count
 
     def build_newsletter_content(
@@ -1527,6 +1557,13 @@ def run_delivery_job(
     )
     try:
         if cached_newsletter is not None:
+            emit_event(
+                "delivery_cached_newsletter_used",
+                audience_key=audience_key,
+                daily_newsletter_id=int(cached_newsletter["id"]),
+                newsletter_date=newsletter_date,
+                selected_item_count=len(cached_newsletter.get("selected_items", [])),
+            )
             cached_content = build_newsletter_content(cached_newsletter=cached_newsletter)
             delivery_html = render_delivery_html(
                 cached_content,
@@ -1586,6 +1623,14 @@ def run_delivery_job(
                     "runtime": runtime,
                 },
             )
+            emit_event(
+                "delivery_completed",
+                audience_key=audience_key,
+                cached_newsletter=True,
+                daily_newsletter_id=int(cached_newsletter["id"]),
+                sent_recipients=sent_recipients,
+                runtime=runtime,
+            )
             return {"run_id": run_id, **cached_result}
 
         pipeline_result = run_pipeline_job(
@@ -1598,6 +1643,16 @@ def run_delivery_job(
             group_summaries_by_category_fn=group_summaries_by_category_fn,
             render_digest_html_fn=render_digest_html_fn,
             send_email_fn=send_email_fn,
+        )
+        emit_event(
+            "delivery_pipeline_result",
+            audience_key=audience_key,
+            pipeline_status=str(pipeline_result.get("status", "")).strip() or "unknown",
+            ranked_candidates=int(pipeline_result.get("ranked_candidates", 0) or 0),
+            selected=int(pipeline_result.get("selected", 0) or 0),
+            accepted_items=int(pipeline_result.get("accepted_items", 0) or 0),
+            backfilled_count=int(pipeline_result.get("backfilled_count", 0) or 0),
+            skipped_count=int(pipeline_result.get("skipped_count", 0) or 0),
         )
         daily_newsletter_id = None
         if (
@@ -1635,6 +1690,13 @@ def run_delivery_job(
                         "newsletter_ttl_cleanup": newsletter_cleanup,
                     },
                 )
+                emit_event(
+                    "delivery_newsletter_persisted",
+                    audience_key=audience_key,
+                    daily_newsletter_id=daily_newsletter_id,
+                    newsletter_date=newsletter_date,
+                    selected_item_count=len(list(pipeline_result.get("accepted_story_items", []))),
+                )
             pipeline_result["sent_recipients"] = send_digest(
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
                 body=digest_body,
@@ -1665,6 +1727,15 @@ def run_delivery_job(
                 "runtime": runtime,
             },
         )
+        emit_event(
+            "delivery_completed",
+            audience_key=audience_key,
+            cached_newsletter=False,
+            daily_newsletter_id=daily_newsletter_id,
+            sent_recipients=int(pipeline_result.get("sent_recipients", 0) or 0),
+            runtime=runtime,
+            pipeline_status=str(pipeline_result.get("status", "")).strip() or "unknown",
+        )
         return {
             "run_id": run_id,
             "newsletter_date": newsletter_date,
@@ -1688,5 +1759,11 @@ def run_delivery_job(
                 "error": str(exc),
                 "runtime": runtime,
             },
+        )
+        emit_event(
+            "delivery_failed",
+            audience_key=audience_key,
+            error=str(exc),
+            runtime=runtime,
         )
         raise

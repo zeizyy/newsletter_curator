@@ -22,6 +22,7 @@ from .rendering import (
     render_digest_html,
 )
 from .sources import collect_additional_source_links
+from .observability import compact_model_usage, emit_event
 
 
 def process_story(
@@ -143,14 +144,30 @@ def normalize_source_quotas(raw: dict | None) -> dict[str, int]:
     return normalized
 
 
-def format_counts(
+def _ordered_counts(
     items: list[dict], field: str, top_n: int | None = None, missing_label: str = "unknown"
-) -> str:
+) -> list[tuple[str, int]]:
     counts = Counter((str(item.get(field, "")).strip() or missing_label) for item in items)
     ordered = sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
     if top_n is not None:
         ordered = ordered[:top_n]
+    return ordered
+
+
+def format_counts(
+    items: list[dict], field: str, top_n: int | None = None, missing_label: str = "unknown"
+) -> str:
+    ordered = _ordered_counts(items, field, top_n=top_n, missing_label=missing_label)
     return ", ".join(f"{name}={count}" for name, count in ordered) if ordered else "none"
+
+
+def structured_counts(
+    items: list[dict], field: str, top_n: int | None = None, missing_label: str = "unknown"
+) -> list[dict[str, int | str]]:
+    return [
+        {"name": name, "count": count}
+        for name, count in _ordered_counts(items, field, top_n=top_n, missing_label=missing_label)
+    ]
 
 
 def run_job(
@@ -193,19 +210,20 @@ def run_job(
         )
     )
     gmail_links = live_gmail_collector(config, service)
-    print(f"Found {len(gmail_links)} gmail candidate links for query: {query}")
-
     all_links = list(gmail_links)
     gmail_links_count = len(gmail_links)
     source_links = collect_additional_source_links_fn(config)
     all_links.extend(source_links)
     all_links = dedupe_links_by_url_fn(all_links)
-    print("\n=== Pipeline Stats ===")
-    print(f"messages_retrieved: gmail_links={len(gmail_links)}")
-    print(f"links_retrieved: gmail={gmail_links_count}, additional_sources={len(source_links)}")
-    print(f"links_merged_deduped: total={len(all_links)}")
-    print(f"links_by_source_type: {format_counts(all_links, 'source_type')}")
-    print(f"links_by_source_name_top10: {format_counts(all_links, 'source_name', top_n=10)}")
+    emit_event(
+        "pipeline_candidates_collected",
+        gmail_query=query,
+        gmail_links=gmail_links_count,
+        additional_source_links=len(source_links),
+        deduped_links=len(all_links),
+        source_type_counts=structured_counts(all_links, "source_type"),
+        source_name_counts_top10=structured_counts(all_links, "source_name", top_n=10),
+    )
 
     result = {
         "status": "running",
@@ -277,10 +295,22 @@ def run_job(
         target_story_count = len(selected)
 
     if not ranked_candidates:
-        print("No top stories selected.")
+        emit_event(
+            "pipeline_completed",
+            status="no_ranked_candidates",
+            ranked_candidates=0,
+            selected=0,
+            usage_by_model=compact_model_usage(usage_by_model),
+        )
         return {**result, "status": "no_ranked_candidates", "ranked_candidates": 0, "selected": 0}
     if not selected:
-        print("No stories selected after ranking/quotas.")
+        emit_event(
+            "pipeline_completed",
+            status="no_selected_candidates",
+            ranked_candidates=len(ranked_candidates),
+            selected=0,
+            usage_by_model=compact_model_usage(usage_by_model),
+        )
         return {
             **result,
             "status": "no_selected_candidates",
@@ -288,10 +318,15 @@ def run_job(
             "selected": 0,
         }
 
-    print(f"ranked_selected: total={len(ranked_candidates)}")
-    print(f"ranked_by_source_type: {format_counts(ranked_candidates, 'source_type')}")
-    print(
-        f"ranked_by_source_name_top10: {format_counts(ranked_candidates, 'source_name', top_n=10)}"
+    emit_event(
+        "pipeline_ranking_completed",
+        ranked_candidates=len(ranked_candidates),
+        selected_candidates=len(selected),
+        target_story_count=target_story_count,
+        source_quotas=source_quotas,
+        ranked_source_type_counts=structured_counts(ranked_candidates, "source_type"),
+        ranked_source_name_counts_top10=structured_counts(ranked_candidates, "source_name", top_n=10),
+        selected_source_type_counts=structured_counts(selected, "source_type"),
     )
 
     target_story_count = min(target_story_count, len(selected))
@@ -318,9 +353,16 @@ def run_job(
             continue
 
         skipped_count += 1
+        source_type = item.get("source_type", "") or "unknown"
+        emit_event(
+            "pipeline_candidate_skipped",
+            url=item.get("url", ""),
+            source_type=source_type,
+            source_name=item.get("source_name", ""),
+            reason="empty_fetch_or_summary",
+        )
         replacement_summary = None
         replacement_item = None
-        source_type = item.get("source_type", "") or "unknown"
         source_fallback_queue = fallback_by_source.get(source_type, [])
         while source_fallback_queue and replacement_summary is None:
             candidate = source_fallback_queue.pop(0)
@@ -356,12 +398,34 @@ def run_job(
             backfilled_count += 1
             accepted_items.append(replacement_item)
             summaries.append((len(accepted_items), replacement_item, replacement_summary))
+            emit_event(
+                "pipeline_backfill_applied",
+                original_url=item.get("url", ""),
+                original_source_type=source_type,
+                replacement_url=replacement_item.get("url", ""),
+                replacement_source_type=replacement_item.get("source_type", ""),
+                replacement_source_name=replacement_item.get("source_name", ""),
+            )
+        else:
+            emit_event(
+                "pipeline_backfill_unavailable",
+                original_url=item.get("url", ""),
+                original_source_type=source_type,
+                accepted_items=len(accepted_items),
+                target_story_count=target_story_count,
+            )
 
-    print(f"summaries_completed: total={len(accepted_items)} target={target_story_count}")
-    print(f"summaries_backfilled: {backfilled_count}")
-    print(f"summaries_skipped_fetch_or_empty: {skipped_count}")
     if not summaries:
-        print("No stories could be summarized after fetch/filter checks.")
+        emit_event(
+            "pipeline_completed",
+            status="no_summaries",
+            ranked_candidates=len(ranked_candidates),
+            selected=len(selected),
+            accepted_items=0,
+            backfilled_count=backfilled_count,
+            skipped_count=skipped_count,
+            usage_by_model=compact_model_usage(usage_by_model),
+        )
         return {
             **result,
             "status": "no_summaries",
@@ -372,10 +436,14 @@ def run_job(
             "skipped_count": skipped_count,
         }
 
-    print(f"returned_final: total={len(accepted_items)}")
-    print(f"final_by_source_type: {format_counts(accepted_items, 'source_type')}")
-    print(
-        f"final_by_source_name_top10: {format_counts(accepted_items, 'source_name', top_n=10)}"
+    emit_event(
+        "pipeline_summaries_completed",
+        status="completed",
+        accepted_items=len(accepted_items),
+        target_story_count=target_story_count,
+        backfilled_count=backfilled_count,
+        skipped_count=skipped_count,
+        final_source_type_counts=structured_counts(accepted_items, "source_type"),
     )
 
     grouped = group_summaries_by_category_fn(summaries)
@@ -385,13 +453,6 @@ def run_job(
         section_text.extend(entries)
         sections.append("\n\n".join(section_text))
     final_text = "\n\n===\n\n".join(sections)
-
-    if usage_by_model:
-        print("\n=== Token Usage ===")
-        for model_name, stats in usage_by_model.items():
-            print(
-                f"{model_name}: input={stats['input']} output={stats['output']} total={stats['total']}"
-            )
 
     render_groups = build_render_groups_fn(summaries)
     digest_html = render_digest_html_fn(render_groups)
@@ -411,6 +472,20 @@ def run_job(
                 "published_at": item.get("published_at", ""),
             }
         )
+    emit_event(
+        "pipeline_completed",
+        status="completed",
+        ranked_candidates=len(ranked_candidates),
+        selected=len(selected),
+        accepted_items=len(accepted_items),
+        target_story_count=target_story_count,
+        backfilled_count=backfilled_count,
+        skipped_count=skipped_count,
+        final_source_type_counts=structured_counts(accepted_items, "source_type"),
+        final_source_name_counts_top10=structured_counts(accepted_items, "source_name", top_n=10),
+        accepted_story_urls=[story["url"] for story in accepted_story_payloads],
+        usage_by_model=compact_model_usage(usage_by_model),
+    )
     return {
         **result,
         "status": "completed",

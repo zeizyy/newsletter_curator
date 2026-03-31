@@ -147,6 +147,58 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
 
 
+def test_cached_delivery_emits_structured_journey_events(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["cached@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    sent_messages: list[dict] = []
+
+    def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        sent_messages.append(
+            {
+                "to": to_address,
+                "subject": subject,
+                "body": body,
+                "html_body": html_body or "",
+            }
+        )
+
+    monkeypatch.setattr(main, "send_email", fake_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
+
+    assert result["status"] == "completed"
+    assert result["cached_newsletter"] is True
+    assert [message["to"] for message in sent_messages] == ["cached@example.com"]
+    assert any(entry["event"] == "delivery_started" for entry in events)
+    assert any(entry["event"] == "delivery_cached_newsletter_used" for entry in events)
+    assert any(entry["event"] == "delivery_send_started" for entry in events)
+    assert any(entry["event"] == "delivery_send_completed" for entry in events)
+    assert any(
+        entry["event"] == "delivery_completed" and entry["cached_newsletter"] is True
+        for entry in events
+    )
+
+
 def test_dry_run_recipient_without_db_profile_uses_default_personalization(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")

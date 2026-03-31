@@ -34,6 +34,15 @@ def test_offline_e2e_fixture_runner_smoke_emits_stage_runtime_metrics(repo_root)
     assert payload["result"]["stages"]["fetch_sources"]["runtime"]["elapsed_ms"] >= 0
     assert payload["result"]["stages"]["deliver_digest"]["runtime"]["elapsed_ms"] >= 0
     assert any(entry.get("event") == "daily_orchestrator" for entry in payload["captured_logs"])
+    assert any(
+        entry.get("event") == "daily_orchestrator_stage_started"
+        and entry.get("stage") == "deliver_digest"
+        for entry in payload["captured_logs"]
+    )
+    assert any(
+        entry.get("event") == "delivery_completed" and entry.get("cached_newsletter") is False
+        for entry in payload["captured_logs"]
+    )
 
 
 def test_offline_e2e_fixture_runner_main_flow_covers_generation_filtering_summary_and_delivery(
@@ -70,12 +79,34 @@ def test_offline_e2e_fixture_runner_main_flow_covers_generation_filtering_summar
     }
     assert "https://example.com/gmail/empty-story" not in accepted_urls
 
-    raw_logs = [entry.get("raw", "") for entry in payload["captured_logs"] if "raw" in entry]
-    assert "links_merged_deduped: total=3" in raw_logs
-    assert "summaries_completed: total=3 target=3" in raw_logs
-    assert "summaries_backfilled: 0" in raw_logs
-    assert "summaries_skipped_fetch_or_empty: 0" in raw_logs
-    assert "returned_final: total=3" in raw_logs
+    candidate_event = next(
+        entry for entry in payload["captured_logs"] if entry.get("event") == "pipeline_candidates_collected"
+    )
+    ranking_event = next(
+        entry for entry in payload["captured_logs"] if entry.get("event") == "pipeline_ranking_completed"
+    )
+    summaries_event = next(
+        entry for entry in payload["captured_logs"] if entry.get("event") == "pipeline_summaries_completed"
+    )
+    completed_event = next(
+        entry for entry in payload["captured_logs"] if entry.get("event") == "pipeline_completed"
+    )
+    delivery_event = next(
+        entry for entry in payload["captured_logs"] if entry.get("event") == "delivery_pipeline_result"
+    )
+
+    assert candidate_event["deduped_links"] == 3
+    assert ranking_event["ranked_candidates"] == 3
+    assert ranking_event["selected_candidates"] == 3
+    assert summaries_event["accepted_items"] == 3
+    assert summaries_event["target_story_count"] == 3
+    assert summaries_event["backfilled_count"] == 0
+    assert summaries_event["skipped_count"] == 0
+    assert completed_event["accepted_items"] == 3
+    assert set(completed_event["accepted_story_urls"]) == accepted_urls
+    assert delivery_event["pipeline_status"] == "completed"
+    assert delivery_event["accepted_items"] == 3
+    assert not any("raw" in entry for entry in payload["captured_logs"])
 
 
 def test_offline_e2e_fixture_runner_memory_stress_stays_within_budget(repo_root):
