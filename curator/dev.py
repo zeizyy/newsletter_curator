@@ -82,18 +82,24 @@ def fake_summarize_article(
     persona_text: str = "",
 ) -> str:
     headline = " ".join(article_text.split()[:6]) or "Untitled"
-    body = "\n".join(
-        [
-            "Key takeaways",
-            f"- {headline} is available from the canned repository.",
-            "- Development mode uses deterministic local summaries.",
-            "Why this matters to me",
-            "This matters because development can run fully offline.",
-        ]
+    key_takeaways = [
+        f"{headline} is available from the canned repository.",
+        "Development mode uses deterministic local summaries.",
+        "The offline path keeps summary generation stable for tests.",
+    ]
+    why_this_matters = (
+        "This matters because development can run fully offline. "
+        "It also keeps local verification deterministic."
     )
     with lock:
         stats = usage_by_model.setdefault(summary_model, {"input": 0, "output": 0, "total": 0})
         stats["input"] += 1
         stats["output"] += 1
         stats["total"] += 2
-    return json.dumps({"headline": headline, "body": body})
+    return json.dumps(
+        {
+            "headline": headline,
+            "key_takeaways": key_takeaways,
+            "why_this_matters": why_this_matters,
+        }
+    )

@@ -167,13 +167,17 @@ class FakeOpenAI:
         article_text = prompt.split("Article text:\n", 1)[1].strip()
         headline_words = article_text.split()[:6]
         headline = " ".join(headline_words) or "Untitled"
-        body = "\n".join(
-            [
-                "Key takeaways",
-                f"- {headline} highlights the core development.",
-                "- The fake summarizer keeps output deterministic for integration testing.",
-                "Why this matters to me",
-                "This matters because the smoke test proves the pipeline can run offline.",
-            ]
+        return json.dumps(
+            {
+                "headline": headline,
+                "key_takeaways": [
+                    f"{headline} highlights the core development.",
+                    "The fake summarizer keeps output deterministic for integration testing.",
+                    "The payload now mirrors the structured production schema.",
+                ],
+                "why_this_matters": (
+                    "This matters because the smoke test proves the pipeline can run offline. "
+                    "It also exercises the structured rendering path."
+                ),
+            }
         )
-        return json.dumps({"headline": headline, "body": body})

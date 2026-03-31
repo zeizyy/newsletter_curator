@@ -120,9 +120,14 @@ def test_malformed_summary_json_is_salvaged_for_persistence_and_preview(monkeypa
     assert stories[0]["summary_headline"] == (
         "NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended"
     )
+    assert json.loads(stories[0]["summary_raw"]) == {
+        "headline": "NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended",
+        "key_takeaways": ["NASA commits ~$20B over the next 7 years and another ~$10B later."],
+        "why_this_matters": "Procurement demand will widen across autonomy, power, and logistics.",
+    }
     assert "~$10B later." in stories[0]["summary_body"]
     assert "\\$10B" not in stories[0]["summary_body"]
-    assert stories[0]["summary_body"].startswith("Key takeaways:")
+    assert stories[0]["summary_body"].startswith("Key takeaways")
     assert preview_result["status"] == "completed"
     assert preview_result["preview"] is not None
     assert "Untitled" not in preview_result["preview"]["body"]
@@ -130,3 +135,4 @@ def test_malformed_summary_json_is_salvaged_for_persistence_and_preview(monkeypa
     assert "NASA unveils ~$30B, decade roadmap for a permanent Moon base; Gateway suspended" in (
         preview_result["preview"]["body"]
     )
+    assert "Why this matters" in preview_result["preview"]["html_body"]

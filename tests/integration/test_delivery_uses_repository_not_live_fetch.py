@@ -18,6 +18,7 @@ class FixedDateTime(datetime):
 def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
 
     config_path = write_temp_config(
         tmp_path,
@@ -37,6 +38,7 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedDateTime)
     config = main.load_config()
 
     repository = get_repository_from_config(config)
@@ -116,5 +118,5 @@ def test_delivery_uses_repository_not_live_fetch(monkeypatch, tmp_path):
     assert "Read original" in payload["html_body"]
     assert 'target="_blank"' in payload["html_body"]
     assert "Mar 24, 12:30 AM PT" in payload["html_body"]
-    assert "Newsletter Digest" in payload["html_body"]
+    assert "AI Signal Daily" in payload["html_body"]
     assert len(fake_openai.calls) == 1

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import re
 import shutil
@@ -147,6 +148,12 @@ def seed_review_fixture(
         preferred_sources=["Macro Wire", "AI Wire"],
     )
 
+    recent_story_time = datetime.now(UTC) - timedelta(hours=2)
+    recent_story_time_iso = recent_story_time.isoformat()
+    recent_summary_time_iso = (recent_story_time + timedelta(minutes=30)).isoformat()
+    newsletter_date = recent_story_time.date().isoformat()
+    display_timestamp = recent_story_time.astimezone().strftime("%b %-d, %-I:%M %p %Z")
+
     run_id = create_completed_ingestion_run(repository, "additional_source")
     story_id = repository.upsert_story(
         {
@@ -157,7 +164,7 @@ def seed_review_fixture(
             "anchor_text": "Rates reset changes software valuations",
             "context": "Repository context for rates reset",
             "category": "Markets / stocks / macro / economy",
-            "published_at": "2026-03-24T07:30:00+00:00",
+            "published_at": recent_story_time_iso,
             "summary": "Rates reset summary",
         },
         ingestion_run_id=run_id,
@@ -173,9 +180,8 @@ def seed_review_fixture(
             "This matters for software multiples."
         ),
         summary_model="gpt-5-mini",
-        summarized_at="2026-03-24T08:00:00+00:00",
+        summarized_at=recent_summary_time_iso,
     )
-    newsletter_date = "2026-03-28"
     repository.upsert_daily_newsletter(
         newsletter_date=newsletter_date,
         subject="AI Signal Daily",
@@ -215,9 +221,9 @@ def seed_review_fixture(
                             "This matters for software multiples."
                         ),
                         "source_name": "Macro Wire",
-                        "published_at": "2026-03-24T07:30:00+00:00",
-                        "display_timestamp": "Mar 24, 12:30 AM PT",
-                        "timestamp_iso": "2026-03-24T07:30:00+00:00",
+                        "published_at": recent_story_time_iso,
+                        "display_timestamp": display_timestamp,
+                        "timestamp_iso": recent_story_time_iso,
                     }
                 ]
             },
@@ -248,6 +254,7 @@ def start_admin_server(
         {
             "NEWSLETTER_CONFIG": str(config_path),
             "CURATOR_ADMIN_TOKEN": admin_token,
+            "CURATOR_ADMIN_ENABLE_PREVIEW": "1",
             "CURATOR_EXPOSE_LOGIN_LINKS": "1",
             "CURATOR_ADMIN_HOST": host,
             "CURATOR_ADMIN_PORT": str(port),

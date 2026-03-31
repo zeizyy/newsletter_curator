@@ -107,11 +107,11 @@ def build_summary_prompts(article_text: str, persona_text: str = "") -> tuple[st
     user_prompt = (
         "Write a concise summary of the article below.\n"
         "Return ONLY valid JSON with this schema:\n"
-        "{\"headline\": <string>, \"body\": <string>}.\n"
-        "The body should include:\n"
-        "1) Key takeaways (3-5 bullets; be specific and informative).\n"
-        "2) Why this matters to me (exactly 2 short sentences, max 45 words total).\n"
-        "Keep the full body concise, but prioritize clarity in key takeaways.\n"
+        "{\"headline\": <string>, \"key_takeaways\": <array of strings>, "
+        "\"why_this_matters\": <string>}.\n"
+        "\"key_takeaways\" must contain 3-5 bullets and each bullet must be specific and informative.\n"
+        "\"why_this_matters\" must be exactly 2 short sentences with a 45 word maximum.\n"
+        "Do not include markdown headings or labels inside the values.\n"
         "No extra text.\n\n"
         f"Article text:\n{article_text}"
     )

@@ -114,6 +114,13 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Email-Safe Template" in page
 
     email_safe_response = client.get("/preview?template=email_safe")
+    assert email_safe_response.status_code in {200, 202}
+    if email_safe_response.status_code == 202:
+        assert "generation has started" in email_safe_response.get_data(as_text=True).lower()
+        for _ in range(20):
+            email_safe_response = client.get("/preview?template=email_safe")
+            if email_safe_response.status_code == 200:
+                break
     assert email_safe_response.status_code == 200
     email_safe_page = email_safe_response.get_data(as_text=True)
     assert "Email-Safe Preview" in email_safe_page
@@ -127,6 +134,13 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert 'font-family:Georgia' in email_safe_page
 
     gmail_lab_response = client.get("/preview?template=gmail_lab")
+    assert gmail_lab_response.status_code in {200, 202}
+    if gmail_lab_response.status_code == 202:
+        assert "generation has started" in gmail_lab_response.get_data(as_text=True).lower()
+        for _ in range(20):
+            gmail_lab_response = client.get("/preview?template=gmail_lab")
+            if gmail_lab_response.status_code == 200:
+                break
     assert gmail_lab_response.status_code == 200
     gmail_lab_page = gmail_lab_response.get_data(as_text=True)
     assert "Gmail App Lab" in gmail_lab_page

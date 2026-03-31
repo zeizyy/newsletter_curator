@@ -24,15 +24,9 @@
       color: #f3fffb;
       padding: 30px;
     }
-    .hero-topline { margin: 0 0 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(243,255,251,0.72); }
-    .hero-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.7fr); gap: 18px; align-items: end; }
-    .hero-kicker { display: inline-block; margin-bottom: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.12); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+    .hero-grid { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: end; }
     .hero-title { margin: 0; max-width: 11ch; font-family: Georgia, "Times New Roman", Times, serif; font-size: 56px; line-height: 0.94; letter-spacing: -0.05em; }
     .hero-copy { margin: 14px 0 0; max-width: 36rem; color: rgba(243,255,251,0.82); font-size: 16px; line-height: 1.65; }
-    .hero-stat { padding: 16px 18px; border-radius: 22px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12); }
-    .hero-stat-label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(243,255,251,0.68); }
-    .hero-stat-value { margin-top: 10px; font-family: Georgia, "Times New Roman", Times, serif; font-size: 54px; line-height: 0.9; letter-spacing: -0.05em; }
-    .hero-stat-copy { margin-top: 10px; color: rgba(243,255,251,0.78); font-size: 14px; line-height: 1.55; }
     .stories-wrap { padding: 22px 18px 8px; background: linear-gradient(180deg,rgba(255,255,255,0.44),rgba(255,255,255,0)); }
     .footer { font-size: 12px; color: #6f7f87; margin-top: 10px; }
 
@@ -43,7 +37,6 @@
       .hero-grid { grid-template-columns: 1fr !important; }
       .hero-title { font-size: 40px !important; }
       .hero-copy { font-size: 15px !important; }
-      .hero-stat-value { font-size: 42px !important; }
       .stories-wrap { padding: 12px !important; }
       .story-card { padding: 18px !important; border-radius: 18px !important; }
       .story-title { font-size: 28px !important; max-width: none !important; }
@@ -96,17 +89,10 @@
     <div class="email-frame" style="background:rgba(255,255,255,0.86);border:1px solid rgba(19,91,72,0.18);border-radius:34px;padding:18px;box-shadow:0 22px 56px rgba(17,27,45,0.14);">
       <div class="email-canvas" style="background:#ffffff;border:1px solid rgba(19,91,72,0.18);border-radius:28px;overflow:hidden;">
         <div class="hero" style="background:linear-gradient(135deg,#0e3f35,#0f8661 72%,#18a57b);color:#f3fffb;padding:30px;">
-          <div class="hero-topline" style="margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:rgba(243,255,251,0.72);">Operator Edition</div>
-          <div class="hero-grid" style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(180px,0.7fr);gap:18px;align-items:end;">
+          <div class="hero-grid" style="display:grid;grid-template-columns:1fr;gap:18px;align-items:end;">
             <div>
-              <div class="hero-kicker" style="display:inline-block;margin-bottom:12px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.12);font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">Daily Briefing</div>
-              <div class="hero-title" style="margin:0;max-width:11ch;font-family:Georgia,'Times New Roman',Times,serif;font-size:56px;line-height:0.94;letter-spacing:-0.05em;">Newsletter Digest</div>
+              <div class="hero-title" style="margin:0;max-width:11ch;font-family:Georgia,'Times New Roman',Times,serif;font-size:56px;line-height:0.94;letter-spacing:-0.05em;">AI Signal Daily</div>
               <div class="hero-copy" style="margin:14px 0 0;max-width:36rem;color:rgba(243,255,251,0.82);font-size:16px;line-height:1.65;">The highest-signal stories for today, pre-ranked and condensed for fast scanning.</div>
-            </div>
-            <div class="hero-stat" style="padding:16px 18px;border-radius:22px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.12);">
-              <div class="hero-stat-label" style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(243,255,251,0.68);">Selected Signals</div>
-              <div class="hero-stat-value" style="margin-top:10px;font-family:Georgia,'Times New Roman',Times,serif;font-size:54px;line-height:0.9;letter-spacing:-0.05em;">{{HERO_COUNT}}</div>
-              <div class="hero-stat-copy" style="margin-top:10px;color:rgba(243,255,251,0.78);font-size:14px;line-height:1.55;">Each card is formatted for fast morning scan speed and clearer follow-up decisions.</div>
             </div>
           </div>
         </div>

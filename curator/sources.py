@@ -165,6 +165,7 @@ def collect_repository_source_links(
                 "category": category,
                 "summary": summary,
                 "article_text": str(story.get("article_text", "") or ""),
+                "summary_raw": str(story.get("summary_raw", "") or ""),
                 "summary_headline": str(story.get("summary_headline", "") or ""),
                 "summary_body": str(story.get("summary_body", "") or ""),
             }

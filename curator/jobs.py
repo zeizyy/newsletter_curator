@@ -27,7 +27,6 @@ from .gmail import (
     send_email,
 )
 from .llm import (
-    extract_summary_json,
     score_story_candidates,
     select_top_stories,
     summarize_article_with_llm,
@@ -45,6 +44,7 @@ from .sources import (
     collect_repository_source_links,
     load_canned_source_links,
 )
+from .summary_format import canonicalize_summary_json
 from .telemetry import (
     build_click_url,
     build_open_pixel_url,
@@ -366,8 +366,12 @@ def summarize_for_ingest(
             summary_model,
             client_factory=OpenAI,
         )
-    headline, body = extract_summary_json(summary_raw)
-    return summary_raw, headline, body
+    canonical_summary_raw, normalized = canonicalize_summary_json(summary_raw)
+    return (
+        canonical_summary_raw,
+        str(normalized.get("headline", "")).strip(),
+        str(normalized.get("body", "")).strip(),
+    )
 
 
 def _log_ingest_progress(job_name: str, stage: str, **payload) -> None:

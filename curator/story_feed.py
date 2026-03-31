@@ -55,6 +55,7 @@ def _normalize_story_row(row: sqlite3.Row) -> dict:
         "last_seen_at": str(row["last_seen_at"] or ""),
         "effective_timestamp": str(row["effective_timestamp"] or ""),
         "summary": str(row["summary"] or ""),
+        "summary_raw": str(row["summary_raw"] or ""),
         "summary_headline": str(row["summary_headline"] or ""),
         "summary_body": str(row["summary_body"] or ""),
         "article_fetched_at": _normalize_nullable_text(row["article_fetched_at"]),
@@ -101,6 +102,7 @@ def list_recent_story_feed(
             snap.fetched_at AS article_fetched_at,
             snap.paywall_detected,
             snap.paywall_reason,
+            snap.summary_raw,
             snap.summary_headline,
             snap.summary_body,
             snap.summarized_at

@@ -7,6 +7,7 @@ from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 from .config import DIGEST_TEMPLATE_PATH, EMAIL_SAFE_DIGEST_TEMPLATE_PATH
+from .summary_format import extract_structured_summary
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
@@ -80,12 +81,17 @@ def build_render_groups(summaries: list[tuple[int, dict, str]]) -> dict[str, lis
     grouped: dict[str, list[dict]] = {}
     for _, item, summary_block in summaries:
         title, url, body = parse_summary_block(summary_block)
+        normalized_entry = _normalize_render_entry(item, fallback_title=title, fallback_body=body)
         category = item.get("category", "") or "Uncategorized"
         grouped.setdefault(category, []).append(
             {
-                "title": title,
+                "title": normalized_entry["title"],
                 "url": url or item.get("url", ""),
-                "body": body,
+                "body": normalized_entry["body"],
+                "key_takeaways": normalized_entry["key_takeaways"],
+                "why_this_matters": normalized_entry["why_this_matters"],
+                "other_paragraphs": normalized_entry["other_paragraphs"],
+                "summary_raw": str(item.get("summary_raw", "") or ""),
                 "source_name": item.get("source_name", ""),
                 "published_at": item.get("published_at", ""),
                 "display_timestamp": format_story_timestamp(str(item.get("published_at", ""))),
@@ -162,38 +168,24 @@ def render_summary_body_html(body: str) -> str:
     return "".join(blocks) or "No summary."
 
 
-def split_summary_sections(body: str) -> tuple[list[str], list[str], list[str]]:
-    takeaways: list[str] = []
-    why_matters: list[str] = []
-    other: list[str] = []
-    active_section = "other"
-
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-
-        normalized = re.sub(r"[:\s]+$", "", line).strip().lower()
-        if normalized in {"key takeaways", "takeaways"}:
-            active_section = "takeaways"
-            continue
-        if normalized in {"why this matters to me", "why this matters"}:
-            active_section = "why_matters"
-            continue
-
-        bullet_match = re.match(r"^[-*]\s+(.+)$", line)
-        content = bullet_match.group(1).strip() if bullet_match else line
-        if not content:
-            continue
-
-        if active_section == "takeaways":
-            takeaways.append(content)
-        elif active_section == "why_matters":
-            why_matters.append(content)
-        else:
-            other.append(content)
-
-    return takeaways, why_matters, other
+def _normalize_render_entry(
+    entry: dict,
+    *,
+    fallback_title: str,
+    fallback_body: str,
+) -> dict[str, str | list[str]]:
+    normalized = extract_structured_summary(
+        str(entry.get("summary_raw", "") or ""),
+        fallback_headline=fallback_title,
+        fallback_body=fallback_body,
+    )
+    return {
+        "title": str(normalized.get("headline", "") or fallback_title or "Untitled").strip() or "Untitled",
+        "body": str(normalized.get("body", "") or fallback_body).strip(),
+        "key_takeaways": list(normalized.get("key_takeaways", []) or []),
+        "why_this_matters": str(normalized.get("why_this_matters", "") or "").strip(),
+        "other_paragraphs": list(normalized.get("other_paragraphs", []) or []),
+    }
 
 
 def render_digest_html(grouped: dict[str, list[dict]]) -> str:
@@ -202,14 +194,20 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
     for category, entries in grouped.items():
         total_entries += len(entries)
         cards = []
-        count_label = "1 signal" if len(entries) == 1 else f"{len(entries)} signals"
-        for index, entry in enumerate(entries, start=1):
-            title = str(entry.get("title", "")).strip() or "Untitled"
+        for entry in entries:
+            fallback_title = str(entry.get("title", "")).strip() or "Untitled"
             url = str(entry.get("url", "")).strip()
-            body = str(entry.get("body", "")).strip()
+            normalized_entry = _normalize_render_entry(
+                entry,
+                fallback_title=fallback_title,
+                fallback_body=str(entry.get("body", "")).strip(),
+            )
+            title = str(normalized_entry["title"])
             source_name = str(entry.get("source_name", "")).strip()
             timestamp = str(entry.get("display_timestamp", "")).strip()
-            takeaways, why_matters, other = split_summary_sections(body)
+            takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
+            why_text = str(normalized_entry["why_this_matters"]).strip()
+            other = [str(item) for item in normalized_entry["other_paragraphs"]]
             link_html = (
                 f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" class="story-link" style="color:#0c7a5b;text-decoration:none;font-weight:700;">Read original</a>'
                 if url
@@ -253,8 +251,7 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                     "</div>"
                 )
             why_html = ""
-            if why_matters:
-                why_text = " ".join(why_matters)
+            if why_text:
                 why_html = (
                     '<div class="summary-note" style="margin:0 0 12px 0;padding:12px 14px;background:#eef8f4;'
                     'border:1px solid rgba(12,122,91,0.14);border-radius:16px;">'
@@ -274,7 +271,6 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
                     '<div class="story-card" style="background:#ffffff;border:1px solid rgba(19,91,72,0.12);border-radius:24px;'
                     'padding:22px;margin:0 0 16px 0;box-shadow:0 10px 24px rgba(24,37,58,0.05);">'
                     '<div class="story-meta" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px 0;">'
-                    f'<span class="story-chip" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:#ddf3eb;color:#0c7a5b;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Lead {index:02d}</span>'
                     f"{time_html}"
                     f"{source_html}"
                     "</div>"
@@ -291,10 +287,8 @@ def render_digest_html(grouped: dict[str, list[dict]]) -> str:
         category_sections.append(
             (
                 '<div class="category-section" style="margin:0 0 24px 0;">'
-                '<div class="category-head" style="display:flex;justify-content:space-between;gap:14px;align-items:flex-end;'
-                'margin:0 0 12px 2px;padding:0 4px;">'
+                '<div class="category-head" style="margin:0 0 12px 2px;padding:0 4px;">'
                 f'<div class="category-title" style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:28px;font-weight:700;line-height:1.05;color:#16222f;letter-spacing:-0.03em;">{html.escape(category)}</div>'
-                f'<div class="category-count" style="font-size:12px;font-weight:700;line-height:1.4;letter-spacing:0.14em;text-transform:uppercase;color:#0f8661;">{count_label}</div>'
                 "</div>"
                 f"{''.join(cards)}"
                 "</div>"
@@ -313,14 +307,20 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
     for category, entries in grouped.items():
         total_entries += len(entries)
         cards = []
-        count_label = "1 signal" if len(entries) == 1 else f"{len(entries)} signals"
-        for index, entry in enumerate(entries, start=1):
-            title = str(entry.get("title", "")).strip() or "Untitled"
+        for entry in entries:
+            fallback_title = str(entry.get("title", "")).strip() or "Untitled"
             url = str(entry.get("url", "")).strip()
-            body = str(entry.get("body", "")).strip()
+            normalized_entry = _normalize_render_entry(
+                entry,
+                fallback_title=fallback_title,
+                fallback_body=str(entry.get("body", "")).strip(),
+            )
+            title = str(normalized_entry["title"])
             source_name = str(entry.get("source_name", "")).strip()
             timestamp = str(entry.get("display_timestamp", "")).strip()
-            takeaways, why_matters, other = split_summary_sections(body)
+            takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
+            why_text = str(normalized_entry["why_this_matters"]).strip()
+            other = [str(item) for item in normalized_entry["other_paragraphs"]]
             link_html = (
                 f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
                 if url
@@ -353,8 +353,7 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                 )
 
             why_html = ""
-            if why_matters:
-                why_text = " ".join(why_matters)
+            if why_text:
                 why_html = (
                     '<div style="margin:0 0 12px 0;padding:10px 12px;background:#eef8f4;'
                     'border:1px solid #d7efe6;border-radius:12px;">'
@@ -382,7 +381,6 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
                     'style="border-collapse:separate;background:#ffffff;border:1px solid #d5dde8;border-radius:18px;margin:0 0 14px 0;">'
                     '<tr><td style="padding:14px 14px 12px 14px;">'
-                    f'<div style="margin:0 0 10px 0;font-size:11px;line-height:1.4;color:#0f8661;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;">Lead {index:02d}</div>'
                     f"{metadata_html}"
                     f'<div style="margin:0 0 12px 0;font-size:24px;line-height:1.08;font-weight:700;color:#16222f;font-family:Georgia,\'Times New Roman\',Times,serif;">{html.escape(title)}</div>'
                     f"{other_html}"
@@ -397,8 +395,8 @@ def render_email_safe_digest_html(grouped: dict[str, list[dict]]) -> str:
                 '<div style="margin:0 0 18px 0;">'
                 f'<div style="margin:0 0 10px 0;padding:0 4px;font-size:13px;line-height:1.4;color:#0f8661;'
                 'font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">'
-                f'{html.escape(category)} <span style="color:#6f7f87;font-weight:600;">({count_label})</span>'
-                '</div>'
+                f"{html.escape(category)}"
+                "</div>"
                 f"{''.join(cards)}"
                 '</div>'
             )

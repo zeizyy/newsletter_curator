@@ -117,7 +117,7 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
     assert payload["subject"] == "Offline Smoke Digest"
     assert "Rates reset changes software valuations" in payload["body"]
     assert "Read original" in payload["html_body"]
-    assert "Newsletter Digest" in payload["html_body"]
+    assert "AI Signal Daily" in payload["html_body"]
     assert source_fetcher.calls == 1
     assert len(article_fetcher.calls) == 3
     assert len(fake_openai.calls) == 0

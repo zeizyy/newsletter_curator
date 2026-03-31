@@ -55,6 +55,9 @@ def process_story(
     headline, body = extract_summary_json(summary)
     if not body.strip() or body.strip() == "No article text available.":
         return None
+    item["summary_raw"] = str(summary or "")
+    item["summary_headline"] = headline
+    item["summary_body"] = body
     return "\n\n".join(
         [
             f"Story: {headline}",

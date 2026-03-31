@@ -112,5 +112,5 @@ def test_daily_orchestrator_runs_fetch_and_delivery(monkeypatch, repo_root, tmp_
     assert source_fetcher.calls == 1
     assert len(sent_messages) == 1
     assert sent_messages[0]["subject"] == "Daily Orchestrator Digest"
-    assert "Newsletter Digest" in sent_messages[0]["html_body"]
+    assert "AI Signal Daily" in sent_messages[0]["html_body"]
     assert "Read original" in sent_messages[0]["html_body"]

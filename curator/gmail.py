@@ -240,6 +240,7 @@ def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
                 "category": str(story.get("category", "")).strip(),
                 "summary": str(story.get("summary", "")).strip(),
                 "article_text": str(story.get("article_text", "") or ""),
+                "summary_raw": str(story.get("summary_raw", "") or ""),
                 "summary_headline": str(story.get("summary_headline", "") or ""),
                 "summary_body": str(story.get("summary_body", "") or ""),
             }

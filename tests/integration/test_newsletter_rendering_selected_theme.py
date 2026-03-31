@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
-def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode(monkeypatch, tmp_path):
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
+
+
+def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
 
     config_path = write_temp_config(
         tmp_path,
@@ -27,6 +36,8 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedDateTime)
     config = main.load_config()
 
     repository = get_repository_from_config(config)
@@ -86,9 +97,11 @@ def test_selected_theme_renders_newsletter_digest_with_story_count_and_dark_mode
     assert result["status"] == "completed"
     assert result["preview"] is not None
     html = result["preview"]["html_body"]
-    assert "Newsletter Digest" in html
-    assert "The highest-signal stories for today, pre-ranked and condensed for fast scanning." in html
-    assert "2 stories selected" in html
+    assert "AI Signal Daily" in html
+    assert "Your highest-signal daily briefing." in html
+    assert "Operator Edition" not in html
+    assert "Daily Briefing" not in html
+    assert "stories selected" not in html
     assert "Read original" in html
     assert 'target="_blank"' in html
     assert "Mar 24, 12:30 AM PT" in html
