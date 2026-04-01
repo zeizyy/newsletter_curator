@@ -2,12 +2,48 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
+import subprocess
+from uuid import uuid4
 
 from .debug_logs import append_debug_log_line
 
 
+_PROCESS_RUN_ID = uuid4().hex
+
+
+def _event_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+@lru_cache(maxsize=1)
+def _git_sha() -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    sha = str(completed.stdout).strip()
+    return sha or "unknown"
+
+
 def emit_event(event: str, /, **payload) -> None:
-    rendered = json.dumps({"event": event, **payload})
+    rendered = json.dumps(
+        {
+            "event": event,
+            "ts": _event_timestamp(),
+            "run_id": _PROCESS_RUN_ID,
+            "git_sha": _git_sha(),
+            **payload,
+        }
+    )
     print(rendered, flush=True)
     append_debug_log_line(rendered)
 

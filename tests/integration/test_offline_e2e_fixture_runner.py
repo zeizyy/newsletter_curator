@@ -34,6 +34,10 @@ def test_offline_e2e_fixture_runner_smoke_emits_stage_runtime_metrics(repo_root)
     assert payload["result"]["stages"]["fetch_sources"]["runtime"]["elapsed_ms"] >= 0
     assert payload["result"]["stages"]["deliver_digest"]["runtime"]["elapsed_ms"] >= 0
     assert any(entry.get("event") == "daily_orchestrator" for entry in payload["captured_logs"])
+    assert all("ts" in entry for entry in payload["captured_logs"])
+    assert all("run_id" in entry for entry in payload["captured_logs"])
+    assert len({entry["run_id"] for entry in payload["captured_logs"]}) == 1
+    assert all("git_sha" in entry for entry in payload["captured_logs"])
     assert any(
         entry.get("event") == "daily_orchestrator_stage_started"
         and entry.get("stage") == "deliver_digest"

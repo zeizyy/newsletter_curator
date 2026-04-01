@@ -49,6 +49,10 @@ def test_admin_debug_log_endpoint_returns_bounded_tail(monkeypatch, tmp_path):
     assert payload["path"] == str(log_path)
     assert payload["line_count"] == 2
     assert payload["truncated"] is True
+    assert all("ts" in json.loads(line) for line in payload["lines"])
+    assert all("run_id" in json.loads(line) for line in payload["lines"])
+    assert len({json.loads(line)["run_id"] for line in payload["lines"]}) == 1
+    assert all("git_sha" in json.loads(line) for line in payload["lines"])
     assert [json.loads(line)["event"] for line in payload["lines"]] == [
         "debug_event_two",
         "debug_event_three",
