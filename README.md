@@ -322,6 +322,7 @@ The workflow:
 Behavior notes:
 - The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
 - The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
+- The workflow logs a redacted bootstrap command in the Actions output before running it on the server.
 - It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
 
 Required GitHub repo configuration:
