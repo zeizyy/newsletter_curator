@@ -447,7 +447,9 @@ Edit `config.yaml`:
 - `limits.max_summary_workers`
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
-- `tracking.enabled` (default `false`)
+- `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
+- `tracking.open_enabled` (optional explicit toggle for the open pixel)
+- `tracking.click_enabled` (optional explicit toggle for tracked link redirects)
 - `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
 - `email.digest_recipients` and `email.alert_recipient`
 

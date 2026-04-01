@@ -8,17 +8,43 @@ from urllib.parse import quote
 TRACKING_PIXEL_TAG_MARKER = "newsletter-tracking-pixel"
 
 
-def telemetry_enabled(config: dict) -> bool:
+def _coerce_bool(raw_value) -> bool | None:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value.strip():
+        return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+    return None
+
+
+def _global_tracking_enabled(config: dict) -> bool:
     tracking_cfg = config.get("tracking", {})
-    raw_enabled = tracking_cfg.get("enabled")
-    if isinstance(raw_enabled, bool):
-        return raw_enabled
-    if isinstance(raw_enabled, str) and raw_enabled.strip():
-        return raw_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    config_enabled = _coerce_bool(tracking_cfg.get("enabled"))
+    if config_enabled is not None:
+        return config_enabled
     env_enabled = os.getenv("CURATOR_ENABLE_TELEMETRY", "").strip()
     if env_enabled:
         return env_enabled.lower() in {"1", "true", "yes", "on"}
     return False
+
+
+def open_tracking_enabled(config: dict) -> bool:
+    tracking_cfg = config.get("tracking", {})
+    config_enabled = _coerce_bool(tracking_cfg.get("open_enabled"))
+    if config_enabled is not None:
+        return config_enabled
+    return _global_tracking_enabled(config)
+
+
+def click_tracking_enabled(config: dict) -> bool:
+    tracking_cfg = config.get("tracking", {})
+    config_enabled = _coerce_bool(tracking_cfg.get("click_enabled"))
+    if config_enabled is not None:
+        return config_enabled
+    return _global_tracking_enabled(config)
+
+
+def telemetry_enabled(config: dict) -> bool:
+    return open_tracking_enabled(config) or click_tracking_enabled(config)
 
 
 def resolve_tracking_base_url(config: dict) -> str:
@@ -50,7 +76,7 @@ def rewrite_newsletter_html_for_tracking(
     html_body: str,
     *,
     tracked_links: list[dict],
-    open_pixel_url: str,
+    open_pixel_url: str = "",
 ) -> str:
     tracked_html = html_body
     for link in tracked_links:
@@ -62,6 +88,9 @@ def rewrite_newsletter_html_for_tracking(
             f'href="{html.escape(target_url)}"',
             f'href="{html.escape(tracked_url)}"',
         )
+
+    if not open_pixel_url:
+        return tracked_html
 
     pixel_tag = (
         f'<img src="{html.escape(open_pixel_url)}" alt="" width="1" height="1" '

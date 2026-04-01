@@ -1380,7 +1380,8 @@ def run_delivery_job(
     render_digest_html_fn=render_digest_html,
     send_email_fn=send_email,
     resolve_digest_recipients_fn=resolve_digest_recipients,
-    telemetry_enabled: bool = True,
+    open_tracking_enabled: bool = True,
+    click_tracking_enabled: bool = True,
     use_cached_newsletter: bool = True,
     persist_newsletter: bool = True,
     audience_key: str = DEFAULT_AUDIENCE_KEY,
@@ -1406,7 +1407,9 @@ def run_delivery_job(
         "delivery_started",
         audience_key=audience_key,
         cached_newsletter_available=cached_newsletter is not None,
-        telemetry_enabled=telemetry_enabled,
+        telemetry_enabled=open_tracking_enabled or click_tracking_enabled,
+        open_tracking_enabled=open_tracking_enabled,
+        click_tracking_enabled=click_tracking_enabled,
         persist_newsletter=persist_newsletter,
         recipient_count=len(resolved_recipients),
         readiness_ok=readiness["ok"],
@@ -1445,31 +1448,45 @@ def run_delivery_job(
         html_body: str,
         selected_items: list[dict],
     ) -> tuple[str, int]:
-        if not telemetry_enabled:
+        if not open_tracking_enabled and not click_tracking_enabled:
             return html_body, 0
 
         base_url = resolve_tracking_base_url(config)
-        open_token = repository.ensure_newsletter_open_token(daily_newsletter_id)
-        tracked_links = repository.ensure_tracked_links(daily_newsletter_id, selected_items)
-        tracked_link_rows = [
-            {
-                **row,
-                "tracked_url": build_click_url(base_url, str(row["click_token"])),
-            }
-            for row in tracked_links
-        ]
+        open_token = (
+            repository.ensure_newsletter_open_token(daily_newsletter_id)
+            if open_tracking_enabled
+            else ""
+        )
+        tracked_links = (
+            repository.ensure_tracked_links(daily_newsletter_id, selected_items)
+            if click_tracking_enabled
+            else []
+        )
+        tracked_link_rows = (
+            [
+                {
+                    **row,
+                    "tracked_url": build_click_url(base_url, str(row["click_token"])),
+                }
+                for row in tracked_links
+            ]
+            if click_tracking_enabled
+            else []
+        )
         emit_event(
             "delivery_tracking_prepared",
             audience_key=audience_key,
             daily_newsletter_id=daily_newsletter_id,
             tracked_link_count=len(tracked_links),
             tracking_base_url=base_url,
+            open_tracking_enabled=open_tracking_enabled,
+            click_tracking_enabled=click_tracking_enabled,
         )
         return (
             rewrite_newsletter_html_for_tracking(
                 html_body,
                 tracked_links=tracked_link_rows,
-                open_pixel_url=build_open_pixel_url(base_url, open_token),
+                open_pixel_url=build_open_pixel_url(base_url, open_token) if open_token else "",
             ),
             len(tracked_links),
         )
@@ -1498,7 +1515,10 @@ def run_delivery_job(
             recipient_count=len(resolved_recipients),
             selected_item_count=len(selected_items),
             tracked_link_count=tracked_link_count,
-            telemetry_enabled=telemetry_enabled and daily_newsletter_id is not None,
+            telemetry_enabled=(open_tracking_enabled or click_tracking_enabled)
+            and daily_newsletter_id is not None,
+            open_tracking_enabled=open_tracking_enabled and daily_newsletter_id is not None,
+            click_tracking_enabled=click_tracking_enabled and daily_newsletter_id is not None,
             subject=subject,
         )
         sent_count = 0

@@ -5,7 +5,10 @@ from openai import OpenAI
 
 from curator import config as config_module
 from curator import content, dev, gmail, llm, pipeline, rendering, sources
-from curator.telemetry import telemetry_enabled as telemetry_enabled_for_config
+from curator.telemetry import (
+    click_tracking_enabled as click_tracking_enabled_for_config,
+    open_tracking_enabled as open_tracking_enabled_for_config,
+)
 
 
 CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
@@ -253,7 +256,8 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             render_digest_html_fn=render_digest_html,
             send_email_fn=send_email_fn,
             resolve_digest_recipients_fn=lambda cfg: (list(recipients), recipient_source),
-            telemetry_enabled=service is not None and telemetry_enabled_for_config(config),
+            open_tracking_enabled=service is not None and open_tracking_enabled_for_config(config),
+            click_tracking_enabled=service is not None and click_tracking_enabled_for_config(config),
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
             audience_key=audience_key,

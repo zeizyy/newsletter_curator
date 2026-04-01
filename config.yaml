@@ -87,3 +87,5 @@ email:
 
 tracking:
   enabled: false
+  open_enabled: true
+  click_enabled: false
