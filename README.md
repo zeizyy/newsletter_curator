@@ -194,6 +194,7 @@ Example response shape:
 ```
 
 This endpoint reads exactly one configured file path, does not accept a file parameter, and is intended for sharing a temporary read-only debug surface with Codex during production incidents by providing the endpoint URL plus the token separately.
+The app write path only appends to the configured file. If you use `scripts/bootstrap_server.py`, it also generates a companion `logrotate` config for that path so retention can stay outside the app.
 
 For an end-to-end delivery dry run that sends only to one test inbox:
 
@@ -258,6 +259,7 @@ What this writes by default:
 - `deploy/generated/run_fetch_gmail.sh`
 - `deploy/generated/run_fetch_sources.sh`
 - `deploy/generated/run_deliver_digest.sh`
+- `deploy/generated/newsletter-curator.logrotate`
 - `deploy/generated/newsletter_curator.cron`
 - `deploy/generated/newsletter-curator-admin.service`
 - `deploy/generated/debug.ndjson`
@@ -266,6 +268,7 @@ What the script installs when flags are passed:
 - `--install-systemd-user`: copies the generated admin service into `~/.config/systemd/user/`, reloads `systemd --user`, and enables it immediately
 - rerunning the bootstrap is safe: it regenerates assets, reloads the user unit, and restarts the admin service so wrapper/env updates are picked up
 - `--install-crontab`: installs the generated cron file as the current user’s crontab
+- `--install-logrotate`: copies the generated `logrotate` config into `--logrotate-dir` (defaults to `/etc/logrotate.d`)
 - `--enable-linger`: runs `loginctl enable-linger $USER` so the `systemd --user` admin service survives SSH logout
 
 Notes:
@@ -276,6 +279,8 @@ Notes:
 - Set `--public-base-url` to the externally reachable admin origin for subscriber login links, telemetry links, and open-tracking pixels. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
+- The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
+- `--install-logrotate` usually needs root if you leave `--logrotate-dir` at `/etc/logrotate.d`.
 - The generated cron schedule defaults to:
   - `30 14 * * *` run `daily_pipeline.py`
 - The default cron output now uses fixed UTC times instead of `CRON_TZ`, because some cron daemons ignore `CRON_TZ`.

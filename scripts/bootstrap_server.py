@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import grp
 import os
 import shlex
 import shutil
@@ -51,6 +52,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--daily-schedule", default="30 14 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--debug-log-file", type=Path, default=None)
+    parser.add_argument("--logrotate-file", type=Path, default=None)
+    parser.add_argument("--logrotate-dir", type=Path, default=Path("/etc/logrotate.d"))
+    parser.add_argument("--logrotate-rotate-count", type=int, default=7)
+    parser.add_argument("--install-logrotate", action="store_true")
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
     parser.add_argument(
@@ -162,6 +167,28 @@ def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoi
             "  exit 1",
             "fi",
             f"exec {quote(uv_bin)} run python {quote(entrypoint)} \"$@\"",
+            "",
+        ]
+    )
+
+
+def build_logrotate_config(
+    *,
+    debug_log_path: Path,
+    rotate_count: int,
+    owner: str,
+    group: str,
+) -> str:
+    return "\n".join(
+        [
+            f"{debug_log_path} {{",
+            "    daily",
+            f"    rotate {max(1, int(rotate_count))}",
+            "    compress",
+            "    missingok",
+            "    notifempty",
+            f"    create 0600 {owner} {group}",
+            "}",
             "",
         ]
     )
@@ -305,6 +332,13 @@ def install_crontab(cron_file: Path) -> None:
     subprocess.run(["crontab", str(cron_file)], check=True)
 
 
+def install_logrotate_config(logrotate_file: Path, target_dir: Path, service_name: str) -> Path:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / service_name
+    write_file(target_path, logrotate_file.read_text(encoding="utf-8"))
+    return target_path
+
+
 def main() -> None:
     args = parse_args()
     if not str(args.mcp_token or "").strip():
@@ -339,6 +373,13 @@ def main() -> None:
             )
         ).expanduser().resolve()
     )
+    logrotate_file = (
+        args.logrotate_file.resolve()
+        if args.logrotate_file is not None
+        else (output_dir / "newsletter-curator.logrotate").resolve()
+    )
+    logrotate_owner = getpass.getuser()
+    logrotate_group = grp.getgrgid(os.getgid()).gr_name
     admin_script = output_dir / "start_admin_server.sh"
     daily_script = output_dir / "run_daily_pipeline.sh"
     fetch_gmail_script = output_dir / "run_fetch_gmail.sh"
@@ -416,6 +457,16 @@ def main() -> None:
         mode=0o700,
     )
     write_file(
+        logrotate_file,
+        build_logrotate_config(
+            debug_log_path=debug_log_path,
+            rotate_count=args.logrotate_rotate_count,
+            owner=logrotate_owner,
+            group=logrotate_group,
+        ),
+        mode=0o644,
+    )
+    write_file(
         cron_file,
         build_cron_file(
             cron_timezone=args.cron_timezone,
@@ -437,6 +488,13 @@ def main() -> None:
 
     if args.install_crontab:
         install_crontab(cron_file)
+    installed_logrotate_path: Path | None = None
+    if args.install_logrotate:
+        installed_logrotate_path = install_logrotate_config(
+            logrotate_file,
+            args.logrotate_dir.resolve(),
+            args.service_name,
+        )
     if args.install_systemd_user:
         install_systemd_user_service(service_file, args.service_name)
     if args.enable_linger:
@@ -450,6 +508,7 @@ def main() -> None:
         fetch_gmail_script,
         fetch_sources_script,
         deliver_script,
+        logrotate_file,
         cron_file,
         service_file,
     ]:
@@ -461,6 +520,9 @@ def main() -> None:
     print(f"- Cron file: {cron_file}")
     print(f"- Log file: {log_file}")
     print(f"- Debug log file: {debug_log_path}")
+    print(f"- Logrotate config: {logrotate_file}")
+    if installed_logrotate_path is not None:
+        print(f"- Installed logrotate config: {installed_logrotate_path}")
     if args.install_systemd_user:
         print("- Admin app service installed and restarted. Check: systemctl --user status "
               f"{args.service_name}")

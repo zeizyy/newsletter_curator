@@ -84,9 +84,10 @@ def parse_debug_log_line_count(raw_value: str | None) -> int:
 
 def read_debug_log_tail(path: Path, *, lines: int) -> tuple[list[str], bool]:
     buffer: deque[str] = deque(maxlen=lines + 1)
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            buffer.append(raw_line.rstrip("\n"))
+    with _APPEND_LOCK:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for raw_line in handle:
+                buffer.append(raw_line.rstrip("\n"))
     truncated = len(buffer) > lines
     if truncated:
         buffer.popleft()

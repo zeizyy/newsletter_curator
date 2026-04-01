@@ -74,6 +74,7 @@ def _run_bootstrap(
         "fetch_gmail_script": output_dir / "run_fetch_gmail.sh",
         "fetch_sources_script": output_dir / "run_fetch_sources.sh",
         "deliver_script": output_dir / "run_deliver_digest.sh",
+        "logrotate_file": output_dir / "newsletter-curator.logrotate",
         "cron_file": output_dir / "newsletter-curator.cron",
         "service_file": output_dir / "newsletter-curator-admin.service",
     }
@@ -131,6 +132,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     fetch_gmail_script = paths["fetch_gmail_script"]
     fetch_sources_script = paths["fetch_sources_script"]
     deliver_script = paths["deliver_script"]
+    logrotate_file = paths["logrotate_file"]
     cron_file = paths["cron_file"]
     service_file = paths["service_file"]
     repo_dir = repo_root
@@ -142,6 +144,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
         fetch_gmail_script,
         fetch_sources_script,
         deliver_script,
+        logrotate_file,
         cron_file,
         service_file,
     ]:
@@ -176,6 +179,15 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in deliver_script_text
     assert "\"$@\"" in deliver_script_text
 
+    logrotate_text = logrotate_file.read_text(encoding="utf-8")
+    assert str(output_dir / "debug.ndjson") in logrotate_text
+    assert "daily" in logrotate_text
+    assert "rotate 7" in logrotate_text
+    assert "compress" in logrotate_text
+    assert "missingok" in logrotate_text
+    assert "notifempty" in logrotate_text
+    assert "create 0600" in logrotate_text
+
     daily_script_text = daily_script.read_text(encoding="utf-8")
     assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
@@ -200,6 +212,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
 
     assert "Generated deployment assets:" in result.stdout
     assert f"- Debug log file: {output_dir / 'debug.ndjson'}" in result.stdout
+    assert f"- Logrotate config: {logrotate_file}" in result.stdout
     assert "Warning: --public-base-url has no explicit port while --admin-port is set to 9090." in result.stdout
 
 
@@ -384,3 +397,19 @@ def test_enable_user_linger_runs_loginctl(monkeypatch):
     monkeypatch.setattr(bootstrap_server.subprocess, "run", fake_run)
     bootstrap_server.enable_user_linger("deploy-user")
     assert calls == [["loginctl", "enable-linger", "deploy-user"]]
+
+
+def test_install_logrotate_config_is_rerunnable(tmp_path):
+    logrotate_file = tmp_path / "newsletter-curator.logrotate"
+    logrotate_file.write_text("/tmp/debug.ndjson {\n    daily\n}\n", encoding="utf-8")
+    target_dir = tmp_path / "logrotate.d"
+
+    installed_path = bootstrap_server.install_logrotate_config(
+        logrotate_file,
+        target_dir,
+        "newsletter-curator-admin",
+    )
+
+    assert installed_path == target_dir / "newsletter-curator-admin"
+    assert installed_path.exists()
+    assert installed_path.read_text(encoding="utf-8") == logrotate_file.read_text(encoding="utf-8")
