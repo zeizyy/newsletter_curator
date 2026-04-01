@@ -1,0 +1,147 @@
+name: Deploy Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to deploy on the server
+        required: false
+        default: main
+
+concurrency:
+  group: newsletter-curator-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEPLOY_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
+      SSH_HOST: ${{ vars.CURATOR_SSH_HOST }}
+      SSH_PORT: ${{ vars.CURATOR_SSH_PORT || '22' }}
+      SSH_USER: ${{ vars.CURATOR_SSH_USER || 'root' }}
+      REMOTE_REPO_DIR: ${{ vars.CURATOR_REMOTE_REPO_DIR || '/root/newsletter_curator' }}
+      DEFAULT_SERVICE_NAME: ${{ vars.CURATOR_SERVICE_NAME || 'newsletter-curator-admin' }}
+    steps:
+      - name: Validate workflow configuration
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CURATOR_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.CURATOR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" || { echo "Missing repository variable CURATOR_SSH_HOST"; exit 1; }
+          test -n "$SSH_PRIVATE_KEY" || { echo "Missing repository secret CURATOR_SSH_PRIVATE_KEY"; exit 1; }
+          test -n "$SSH_KNOWN_HOSTS" || { echo "Missing repository secret CURATOR_SSH_KNOWN_HOSTS"; exit 1; }
+
+      - name: Install SSH credentials
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CURATOR_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.CURATOR_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Pull latest code and rerun bootstrap
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_BRANCH='$DEPLOY_BRANCH' REMOTE_REPO_DIR='$REMOTE_REPO_DIR' DEFAULT_SERVICE_NAME='$DEFAULT_SERVICE_NAME' bash -se" <<'REMOTE'
+          set -euo pipefail
+
+          cd "$REMOTE_REPO_DIR"
+
+          git fetch --prune origin "$DEPLOY_BRANCH"
+          if git show-ref --verify --quiet "refs/heads/$DEPLOY_BRANCH"; then
+            git checkout "$DEPLOY_BRANCH"
+          else
+            git checkout -b "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+          fi
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+          uv sync --frozen
+
+          env_file="deploy/generated/newsletter-curator.env"
+          if [ ! -f "$env_file" ]; then
+            echo "error: missing $env_file. Run the initial bootstrap manually once on the server." >&2
+            exit 1
+          fi
+
+          set -a
+          . "$env_file"
+          set +a
+
+          bootstrap_args=(
+            --repo-dir "$REMOTE_REPO_DIR"
+            --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
+            --admin-host "${CURATOR_ADMIN_HOST:-0.0.0.0}"
+            --admin-port "${CURATOR_ADMIN_PORT:-8080}"
+            --admin-token "${CURATOR_ADMIN_TOKEN:-}"
+            --mcp-token "${CURATOR_MCP_TOKEN:-}"
+            --debug-log-token "${CURATOR_DEBUG_LOG_TOKEN:-}"
+            --service-name "${CURATOR_ADMIN_SERVICE_NAME:-$DEFAULT_SERVICE_NAME}"
+          )
+
+          if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ]; then
+            bootstrap_args+=(--public-base-url "$CURATOR_PUBLIC_BASE_URL")
+          fi
+
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            bootstrap_args+=(--openai-api-key "$OPENAI_API_KEY")
+          fi
+
+          if [ -n "${BUTTONDOWN_API_KEY:-}" ]; then
+            bootstrap_args+=(--buttondown-api-key "$BUTTONDOWN_API_KEY")
+          fi
+
+          case "${CURATOR_ENABLE_TELEMETRY:-0}" in
+            1|true|TRUE|yes|YES|on|ON)
+              bootstrap_args+=(--enable-telemetry)
+              ;;
+          esac
+
+          bootstrap_args+=(--install-crontab --install-systemd-user)
+          bootstrap_display_args=(
+            --repo-dir "$REMOTE_REPO_DIR"
+            --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
+            --admin-host "${CURATOR_ADMIN_HOST:-0.0.0.0}"
+            --admin-port "${CURATOR_ADMIN_PORT:-8080}"
+            --admin-token "[redacted]"
+            --mcp-token "[redacted]"
+            --debug-log-token "[redacted]"
+            --service-name "${CURATOR_ADMIN_SERVICE_NAME:-$DEFAULT_SERVICE_NAME}"
+          )
+
+          if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ]; then
+            bootstrap_display_args+=(--public-base-url "$CURATOR_PUBLIC_BASE_URL")
+          fi
+
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            bootstrap_display_args+=(--openai-api-key "[redacted]")
+          fi
+
+          if [ -n "${BUTTONDOWN_API_KEY:-}" ]; then
+            bootstrap_display_args+=(--buttondown-api-key "[redacted]")
+          fi
+
+          case "${CURATOR_ENABLE_TELEMETRY:-0}" in
+            1|true|TRUE|yes|YES|on|ON)
+              bootstrap_display_args+=(--enable-telemetry)
+              ;;
+          esac
+
+          bootstrap_display_args+=(--install-crontab --install-systemd-user)
+          printf 'Bootstrap command:\n'
+          printf 'uv run python scripts/bootstrap_server.py'
+          printf ' %q' "${bootstrap_display_args[@]}"
+          printf '\n'
+
+          uv run python scripts/bootstrap_server.py "${bootstrap_args[@]}"
+          REMOTE

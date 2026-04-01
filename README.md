@@ -308,6 +308,36 @@ If you chose to install the admin service too:
 systemctl --user status newsletter-curator-admin
 ```
 
+### GitHub Actions Server Sync
+After the first manual bootstrap, `.github/workflows/deploy_server.yml` can keep the server in sync on every push to `main` or from a manual `workflow_dispatch`.
+
+The workflow:
+- SSHes to the server
+- fast-forwards the matching branch in `/root/newsletter_curator` by default
+- runs `uv sync --frozen`
+- sources `deploy/generated/newsletter-curator.env`
+- reruns `scripts/bootstrap_server.py` with the current server-side tokens and keys
+- reapplies both `crontab` and the `systemd --user` admin service on each deploy
+
+Behavior notes:
+- The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
+- The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
+- It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
+
+Required GitHub repo configuration:
+- variable `CURATOR_SSH_HOST`
+- optional variable `CURATOR_SSH_PORT` default `22`
+- optional variable `CURATOR_SSH_USER` default `root`
+- optional variable `CURATOR_REMOTE_REPO_DIR` default `/root/newsletter_curator`
+- optional variable `CURATOR_SERVICE_NAME` default `newsletter-curator-admin`
+- secret `CURATOR_SSH_PRIVATE_KEY`
+- secret `CURATOR_SSH_KNOWN_HOSTS`
+
+You can populate `CURATOR_SSH_KNOWN_HOSTS` with:
+```bash
+ssh-keyscan -H YOUR_SERVER_HOST
+```
+
 For a one-off server-side dry run through the generated wrapper:
 
 ```bash
