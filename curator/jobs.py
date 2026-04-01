@@ -454,7 +454,7 @@ def score_gmail_stories_for_fetch(
 
     max_fetch_after_score = max(
         1,
-        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 12) or 12),
+        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 20) or 20),
     )
     development_cfg = config.get("development", {})
     scoring_model = config["openai"]["reasoning_model"]

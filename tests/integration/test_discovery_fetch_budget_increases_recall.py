@@ -56,12 +56,12 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
 
     result = run_fetch_gmail_job(config, service, article_fetcher=article_fetcher)
 
-    assert DEFAULT_CONFIG["limits"]["max_gmail_fetch_after_score"] == 18
-    assert config["limits"]["max_gmail_fetch_after_score"] == 18
+    assert DEFAULT_CONFIG["limits"]["max_gmail_fetch_after_score"] == 20
+    assert config["limits"]["max_gmail_fetch_after_score"] == 20
     assert result["status"] == "completed"
     assert result["stories_seen"] == 20
-    assert result["stories_selected_for_fetch"] == 18
-    assert len(article_fetcher.calls) == 18
+    assert result["stories_selected_for_fetch"] == 20
+    assert len(article_fetcher.calls) == 20
     assert config["limits"]["final_top_stories"] == 15
     assert config["limits"]["source_quotas"] == {"gmail": 10, "additional_source": 5}
 

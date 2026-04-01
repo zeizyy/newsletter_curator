@@ -46,7 +46,7 @@ DEFAULT_CONFIG = {
         "max_fetch_workers": 5,
         "max_summary_workers": 5,
         "max_ingest_summaries": 20,
-        "max_gmail_fetch_after_score": 18,
+        "max_gmail_fetch_after_score": 20,
     },
     "email": {
         "digest_recipients": [],
