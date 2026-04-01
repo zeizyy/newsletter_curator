@@ -66,17 +66,24 @@ jobs:
           fi
           git pull --ff-only origin "$DEPLOY_BRANCH"
 
-          uv sync --frozen
-
           env_file="deploy/generated/newsletter-curator.env"
           if [ ! -f "$env_file" ]; then
             echo "error: missing $env_file. Run the initial bootstrap manually once on the server." >&2
             exit 1
           fi
 
+          export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
           set -a
           . "$env_file"
           set +a
+
+          uv_bin="$(command -v uv || true)"
+          if [ -z "$uv_bin" ]; then
+            echo "error: uv not found on remote PATH=$PATH" >&2
+            exit 1
+          fi
+
+          "$uv_bin" sync --frozen
 
           bootstrap_args=(
             --repo-dir "$REMOTE_REPO_DIR"
@@ -139,9 +146,9 @@ jobs:
 
           bootstrap_display_args+=(--install-crontab --install-systemd-user)
           printf 'Bootstrap command:\n'
-          printf 'uv run python scripts/bootstrap_server.py'
+          printf '%q run python scripts/bootstrap_server.py' "$uv_bin"
           printf ' %q' "${bootstrap_display_args[@]}"
           printf '\n'
 
-          uv run python scripts/bootstrap_server.py "${bootstrap_args[@]}"
+          "$uv_bin" run python scripts/bootstrap_server.py "${bootstrap_args[@]}"
           REMOTE
