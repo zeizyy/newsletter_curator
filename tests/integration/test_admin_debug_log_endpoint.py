@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import importlib
 import json
 
@@ -142,3 +143,61 @@ def test_admin_debug_log_endpoint_rejects_symlink_path(monkeypatch, tmp_path):
 
     assert response.status_code == 503
     assert response.get_json()["error"] == "Debug log path is invalid."
+
+
+def test_admin_debug_log_endpoint_can_merge_rotated_logs(monkeypatch, tmp_path):
+    log_path = tmp_path / "debug.ndjson"
+    rotated_recent = tmp_path / "debug.ndjson.1"
+    rotated_older = tmp_path / "debug.ndjson.2.gz"
+    rotated_older.write_bytes(gzip.compress(b'{"event":"older"}\n'))
+    rotated_recent.write_text('{"event":"recent"}\n', encoding="utf-8")
+    log_path.write_text('{"event":"current"}\n', encoding="utf-8")
+    monkeypatch.setenv("CURATOR_DEBUG_LOG_PATH", str(log_path))
+    monkeypatch.setenv("CURATOR_DEBUG_LOG_TOKEN", "debug-secret")
+    client = _build_client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/debug/logs?merged=1&lines=10",
+        headers={"Authorization": "Bearer debug-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["merged"] is True
+    assert payload["line_count"] == 3
+    assert payload["truncated"] is False
+    assert payload["source_paths"] == [
+        str(rotated_older),
+        str(rotated_recent),
+        str(log_path),
+    ]
+    assert [json.loads(line)["event"] for line in payload["lines"]] == [
+        "older",
+        "recent",
+        "current",
+    ]
+
+
+def test_admin_debug_log_endpoint_can_merge_when_current_log_missing(monkeypatch, tmp_path):
+    log_path = tmp_path / "debug.ndjson"
+    rotated_recent = tmp_path / "debug.ndjson.1.gz"
+    rotated_recent.write_bytes(gzip.compress(b'{"event":"yesterday"}\n'))
+    monkeypatch.setenv("CURATOR_DEBUG_LOG_PATH", str(log_path))
+    monkeypatch.setenv("CURATOR_DEBUG_LOG_TOKEN", "debug-secret")
+    client = _build_client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/debug/logs?merged=1&lines=10",
+        headers={"Authorization": "Bearer debug-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["merged"] is True
+    assert payload["line_count"] == 1
+    assert payload["truncated"] is False
+    assert payload["source_paths"] == [
+        str(rotated_recent),
+        str(log_path),
+    ]
+    assert [json.loads(line)["event"] for line in payload["lines"]] == ["yesterday"]

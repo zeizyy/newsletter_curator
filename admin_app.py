@@ -15,6 +15,7 @@ from curator.debug_logs import (
     DEBUG_LOG_TOKEN_HEADER,
     configured_debug_log_path,
     configured_debug_log_token,
+    iter_debug_log_files,
     parse_debug_log_line_count,
     read_debug_log_tail,
     validate_configured_debug_log_path,
@@ -760,22 +761,29 @@ def debug_logs():
         requested_lines = parse_debug_log_line_count(request.args.get("lines"))
     except ValueError as exc:
         return {"error": str(exc)}, 400
+    merged = parse_bool(request.args.get("merged"))
 
     path, path_status = validate_configured_debug_log_path(configured_debug_log_path())
     if path is None:
         if path_status == "missing":
             return {"error": "Debug log endpoint is not configured."}, 503
         return {"error": "Debug log path is invalid."}, 503
-    if not path.exists():
+    if not path.exists() and not any(candidate.exists() for candidate in iter_debug_log_files(path, merged=True)):
         return {"error": "Debug log file was not found."}, 404
 
     try:
-        lines, truncated = read_debug_log_tail(path, lines=requested_lines)
+        lines, truncated, source_paths = read_debug_log_tail(
+            path,
+            lines=requested_lines,
+            merged=merged,
+        )
     except OSError:
         return {"error": "Debug log file could not be read."}, 503
 
     return {
         "path": str(path),
+        "merged": merged,
+        "source_paths": source_paths,
         "line_count": len(lines),
         "truncated": truncated,
         "lines": lines,

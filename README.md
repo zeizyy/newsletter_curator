@@ -179,6 +179,15 @@ curl -sS \
   'https://YOUR_PUBLIC_CURATOR_HOST/debug/logs?lines=200'
 ```
 
+To merge the current debug log with rotated siblings such as `debug.ndjson.1` and
+`debug.ndjson.2.gz`, pass `merged=1`:
+
+```bash
+curl -sS \
+  -H 'Authorization: Bearer YOUR_DEBUG_LOG_TOKEN' \
+  'https://YOUR_PUBLIC_CURATOR_HOST/debug/logs?merged=1&lines=500'
+```
+
 Example response shape:
 
 ```json

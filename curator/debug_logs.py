@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import os
 from collections import deque
 from pathlib import Path
+import re
 from threading import Lock
 
 
@@ -82,13 +84,58 @@ def parse_debug_log_line_count(raw_value: str | None) -> int:
     return min(parsed, MAX_DEBUG_LOG_LINES)
 
 
-def read_debug_log_tail(path: Path, *, lines: int) -> tuple[list[str], bool]:
+def iter_debug_log_files(path: Path, *, merged: bool) -> list[Path]:
+    if not merged:
+        return [path]
+
+    pattern = re.compile(rf"^{re.escape(path.name)}\.(\d+)(?:\.gz)?$")
+    rotated: list[tuple[int, str, Path]] = []
+    try:
+        for candidate in path.parent.iterdir():
+            match = pattern.match(candidate.name)
+            if match is None:
+                continue
+            if _path_has_symlink_component(candidate):
+                continue
+            try:
+                if not candidate.is_file():
+                    continue
+            except OSError:
+                continue
+            rotated.append((int(match.group(1)), candidate.name, candidate))
+    except OSError:
+        return [path]
+
+    ordered = [candidate for _index, _name, candidate in sorted(rotated, reverse=True)]
+    ordered.append(path)
+    return ordered
+
+
+def _open_debug_log_file(path: Path):
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return path.open("r", encoding="utf-8", errors="replace")
+
+
+def read_debug_log_tail(
+    path: Path,
+    *,
+    lines: int,
+    merged: bool = False,
+) -> tuple[list[str], bool, list[str]]:
+    debug_log_files = iter_debug_log_files(path, merged=merged)
     buffer: deque[str] = deque(maxlen=lines + 1)
+    total_lines = 0
     with _APPEND_LOCK:
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for raw_line in handle:
-                buffer.append(raw_line.rstrip("\n"))
-    truncated = len(buffer) > lines
+        for debug_log_file in debug_log_files:
+            try:
+                with _open_debug_log_file(debug_log_file) as handle:
+                    for raw_line in handle:
+                        total_lines += 1
+                        buffer.append(raw_line.rstrip("\n"))
+            except OSError:
+                continue
+    truncated = total_lines > lines
     if truncated:
         buffer.popleft()
-    return list(buffer), truncated
+    return list(buffer), truncated, [str(candidate) for candidate in debug_log_files]
