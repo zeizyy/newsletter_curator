@@ -35,6 +35,7 @@ from .observability import emit_event
 from .pipeline import process_story, run_job as run_pipeline_job
 from .rendering import (
     group_summaries_by_category,
+    render_digest_text,
     render_digest_html,
     render_email_safe_digest_html,
 )
@@ -56,11 +57,6 @@ from .telemetry import (
 BUTTONDOWN_SUBSCRIBERS_URL = "https://api.buttondown.com/v1/subscribers"
 BUTTONDOWN_API_VERSION = "2025-06-01"
 BUTTONDOWN_PAGE_SIZE = 100
-NEWSLETTER_SIGNUP_CTA_URL = "https://buttondown.com/zeizyynewsletter"
-NEWSLETTER_SIGNUP_CTA_TEXT = (
-    "Was this email forwarded to you? Don't miss out on future stories - "
-    "subscribe to AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories."
-)
 BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
     "blocked",
     "complained",
@@ -232,35 +228,8 @@ def subscriber_profile_key(persona_text: str, preferred_sources: list[str]) -> s
     return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
-def append_signup_cta_to_newsletter(body: str, html_body: str) -> tuple[str, str]:
-    normalized_body = str(body or "").strip()
-    normalized_html = str(html_body or "").strip()
-    cta_plain = f"{NEWSLETTER_SIGNUP_CTA_TEXT} {NEWSLETTER_SIGNUP_CTA_URL}"
-    if NEWSLETTER_SIGNUP_CTA_URL not in normalized_body:
-        normalized_body = (
-            f"{normalized_body}\n\n===\n\n{cta_plain}" if normalized_body else cta_plain
-        )
-
-    if NEWSLETTER_SIGNUP_CTA_URL not in normalized_html:
-        cta_html = (
-            '<div style="margin:18px 0 0 0;padding:14px 16px;border:1px solid #d5dde8;'
-            'background:#f8fbff;font-size:14px;line-height:1.6;color:#31424a;">'
-            "Was this email forwarded to you? Don't miss out on future stories - "
-            f'<a href="{NEWSLETTER_SIGNUP_CTA_URL}" '
-            'style="color:#0f8661;font-weight:700;text-decoration:none;">subscribe to AI Signal Daily</a> '
-            "for a concise daily briefing on the highest-signal AI and tech stories."
-            "</div>"
-        )
-        if "</body>" in normalized_html.lower():
-            closing_index = normalized_html.lower().rfind("</body>")
-            normalized_html = (
-                normalized_html[:closing_index]
-                + cta_html
-                + normalized_html[closing_index:]
-            )
-        else:
-            normalized_html = f"{normalized_html}{cta_html}"
-    return normalized_body, normalized_html
+def finalize_delivery_newsletter(body: str, html_body: str) -> tuple[str, str]:
+    return str(body or "").strip(), str(html_body or "").strip()
 
 
 def resolve_delivery_subscribers(
@@ -1560,6 +1529,12 @@ def run_delivery_job(
             "accepted_items": int(pipeline_result.get("accepted_items", 0) or 0),
         }
 
+    def render_delivery_body(content: dict, fallback_body: str) -> str:
+        render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
+        if not render_groups:
+            return fallback_body
+        return render_digest_text(render_groups)
+
     def render_delivery_html(content: dict, fallback_html: str) -> str:
         render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
         if not render_groups:
@@ -1585,14 +1560,15 @@ def run_delivery_job(
                 selected_item_count=len(cached_newsletter.get("selected_items", [])),
             )
             cached_content = build_newsletter_content(cached_newsletter=cached_newsletter)
+            digest_body = render_delivery_body(
+                cached_content,
+                str(cached_newsletter.get("body", "")).strip(),
+            )
             delivery_html = render_delivery_html(
                 cached_content,
                 str(cached_newsletter.get("html_body", "")).strip(),
             )
-            digest_body, delivery_html = append_signup_cta_to_newsletter(
-                str(cached_newsletter.get("body", "")).strip(),
-                delivery_html,
-            )
+            digest_body, delivery_html = finalize_delivery_newsletter(digest_body, delivery_html)
             sent_recipients = send_digest(
                 subject=cached_newsletter["subject"],
                 body=digest_body,
@@ -1681,15 +1657,16 @@ def run_delivery_job(
             and str(pipeline_result.get("digest_html", "")).strip()
         ):
             newsletter_content = build_newsletter_content(pipeline_result=pipeline_result)
+            digest_body = render_delivery_body(
+                newsletter_content,
+                str(pipeline_result.get("digest_body", "")).strip(),
+            )
             delivery_html = render_delivery_html(
                 newsletter_content,
                 str(pipeline_result.get("email_safe_digest_html", "")).strip()
                 or str(pipeline_result.get("digest_html", "")).strip(),
             )
-            digest_body, delivery_html = append_signup_cta_to_newsletter(
-                str(pipeline_result.get("digest_body", "")).strip(),
-                delivery_html,
-            )
+            digest_body, delivery_html = finalize_delivery_newsletter(digest_body, delivery_html)
             if persist_newsletter:
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,

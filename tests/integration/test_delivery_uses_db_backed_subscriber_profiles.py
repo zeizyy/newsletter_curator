@@ -4,7 +4,7 @@ import importlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from curator.jobs import NEWSLETTER_SIGNUP_CTA_URL, get_repository_from_config
+from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
@@ -224,7 +224,7 @@ def test_delivery_prefers_db_backed_profiles_over_legacy_personalization_inputs(
     assert "Rates reset changes software valuations" in messages_by_recipient["yaml-fallback@example.com"]["body"]
     assert "Model pricing shifted inference budgets" not in messages_by_recipient["yaml-fallback@example.com"]["body"]
     for message in sent_messages:
-        assert message["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+        assert "buttondown.com/zeizyynewsletter" not in message["body"]
 
 
 def test_dry_run_recipient_override_prefers_db_profile_without_buttondown_personalization(monkeypatch, tmp_path):
@@ -298,4 +298,4 @@ def test_dry_run_recipient_override_prefers_db_profile_without_buttondown_person
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
     assert "Model pricing shifted inference budgets" in sent_messages[0]["body"]
     assert "Rates reset changes software valuations" not in sent_messages[0]["body"]
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["body"]

@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 from datetime import UTC, datetime
 
-from curator.jobs import NEWSLETTER_SIGNUP_CTA_URL, current_newsletter_date, get_repository_from_config
+from curator.jobs import current_newsletter_date, get_repository_from_config
 from tests.fakes import FakeGmailService, FakeOpenAI
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
@@ -109,12 +109,14 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     assert stored_newsletter is not None
     assert stored_newsletter["subject"] == "Cached Daily Digest"
     assert "Rates reset changes software valuations" in stored_newsletter["body"]
-    assert stored_newsletter["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "AI & ML industry developments" not in stored_newsletter["body"]
+    assert "Markets / stocks / macro / economy" not in stored_newsletter["body"]
+    assert "buttondown.com/zeizyynewsletter" not in stored_newsletter["body"]
     assert len(stored_newsletter["selected_items"]) == 2
     assert stored_newsletter["content"]["render_groups"]
     assert 'role="presentation"' in stored_newsletter["html_body"]
     assert "AI Signal Daily" in stored_newsletter["html_body"]
-    assert stored_newsletter["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "buttondown.com/zeizyynewsletter" not in stored_newsletter["html_body"]
 
     monkeypatch.setattr(main, "OpenAI", FailIfCalledOpenAI)
     second_preview = main.preview_job(config)
@@ -167,9 +169,9 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
     assert len(sent_messages) == 1
     assert sent_messages[0]["subject"] == "Cached Daily Digest"
     assert sent_messages[0]["body"] == stored_newsletter["body"]
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["body"]
     assert 'role="presentation"' in sent_messages[0]["html_body"]
-    assert sent_messages[0]["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["html_body"]
     assert "/track/click/" in sent_messages[0]["html_body"]
     assert "/track/open/" in sent_messages[0]["html_body"]
     assert urlparse(sent_messages[0]["html_body"].split('src="', 1)[1].split('"', 1)[0]).path.startswith("/track/open/")

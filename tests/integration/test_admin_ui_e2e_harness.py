@@ -127,7 +127,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
             return "\n".join(
                 [
                     '- heading "AI Signal Daily" [level=2] [ref=e29]',
-                    "- generic [ref=e54]: 1. Rates reset changes software valuations https://example.com/markets/rates-reset Was this email forwarded to you? Don't miss out on future stories - subscribe to AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories. https://buttondown.com/zeizyynewsletter",
+                    "- generic [ref=e54]: Story: Rates reset changes software valuations URL: https://example.com/markets/rates-reset Key takeaways - Rates reset changes software valuations. Why this matters to me This matters for software multiples.",
                 ]
             )
         raise AssertionError(f"Unexpected fake page state: {page}")
@@ -220,11 +220,11 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
         "05-settings-saved.png",
         "06-admin-control-room.png",
         "07-admin-preview.png",
-        "08-preview-cta-fallback.png",
+        "08-preview-detail.png",
     }
     assert {path.name for path in output_dir.glob("*.png")} == screenshot_names
 
     manifest_path = output_dir / "manifest.json"
     assert manifest_path.exists()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["screenshots"]["preview_cta"].endswith("08-preview-cta-fallback.png")
+    assert manifest["screenshots"]["preview_detail"].endswith("08-preview-detail.png")

@@ -120,13 +120,20 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
     content = newsletter.get("content", {}) or {}
     metadata = newsletter.get("metadata", {}) or {}
     render_groups = content.get("render_groups") or metadata.get("render_groups", {})
+    stored_body = str(newsletter.get("body", "") or "")
     stored_html = str(newsletter.get("html_body", "") or "")
+    plain_body = stored_body
     market_tape_html = stored_html
     email_safe_html = stored_html
     # Stored render_groups are the canonical cached content when they exist.
     if render_groups:
-        from curator.rendering import render_digest_html, render_email_safe_digest_html
+        from curator.rendering import (
+            render_digest_html,
+            render_digest_text,
+            render_email_safe_digest_html,
+        )
 
+        plain_body = render_digest_text(render_groups)
         market_tape_html = render_digest_html(render_groups)
         email_safe_html = render_email_safe_digest_html(render_groups)
     elif rerender_stored_newsletters_enabled():
@@ -135,7 +142,7 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
     html_body = email_safe_html if preview_template == "email_safe" else market_tape_html
     return {
         "subject": str(newsletter.get("subject", "") or ""),
-        "body": str(newsletter.get("body", "") or ""),
+        "body": plain_body,
         "html_body": strip_tracking_pixel(html_body) if html_body else "",
         "market_tape_html": strip_tracking_pixel(market_tape_html) if market_tape_html else "",
         "email_safe_html": strip_tracking_pixel(email_safe_html) if email_safe_html else "",

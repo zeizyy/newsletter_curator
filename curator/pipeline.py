@@ -20,6 +20,7 @@ from .rendering import (
     parse_summary_block,
     render_email_safe_digest_html,
     render_digest_html,
+    render_digest_text,
 )
 from .sources import collect_additional_source_links
 from .observability import compact_model_usage, emit_event
@@ -187,6 +188,7 @@ def run_job(
     process_story_fn=process_story,
     group_summaries_by_category_fn=group_summaries_by_category,
     build_render_groups_fn=build_render_groups,
+    render_digest_text_fn=render_digest_text,
     render_digest_html_fn=render_digest_html,
     render_email_safe_digest_html_fn=render_email_safe_digest_html,
     send_email_fn=send_email,
@@ -446,15 +448,8 @@ def run_job(
         final_source_type_counts=structured_counts(accepted_items, "source_type"),
     )
 
-    grouped = group_summaries_by_category_fn(summaries)
-    sections = []
-    for category, entries in grouped.items():
-        section_text = [category, ""]
-        section_text.extend(entries)
-        sections.append("\n\n".join(section_text))
-    final_text = "\n\n===\n\n".join(sections)
-
     render_groups = build_render_groups_fn(summaries)
+    final_text = render_digest_text_fn(render_groups)
     digest_html = render_digest_html_fn(render_groups)
     email_safe_digest_html = render_email_safe_digest_html_fn(render_groups)
     digest_subject = email_cfg["digest_subject"]

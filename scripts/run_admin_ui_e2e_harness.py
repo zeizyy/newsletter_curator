@@ -186,18 +186,16 @@ def seed_review_fixture(
         newsletter_date=newsletter_date,
         subject="AI Signal Daily",
         body=(
-            "1. Rates reset changes software valuations\n"
-            "   https://example.com/markets/rates-reset\n\n"
-            "Was this email forwarded to you? Don't miss out on future stories - subscribe to "
-            "AI Signal Daily for a concise daily briefing on the highest-signal AI and tech stories. "
-            "https://buttondown.com/zeizyynewsletter"
+            "Story: Rates reset changes software valuations\n\n"
+            "URL: https://example.com/markets/rates-reset\n\n"
+            "Key takeaways\n"
+            "- Rates reset changes software valuations.\n\n"
+            "Why this matters to me\n"
+            "This matters for software multiples."
         ),
         html_body=(
             "<html><body><h1>AI Signal Daily</h1>"
             "<p>Rates reset changes software valuations</p>"
-            "<p>Was this email forwarded to you? Don't miss out on future stories - "
-            '<a href="https://buttondown.com/zeizyynewsletter">subscribe to AI Signal Daily</a> '
-            "for a concise daily briefing on the highest-signal AI and tech stories.</p>"
             "</body></html>"
         ),
         selected_items=[
@@ -656,7 +654,7 @@ def main() -> int:
             ensure_contains(preview_snapshot, "AI Signal Daily", context="preview snapshot")
             ensure_contains(
                 preview_snapshot,
-                "Was this email forwarded to you?",
+                "Rates reset changes software valuations",
                 context="preview snapshot",
             )
             screenshots["admin_preview"] = str(
@@ -676,9 +674,9 @@ def main() -> int:
                 session=browser_session,
                 pwcli_path=pwcli_path,
             )
-            screenshots["preview_cta"] = str(
+            screenshots["preview_detail"] = str(
                 write_named_screenshot(
-                    "08-preview-cta-fallback.png",
+                    "08-preview-detail.png",
                     output_dir=output_dir,
                     session=browser_session,
                     pwcli_path=pwcli_path,

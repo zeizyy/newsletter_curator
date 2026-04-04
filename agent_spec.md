@@ -6,7 +6,7 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Add subscriber-facing `/login` and `/settings` pages in the existing Flask app.
 - Use passwordless login so the app stores only hashed login or session state, not raw passwords.
 - Let users edit `persona_text` and `preferred_sources` on the settings page.
-- Append a signup CTA to the end of each newsletter email, in both plain text and HTML, pointing to `https://buttondown.com/zeizyynewsletter`.
+- Render the final delivery email as one flat ranked story list without section headers or footer CTA chrome.
 
 # Technical Design
 - Add SQLite-backed user tables for identity, profile data, and login or session state.
@@ -49,3 +49,4 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T65` optional query ergonomics for the recent-story MCP tool
 - `T66` publish the MCP server for local agent discovery
 - `T68` secure read-only debug log endpoint for production troubleshooting
+- `T69` flatten final delivery email ranking and remove footer CTA

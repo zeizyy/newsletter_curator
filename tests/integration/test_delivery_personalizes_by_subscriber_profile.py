@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from datetime import UTC, datetime, timedelta
 
-from curator.jobs import NEWSLETTER_SIGNUP_CTA_URL, get_repository_from_config
+from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
@@ -103,7 +103,7 @@ def test_legacy_delivery_still_reuses_cached_newsletter(monkeypatch, tmp_path):
     assert sent_messages[0]["body"].startswith(
         "This cached body should be bypassed for personalized delivery."
     )
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["body"]
 
 
 def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):

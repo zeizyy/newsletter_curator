@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from datetime import UTC, datetime, timedelta
 
-from curator.jobs import NEWSLETTER_SIGNUP_CTA_URL, get_repository_from_config
+from curator.jobs import get_repository_from_config
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
@@ -70,9 +70,23 @@ def _seed_story_catalog(repository) -> None:
         published_at=recent_base.isoformat(),
         summarized_at=(recent_base + timedelta(minutes=5)).isoformat(),
     )
+    _seed_story(
+        repository,
+        ingestion_run_id=ingestion_run_id,
+        source_name="AI Wire",
+        subject="[ai] Open model pricing changed",
+        url="https://example.com/ai/model-pricing",
+        anchor_text="Open model pricing changed",
+        context="Repository context for pricing",
+        category="AI & ML industry developments",
+        article_text="Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        summary_body="Open model pricing changed and pushes buyers to recalculate inference budgets.",
+        published_at=(recent_base - timedelta(minutes=30)).isoformat(),
+        summarized_at=(recent_base - timedelta(minutes=25)).isoformat(),
+    )
 
 
-def test_fresh_delivery_persists_signup_cta_once(monkeypatch, tmp_path):
+def test_fresh_delivery_persists_flat_footer_free_newsletter(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
     sources = importlib.import_module("curator.sources")
@@ -88,9 +102,73 @@ def test_fresh_delivery_persists_signup_cta_once(monkeypatch, tmp_path):
             },
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
-                "select_top_stories": 1,
-                "final_top_stories": 1,
-                "source_quotas": {"gmail": 0, "additional_source": 1},
+                "select_top_stories": 2,
+                "final_top_stories": 2,
+                "source_quotas": {"gmail": 0, "additional_source": 2},
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedDateTime)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_story_catalog(repository)
+
+    sent_messages: list[dict] = []
+
+    def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        sent_messages.append(
+            {
+                "to": to_address,
+                "subject": subject,
+                "body": body,
+                "html_body": html_body or "",
+            }
+        )
+
+    monkeypatch.setattr(main, "send_email", fake_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+    stored_newsletter = repository.get_daily_newsletter("2026-03-24")
+
+    assert result["status"] == "completed"
+    assert result["cached_newsletter"] is False
+    assert stored_newsletter is not None
+    assert isinstance(stored_newsletter["content"]["render_groups"], list)
+    assert stored_newsletter["body"].index("Rates reset changes software valuations") < stored_newsletter["body"].index(
+        "Open model pricing changed"
+    )
+    assert "Markets / stocks / macro / economy" not in stored_newsletter["body"]
+    assert "AI & ML industry developments" not in stored_newsletter["body"]
+    assert "buttondown.com/zeizyynewsletter" not in stored_newsletter["body"]
+    assert "subscribe to AI Signal Daily" not in stored_newsletter["html_body"]
+    assert "category-title" not in stored_newsletter["html_body"]
+    assert "buttondown.com/zeizyynewsletter" not in stored_newsletter["html_body"]
+    assert sent_messages[0]["body"] == stored_newsletter["body"]
+    assert sent_messages[0]["html_body"] == stored_newsletter["html_body"]
+
+
+def test_cached_delivery_keeps_flat_footer_free_output(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
+            "email": {
+                "digest_recipients": ["reader@example.com"],
+                "digest_subject": "Daily Digest",
+            },
+            "additional_sources": {"enabled": True, "hours": 48},
+            "limits": {
+                "select_top_stories": 2,
+                "final_top_stories": 2,
+                "source_quotas": {"gmail": 0, "additional_source": 2},
             },
         },
     )
@@ -118,95 +196,16 @@ def test_fresh_delivery_persists_signup_cta_once(monkeypatch, tmp_path):
 
     first_result = main.run_job(config, FakeGmailService(messages=[]))
     stored_newsletter = repository.get_daily_newsletter("2026-03-24")
-
-    assert first_result["status"] == "completed"
     assert first_result["cached_newsletter"] is False
     assert stored_newsletter is not None
-    assert stored_newsletter["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert stored_newsletter["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert sent_messages[0]["body"] == stored_newsletter["body"]
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert sent_messages[0]["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
 
     sent_messages.clear()
     second_result = main.run_job(config, FakeGmailService(messages=[]))
-    stored_after_second_send = repository.get_daily_newsletter("2026-03-24")
 
     assert second_result["status"] == "completed"
     assert second_result["cached_newsletter"] is True
-    assert stored_after_second_send is not None
-    assert stored_after_second_send["body"] == stored_newsletter["body"]
-    assert stored_after_second_send["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert stored_after_second_send["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
     assert sent_messages[0]["body"] == stored_newsletter["body"]
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert sent_messages[0]["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-
-
-def test_preexisting_cached_newsletter_gets_signup_cta_at_send_time_only(monkeypatch, tmp_path):
-    main = importlib.import_module("main")
-    jobs = importlib.import_module("curator.jobs")
-
-    config_path = write_temp_config(
-        tmp_path,
-        overrides={
-            "database": {"path": str(tmp_path / "curator.sqlite3")},
-            "email": {
-                "digest_recipients": ["cached@example.com"],
-                "digest_subject": "Daily Digest",
-            },
-        },
-    )
-    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
-    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
-
-    config = main.load_config()
-    repository = get_repository_from_config(config)
-    repository.upsert_daily_newsletter(
-        newsletter_date="2026-03-24",
-        subject="Daily Digest",
-        body="Cached body before CTA rollout.",
-        html_body="<html><body><p>Cached HTML before CTA rollout.</p></body></html>",
-        content={"render_groups": {}},
-        selected_items=[],
-        metadata={},
-        delivery_run_id=None,
-    )
-
-    sent_messages: list[dict] = []
-
-    def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
-        sent_messages.append(
-            {
-                "to": to_address,
-                "subject": subject,
-                "body": body,
-                "html_body": html_body or "",
-            }
-        )
-
-    monkeypatch.setattr(main, "send_email", fake_send_email)
-
-    first_result = main.run_job(config, FakeGmailService(messages=[]))
-    stored_newsletter = repository.get_daily_newsletter("2026-03-24")
-
-    assert first_result["status"] == "completed"
-    assert first_result["cached_newsletter"] is True
-    assert stored_newsletter is not None
-    assert NEWSLETTER_SIGNUP_CTA_URL not in stored_newsletter["body"]
-    assert NEWSLETTER_SIGNUP_CTA_URL not in stored_newsletter["html_body"]
-    assert sent_messages[0]["body"].startswith("Cached body before CTA rollout.")
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert sent_messages[0]["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-
-    sent_messages.clear()
-    second_result = main.run_job(config, FakeGmailService(messages=[]))
-    stored_after_second_send = repository.get_daily_newsletter("2026-03-24")
-
-    assert second_result["status"] == "completed"
-    assert second_result["cached_newsletter"] is True
-    assert stored_after_second_send is not None
-    assert NEWSLETTER_SIGNUP_CTA_URL not in stored_after_second_send["body"]
-    assert NEWSLETTER_SIGNUP_CTA_URL not in stored_after_second_send["html_body"]
-    assert sent_messages[0]["body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
-    assert sent_messages[0]["html_body"].count(NEWSLETTER_SIGNUP_CTA_URL) == 1
+    assert sent_messages[0]["html_body"] != ""
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["body"]
+    assert "buttondown.com/zeizyynewsletter" not in sent_messages[0]["html_body"]
+    assert "category-title" not in sent_messages[0]["html_body"]

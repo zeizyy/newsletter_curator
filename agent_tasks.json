@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-03-31",
+  "updated_at": "2026-04-04",
   "agent_roles": {
     "planner": "Maintains agent_spec.md, keeps the task map aligned to the product shape, and drafts each sprint contract before coding.",
     "generator": "Implements exactly one bounded task per session, updates tests, and leaves the repo mergeable.",
@@ -1651,6 +1651,37 @@
         "The MCP server is discoverable as a local plugin or manifest.",
         "The publish or install path is documented.",
         "The offline manifest smoke test passes."
+      ]
+    },
+    {
+      "id": "T69",
+      "title": "Flatten the final delivery email and remove footer CTA chrome",
+      "status": "completed",
+      "depends_on": ["T60"],
+      "scope": [
+        "Render final newsletters as one story-level ranked list instead of category-grouped sections",
+        "Remove the extra AI Signal Daily footer line and Buttondown signup CTA from plain-text and HTML delivery output",
+        "Preserve cached newsletter reuse and stored-newsletter rerender compatibility"
+      ],
+      "artifacts": [
+        "agent_contracts/T69_flatten_delivery_and_remove_footer.md",
+        "curator/pipeline.py",
+        "curator/rendering.py",
+        "curator/jobs.py",
+        "tests/integration/test_final_delivery_flat_ranking_no_footer.py"
+      ],
+      "contract_file": "agent_contracts/T69_flatten_delivery_and_remove_footer.md",
+      "test_command": "uv run pytest tests/integration/test_final_delivery_flat_ranking_no_footer.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_newsletter_rendering_selected_theme.py -q",
+      "integration_test": "tests/integration/test_final_delivery_flat_ranking_no_footer.py",
+      "evaluator_checks": [
+        "Final delivery output uses one flat ranked story list instead of category-grouped sections",
+        "Neither fresh nor cached delivery output reintroduces the AI Signal Daily footer or Buttondown signup CTA",
+        "Stored-newsletter preview and rerender flows remain compatible with cached render payloads"
+      ],
+      "done_when": [
+        "Fresh and cached newsletters render as one flat ordered story list",
+        "The footer CTA chrome is absent from plain-text and HTML delivery output",
+        "The targeted integration tests pass offline"
       ]
     }
   ]
