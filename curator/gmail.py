@@ -3,6 +3,10 @@ from __future__ import annotations
 import base64
 import email.utils
 from email.message import EmailMessage
+import hashlib
+import inspect
+import json
+import time
 from typing import Iterable
 from datetime import UTC
 
@@ -16,6 +20,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
+DELIVERY_SEND_MAX_ATTEMPTS = 3
+DELIVERY_SEND_INITIAL_BACKOFF_SECONDS = 1.0
 
 
 def load_credentials(paths: dict) -> Credentials:
@@ -71,6 +77,232 @@ def get_message(service, message_id: str) -> dict:
         .get(userId="me", id=message_id, format="full")
         .execute()
     )
+
+
+def list_message_ids(service, *, query: str, label_ids: list[str] | None = None) -> list[str]:
+    message_ids = []
+    page_token = None
+    while True:
+        request = service.users().messages().list(
+            userId="me",
+            labelIds=list(label_ids or []),
+            q=query,
+            pageToken=page_token,
+        )
+        response = request.execute()
+        message_ids.extend([msg["id"] for msg in response.get("messages", [])])
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    return message_ids
+
+
+def normalize_message_id_header(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if normalized.startswith("<") and normalized.endswith(">"):
+        return normalized
+    return f"<{normalized.strip('<>')}>"
+
+
+def message_exists_in_sent(service, *, message_id_header: str) -> bool:
+    normalized = normalize_message_id_header(message_id_header)
+    if not normalized:
+        return False
+    return bool(
+        list_message_ids(
+            service,
+            query=f"rfc822msgid:{normalized}",
+            label_ids=["SENT"],
+        )
+    )
+
+
+def _delivery_send_error_status_code(exc: Exception) -> int | None:
+    response = getattr(exc, "resp", None)
+    status = getattr(response, "status", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def is_retryable_delivery_send_error(exc: Exception) -> bool:
+    if isinstance(exc, OSError):
+        return True
+    status_code = _delivery_send_error_status_code(exc)
+    if status_code is None:
+        return False
+    return status_code in {408, 429} or status_code >= 500
+
+
+def is_ambiguous_delivery_send_error(exc: Exception) -> bool:
+    if isinstance(exc, OSError):
+        return True
+    return _delivery_send_error_status_code(exc) is None
+
+
+def supports_message_id_header(send_email_fn) -> bool:
+    try:
+        signature = inspect.signature(send_email_fn)
+    except (TypeError, ValueError):
+        return False
+    parameter = signature.parameters.get("message_id_header")
+    if parameter is None:
+        return False
+    return parameter.kind in {
+        inspect.Parameter.KEYWORD_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    }
+
+
+def build_delivery_message_id(
+    *,
+    newsletter_date: str,
+    audience_key: str,
+    daily_newsletter_id: int | None,
+    recipient: str,
+) -> str:
+    payload = json.dumps(
+        {
+            "newsletter_date": newsletter_date,
+            "audience_key": str(audience_key or "").strip(),
+            "daily_newsletter_id": int(daily_newsletter_id or 0),
+            "recipient": str(recipient or "").strip().lower(),
+        },
+        sort_keys=True,
+    )
+    token = hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()
+    return f"<delivery-{token}@newsletter-curator.local>"
+
+
+def send_email_with_retry_and_dedupe(
+    service,
+    send_email_fn,
+    *,
+    to_address: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+    newsletter_date: str,
+    audience_key: str,
+    daily_newsletter_id: int | None,
+    message_id_header: str = "",
+    max_attempts: int = DELIVERY_SEND_MAX_ATTEMPTS,
+    initial_backoff_seconds: float = DELIVERY_SEND_INITIAL_BACKOFF_SECONDS,
+    sleep_fn=time.sleep,
+) -> dict:
+    message_id_header = normalize_message_id_header(message_id_header) or build_delivery_message_id(
+        newsletter_date=newsletter_date,
+        audience_key=audience_key,
+        daily_newsletter_id=daily_newsletter_id,
+        recipient=to_address,
+    )
+    send_email_supports_message_id = supports_message_id_header(send_email_fn)
+    events: list[dict] = []
+    attempt = 0
+    while attempt < max_attempts:
+        if service is not None and message_exists_in_sent(service, message_id_header=message_id_header):
+            return {
+                "status": "sent",
+                "recipient": to_address,
+                "message_id_header": message_id_header,
+                "attempts": attempt,
+                "error": "",
+                "retryable": False,
+                "events": events
+                + [
+                    {
+                        "event": "skipped_existing",
+                        "attempt": attempt + 1,
+                    }
+                ],
+            }
+        attempt += 1
+        try:
+            send_kwargs = {}
+            if send_email_supports_message_id:
+                send_kwargs["message_id_header"] = message_id_header
+            send_email_fn(
+                service,
+                to_address=to_address,
+                subject=subject,
+                body=body,
+                html_body=html_body,
+                **send_kwargs,
+            )
+        except Exception as exc:
+            last_error = str(exc)
+            retryable = is_retryable_delivery_send_error(exc)
+            if service is not None and is_ambiguous_delivery_send_error(exc):
+                if message_exists_in_sent(service, message_id_header=message_id_header):
+                    return {
+                        "status": "sent",
+                        "recipient": to_address,
+                        "message_id_header": message_id_header,
+                        "attempts": attempt,
+                        "error": last_error,
+                        "retryable": retryable,
+                        "events": events
+                        + [
+                            {
+                                "event": "verified_after_error",
+                                "attempt": attempt,
+                                "error": last_error,
+                            }
+                        ],
+                    }
+            if retryable and attempt < max_attempts:
+                events.append(
+                    {
+                        "event": "retry",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": last_error,
+                    }
+                )
+                sleep_fn(initial_backoff_seconds * (2 ** (attempt - 1)))
+                continue
+            return {
+                "status": "failed",
+                "recipient": to_address,
+                "message_id_header": message_id_header,
+                "attempts": attempt,
+                "error": last_error,
+                "retryable": retryable,
+                "events": events
+                + [
+                    {
+                        "event": "failed",
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "error": last_error,
+                        "retryable": retryable,
+                    }
+                ],
+            }
+        return {
+            "status": "sent",
+            "recipient": to_address,
+            "message_id_header": message_id_header,
+            "attempts": attempt,
+            "error": "",
+            "retryable": False,
+            "events": events + [{"event": "completed", "attempt": attempt}],
+        }
+
+    return {
+        "status": "failed",
+        "recipient": to_address,
+        "message_id_header": message_id_header,
+        "attempts": max_attempts,
+        "error": "send attempts exhausted",
+        "retryable": True,
+        "events": events,
+    }
 
 
 def decode_base64url(data: str) -> str:
@@ -249,11 +481,20 @@ def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
 
 
 def send_email(
-    service, to_address: str, subject: str, body: str, html_body: str | None = None
+    service,
+    to_address: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+    *,
+    message_id_header: str = "",
 ) -> None:
     message = EmailMessage()
     message["To"] = to_address
     message["Subject"] = subject
+    normalized_message_id = normalize_message_id_header(message_id_header)
+    if normalized_message_id:
+        message["Message-ID"] = normalized_message_id
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")

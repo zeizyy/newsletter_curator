@@ -114,3 +114,104 @@ def test_daily_orchestrator_runs_fetch_and_delivery(monkeypatch, repo_root, tmp_
     assert sent_messages[0]["subject"] == "Daily Orchestrator Digest"
     assert "AI Signal Daily" in sent_messages[0]["html_body"]
     assert "Read original" in sent_messages[0]["html_body"]
+
+
+def test_daily_orchestrator_reports_partial_failure_when_one_recipient_send_fails(
+    monkeypatch, repo_root, tmp_path
+):
+    gmail = importlib.import_module("curator.gmail")
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+    now_utc = datetime.now(UTC)
+
+    fixture_html = (repo_root / "tests" / "fixtures" / "newsletter_sample.html").read_text(
+        encoding="utf-8"
+    )
+    service = FakeGmailService(
+        messages=[
+            make_gmail_message(
+                message_id="msg-1",
+                subject="Infra Letter",
+                from_header="Infra Letter <infra@example.com>",
+                date_header=format_datetime(now_utc - timedelta(hours=2)),
+                html_body=fixture_html,
+            )
+        ]
+    )
+    source_fetcher = FakeSourceFetcher(
+        [
+            {
+                "subject": "[markets] Rates reset",
+                "from": "Macro Wire",
+                "source_name": "Macro Wire",
+                "source_type": "additional_source",
+                "date": (now_utc - timedelta(hours=1)).isoformat(),
+                "published_at": (now_utc - timedelta(hours=1)).isoformat(),
+                "url": "https://example.com/markets/rates-reset",
+                "anchor_text": "Rates reset changes software valuations",
+                "context": "Repository context for rates reset.",
+                "category": "Markets / stocks / macro / economy",
+            }
+        ]
+    )
+    article_fetcher = FakeArticleFetcher(
+        {
+            "https://example.com/markets/rates-reset": (
+                "Rates reset changes software valuations and reprices future growth expectations."
+            ),
+            "https://example.com/ai/chips": (
+                "Chip supply is tightening across cloud vendors and shifting deployment timelines."
+            ),
+            "https://example.com/markets/rates-reset?utm=ignored": "Unused duplicate path.",
+        }
+    )
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
+            "email": {
+                "digest_recipients": ["fail@example.com", "ok@example.com"],
+                "digest_subject": "Daily Orchestrator Digest",
+            },
+            "additional_sources": {"enabled": True, "hours": 24},
+            "limits": {
+                "select_top_stories": 2,
+                "final_top_stories": 2,
+                "source_quotas": {"gmail": 1, "additional_source": 1},
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+
+    sent_messages: list[str] = []
+
+    def selective_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        if to_address == "fail@example.com":
+            raise BrokenPipeError("broken pipe")
+        sent_messages.append(to_address)
+
+    monkeypatch.setattr(main, "send_email", selective_send_email)
+
+    result = run_daily_orchestrator_job(
+        config,
+        service,
+        repository=repository,
+        source_fetcher=source_fetcher,
+        article_fetcher=article_fetcher,
+        delivery_runner_fn=main.run_job,
+    )
+
+    assert result["status"] == "partial_failure"
+    assert result["completed_stages"] == ["fetch_gmail", "fetch_sources"]
+    assert result["partial_failure_stages"] == ["deliver_digest"]
+    assert result["failed_stages"] == []
+    assert result["failures"] == []
+    assert result["stages"]["deliver_digest"]["status"] == "partial_failure"
+    assert result["stages"]["deliver_digest"]["sent_recipients"] == 1
+    assert result["stages"]["deliver_digest"]["failed_recipient_count"] == 1
+    assert sent_messages == ["ok@example.com"]

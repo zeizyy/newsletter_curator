@@ -284,6 +284,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     delivery_groups = group_delivery_subscribers(subscribers)
     group_results: list[dict] = []
     total_sent_recipients = 0
+    total_failed_recipients = 0
     group_statuses: list[str] = []
     for group in delivery_groups:
         profile_result = run_profile_delivery(
@@ -297,6 +298,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         group_status = str(profile_result.get("status", "")).strip() or "unknown"
         group_statuses.append(group_status)
         total_sent_recipients += int(profile_result.get("sent_recipients", 0) or 0)
+        total_failed_recipients += int(profile_result.get("failed_recipient_count", 0) or 0)
         group_results.append(
             {
                 "profile_key": group["profile_key"],
@@ -305,6 +307,8 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],
                 "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),
+                "failed_recipient_count": int(profile_result.get("failed_recipient_count", 0) or 0),
+                "failed_recipients": list(profile_result.get("failed_recipients", []) or []),
                 "status": group_status,
                 "cached_newsletter": bool(profile_result.get("cached_newsletter", False)),
                 "daily_newsletter_id": profile_result.get("daily_newsletter_id"),
@@ -330,6 +334,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         ),
         "recipient_source": recipient_source,
         "sent_recipients": total_sent_recipients,
+        "failed_recipient_count": total_failed_recipients,
         "delivery_subscribers": delivery_subscribers,
         "delivery_groups": group_results,
     }

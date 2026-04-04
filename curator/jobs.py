@@ -21,10 +21,12 @@ from .content import (
 from .dev import fake_summarize_article
 from .dev import fake_score_story_candidates
 from .gmail import (
+    build_delivery_message_id,
     collect_live_gmail_links,
     collect_repository_gmail_links,
     gmail_query_cutoff,
     send_email,
+    send_email_with_retry_and_dedupe,
 )
 from .llm import (
     score_story_candidates,
@@ -1236,15 +1238,22 @@ def run_daily_orchestrator_job(
         for stage_name in stage_order
         if stages.get(stage_name, {}).get("status") == "completed"
     ]
+    partial_failure_stages = [
+        stage_name
+        for stage_name in stage_order
+        if stages.get(stage_name, {}).get("status") == "partial_failure"
+    ]
     failed_stages = [
         stage_name
         for stage_name in stage_order
         if stages.get(stage_name, {}).get("status") == "failed"
     ]
 
-    if not failed_stages:
+    if not failed_stages and not partial_failure_stages:
         status = "completed"
     elif stages.get("deliver_digest", {}).get("status") == "completed":
+        status = "partial_failure"
+    elif partial_failure_stages:
         status = "partial_failure"
     else:
         status = "failed"
@@ -1253,6 +1262,7 @@ def run_daily_orchestrator_job(
         "status": status,
         "stage_order": stage_order,
         "completed_stages": completed_stages,
+        "partial_failure_stages": partial_failure_stages,
         "failed_stages": failed_stages,
         "stages": stages,
         "failures": failures,
@@ -1467,7 +1477,7 @@ def run_delivery_job(
         html_body: str,
         selected_items: list[dict],
         daily_newsletter_id: int | None,
-    ) -> int:
+    ) -> dict:
         tracked_link_count = 0
         if daily_newsletter_id is not None:
             send_html, tracked_link_count = build_tracked_send_html(
@@ -1491,23 +1501,111 @@ def run_delivery_job(
             subject=subject,
         )
         sent_count = 0
+        failed_recipients: list[dict] = []
         for recipient in resolved_recipients:
-            send_email_fn(
+            message_id_header = build_delivery_message_id(
+                newsletter_date=newsletter_date,
+                audience_key=audience_key,
+                daily_newsletter_id=daily_newsletter_id,
+                recipient=recipient,
+            )
+            emit_event(
+                "delivery_recipient_send_started",
+                audience_key=audience_key,
+                daily_newsletter_id=daily_newsletter_id,
+                recipient=recipient,
+                message_id_header=message_id_header,
+            )
+            send_result = send_email_with_retry_and_dedupe(
                 service,
+                send_email_fn,
                 to_address=recipient,
                 subject=subject,
                 body=body,
                 html_body=send_html,
+                newsletter_date=newsletter_date,
+                audience_key=audience_key,
+                daily_newsletter_id=daily_newsletter_id,
+                message_id_header=message_id_header,
             )
-            sent_count += 1
+            for event in list(send_result.get("events", []) or []):
+                event_name = str(event.get("event", "")).strip()
+                if event_name == "retry":
+                    emit_event(
+                        "delivery_recipient_send_retry",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                        max_attempts=int(event.get("max_attempts", 0) or 0),
+                        error=str(event.get("error", "")).strip(),
+                    )
+                elif event_name == "verified_after_error":
+                    emit_event(
+                        "delivery_recipient_send_verified_after_error",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                        error=str(event.get("error", "")).strip(),
+                    )
+                elif event_name == "skipped_existing":
+                    emit_event(
+                        "delivery_recipient_send_skipped_existing",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                    )
+                elif event_name == "failed":
+                    failed_recipients.append(
+                        {
+                            "recipient": recipient,
+                            "attempts": int(send_result.get("attempts", 0) or 0),
+                            "error": str(send_result.get("error", "")).strip(),
+                            "retryable": bool(send_result.get("retryable", False)),
+                        }
+                    )
+                    emit_event(
+                        "delivery_recipient_send_failed",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                        max_attempts=int(event.get("max_attempts", 0) or 0),
+                        retryable=bool(event.get("retryable", False)),
+                        error=str(event.get("error", "")).strip(),
+                    )
+                elif event_name == "completed":
+                    emit_event(
+                        "delivery_recipient_send_completed",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                    )
+            if str(send_result.get("status", "")).strip() == "sent":
+                sent_count += 1
         emit_event(
             "delivery_send_completed",
             audience_key=audience_key,
             daily_newsletter_id=daily_newsletter_id,
             sent_recipients=sent_count,
+            failed_recipients=len(failed_recipients),
             selected_item_count=len(selected_items),
+            status="partial_failure" if failed_recipients else "completed",
         )
-        return sent_count
+        return {
+            "sent_recipients": sent_count,
+            "failed_recipient_count": len(failed_recipients),
+            "failed_recipients": failed_recipients,
+            "status": "partial_failure" if failed_recipients else "completed",
+        }
 
     def build_newsletter_content(
         *,
@@ -1569,7 +1667,7 @@ def run_delivery_job(
                 str(cached_newsletter.get("html_body", "")).strip(),
             )
             digest_body, delivery_html = finalize_delivery_newsletter(digest_body, delivery_html)
-            sent_recipients = send_digest(
+            send_result = send_digest(
                 subject=cached_newsletter["subject"],
                 body=digest_body,
                 html_body=delivery_html,
@@ -1577,7 +1675,7 @@ def run_delivery_job(
                 daily_newsletter_id=int(cached_newsletter["id"]),
             )
             cached_result = {
-                "status": "completed",
+                "status": send_result["status"],
                 "cached_newsletter": True,
                 "newsletter_date": newsletter_date,
                 "audience_key": audience_key,
@@ -1595,7 +1693,9 @@ def run_delivery_job(
                     cached_newsletter["metadata"].get("skipped_count", 0) or 0
                 ),
                 "recipient_source": recipient_source,
-                "sent_recipients": sent_recipients,
+                "sent_recipients": send_result["sent_recipients"],
+                "failed_recipient_count": send_result["failed_recipient_count"],
+                "failed_recipients": send_result["failed_recipients"],
                 "digest_subject": cached_newsletter["subject"],
                 "digest_body": digest_body,
                 "digest_html": delivery_html,
@@ -1606,7 +1706,7 @@ def run_delivery_job(
             cached_result["runtime"] = runtime
             repository.complete_delivery_run(
                 run_id,
-                status="completed",
+                status=send_result["status"],
                 metadata={
                     "job": "deliver_digest",
                     "readiness": readiness,
@@ -1624,7 +1724,9 @@ def run_delivery_job(
                 audience_key=audience_key,
                 cached_newsletter=True,
                 daily_newsletter_id=int(cached_newsletter["id"]),
-                sent_recipients=sent_recipients,
+                sent_recipients=send_result["sent_recipients"],
+                failed_recipients=send_result["failed_recipient_count"],
+                status=send_result["status"],
                 runtime=runtime,
             )
             return {"run_id": run_id, **cached_result}
@@ -1694,13 +1796,16 @@ def run_delivery_job(
                     newsletter_date=newsletter_date,
                     selected_item_count=len(list(pipeline_result.get("accepted_story_items", []))),
                 )
-            pipeline_result["sent_recipients"] = send_digest(
+            send_result = send_digest(
                 subject=str(pipeline_result.get("digest_subject", "")).strip(),
                 body=digest_body,
                 html_body=delivery_html,
                 selected_items=list(pipeline_result.get("accepted_story_items", [])),
                 daily_newsletter_id=daily_newsletter_id,
             )
+            pipeline_result["sent_recipients"] = send_result["sent_recipients"]
+            pipeline_result["failed_recipient_count"] = send_result["failed_recipient_count"]
+            pipeline_result["failed_recipients"] = send_result["failed_recipients"]
             pipeline_result["digest_body"] = digest_body
             pipeline_result["recipient_source"] = recipient_source
             pipeline_result["content"] = newsletter_content
@@ -1708,10 +1813,13 @@ def run_delivery_job(
             pipeline_result["email_safe_digest_html"] = delivery_html
             pipeline_result["daily_newsletter_id"] = daily_newsletter_id
             pipeline_result["audience_key"] = audience_key
+            if send_result["status"] != "completed":
+                pipeline_result["status"] = send_result["status"]
         runtime = finish_runtime_capture(runtime_capture)
+        final_status = str(pipeline_result.get("status", "")).strip() or "completed"
         repository.complete_delivery_run(
             run_id,
-            status="completed",
+            status=final_status,
             metadata={
                 "job": "deliver_digest",
                 "readiness": readiness,
@@ -1730,6 +1838,7 @@ def run_delivery_job(
             cached_newsletter=False,
             daily_newsletter_id=daily_newsletter_id,
             sent_recipients=int(pipeline_result.get("sent_recipients", 0) or 0),
+            failed_recipients=int(pipeline_result.get("failed_recipient_count", 0) or 0),
             runtime=runtime,
             pipeline_status=str(pipeline_result.get("status", "")).strip() or "unknown",
         )
@@ -1738,7 +1847,7 @@ def run_delivery_job(
             "newsletter_date": newsletter_date,
             "audience_key": audience_key,
             "cached_newsletter": False,
-            "status": "completed",
+            "status": final_status,
             "runtime": runtime,
             **pipeline_result,
         }

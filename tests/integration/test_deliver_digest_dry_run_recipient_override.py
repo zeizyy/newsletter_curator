@@ -199,6 +199,207 @@ def test_cached_delivery_emits_structured_journey_events(monkeypatch, tmp_path, 
     )
 
 
+def test_cached_delivery_retries_transient_send_failure(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    gmail = importlib.import_module("curator.gmail")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["cached@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    attempts: list[str] = []
+
+    def flaky_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        attempts.append(to_address)
+        if len(attempts) == 1:
+            raise BrokenPipeError("broken pipe")
+
+    monkeypatch.setattr(main, "send_email", flaky_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
+
+    assert result["status"] == "completed"
+    assert result["sent_recipients"] == 1
+    assert result["failed_recipient_count"] == 0
+    assert attempts == ["cached@example.com", "cached@example.com"]
+    retry_events = [entry for entry in events if entry["event"] == "delivery_recipient_send_retry"]
+    assert len(retry_events) == 1
+    assert retry_events[0]["recipient"] == "cached@example.com"
+    assert any(entry["event"] == "delivery_recipient_send_completed" for entry in events)
+
+
+def test_cached_delivery_reports_partial_failure_and_continues(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    gmail = importlib.import_module("curator.gmail")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["fail@example.com", "ok@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    sent_messages: list[str] = []
+
+    def selective_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        if to_address == "fail@example.com":
+            raise BrokenPipeError("broken pipe")
+        sent_messages.append(to_address)
+
+    monkeypatch.setattr(main, "send_email", selective_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
+
+    assert result["status"] == "partial_failure"
+    assert result["sent_recipients"] == 1
+    assert result["failed_recipient_count"] == 1
+    assert result["failed_recipients"] == [
+        {
+            "recipient": "fail@example.com",
+            "attempts": 3,
+            "error": "broken pipe",
+            "retryable": True,
+        }
+    ]
+    assert sent_messages == ["ok@example.com"]
+    completion_event = next(entry for entry in events if entry["event"] == "delivery_send_completed")
+    assert completion_event["status"] == "partial_failure"
+    assert completion_event["failed_recipients"] == 1
+    assert any(
+        entry["event"] == "delivery_recipient_send_failed" and entry["recipient"] == "fail@example.com"
+        for entry in events
+    )
+
+
+def test_cached_delivery_verifies_sent_message_before_retrying_ambiguous_failure(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    gmail = importlib.import_module("curator.gmail")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["cached@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+    service = FakeGmailService(messages=[])
+
+    original_send_email = gmail.send_email
+    attempts: list[str] = []
+
+    def send_then_break(
+        service,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        *,
+        message_id_header: str = "",
+    ):
+        attempts.append(to_address)
+        original_send_email(
+            service,
+            to_address,
+            subject,
+            body,
+            html_body,
+            message_id_header=message_id_header,
+        )
+        raise BrokenPipeError("broken pipe")
+
+    monkeypatch.setattr(main, "send_email", send_then_break)
+
+    result = main.run_job(config, service)
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
+
+    assert result["status"] == "completed"
+    assert result["sent_recipients"] == 1
+    assert result["failed_recipient_count"] == 0
+    assert attempts == ["cached@example.com"]
+    assert len(service.sent_messages) == 1
+    assert any(entry["event"] == "delivery_recipient_send_verified_after_error" for entry in events)
+
+
+def test_cached_delivery_skips_duplicate_send_when_message_already_exists(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["cached@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+    service = FakeGmailService(messages=[])
+
+    first_result = main.run_job(config, service)
+    first_captured = capsys.readouterr()
+    first_events = [json.loads(line) for line in first_captured.out.splitlines() if line.strip()]
+
+    second_result = main.run_job(config, service)
+    second_captured = capsys.readouterr()
+    second_events = [json.loads(line) for line in second_captured.out.splitlines() if line.strip()]
+
+    assert first_result["status"] == "completed"
+    assert second_result["status"] == "completed"
+    assert len(service.sent_messages) == 1
+    assert any(entry["event"] == "delivery_recipient_send_completed" for entry in first_events)
+    assert any(entry["event"] == "delivery_recipient_send_skipped_existing" for entry in second_events)
+
+
 def test_dry_run_recipient_without_db_profile_uses_default_personalization(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")

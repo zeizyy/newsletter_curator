@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from email import message_from_bytes
 import json
 import re
 from dataclasses import dataclass
@@ -82,14 +83,33 @@ class _FakeMessagesResource:
         self._service = service
 
     def list(self, userId: str, labelIds: list[str], q: str, pageToken: str | None = None):
+        normalized_query = str(q or "").strip()
+        if "SENT" in labelIds and "rfc822msgid:" in normalized_query:
+            expected_message_id = normalized_query.split("rfc822msgid:", 1)[1].strip()
+            matching_ids = [
+                message["id"]
+                for message in self._service.sent_messages
+                if message.get("message_id_header") == expected_message_id
+            ]
+            return _ExecuteWrapper({"messages": [{"id": msg_id} for msg_id in matching_ids]})
         return _ExecuteWrapper({"messages": [{"id": msg_id} for msg_id in self._service._ordered_ids]})
 
     def get(self, userId: str, id: str, format: str):
         return _ExecuteWrapper(self._service._messages[id])
 
     def send(self, userId: str, body: dict):
-        self._service.sent_messages.append(body)
-        return _ExecuteWrapper({"id": f"sent-{len(self._service.sent_messages)}"})
+        raw_message = body.get("raw", "")
+        decoded_message = base64.urlsafe_b64decode(raw_message.encode("utf-8"))
+        parsed_message = message_from_bytes(decoded_message)
+        sent_id = f"sent-{len(self._service.sent_messages) + 1}"
+        self._service.sent_messages.append(
+            {
+                "id": sent_id,
+                "raw": raw_message,
+                "message_id_header": str(parsed_message.get("Message-ID", "")).strip(),
+            }
+        )
+        return _ExecuteWrapper({"id": sent_id})
 
 
 class FakeSourceFetcher:
