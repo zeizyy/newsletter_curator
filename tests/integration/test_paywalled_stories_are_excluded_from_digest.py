@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import importlib
 
 from curator.jobs import get_repository_from_config, run_fetch_sources_job
@@ -9,6 +10,7 @@ from tests.helpers import write_temp_config
 
 def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    now_utc = datetime.now(UTC)
 
     config_path = write_temp_config(
         tmp_path,
@@ -37,7 +39,7 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
                 "from": "Macro Wire",
                 "source_name": "Macro Wire",
                 "source_type": "additional_source",
-                "date": "2026-03-21T07:30:00+00:00",
+                "date": (now_utc - timedelta(hours=2)).isoformat(),
                 "url": "https://example.com/markets/rates-reset",
                 "anchor_text": "Rates reset changes software valuations",
                 "context": "Rates reset context",
@@ -48,7 +50,7 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
                 "from": "Locked Wire",
                 "source_name": "Locked Wire",
                 "source_type": "additional_source",
-                "date": "2026-03-21T06:00:00+00:00",
+                "date": (now_utc - timedelta(hours=3)).isoformat(),
                 "url": "https://example.com/media/subscriber-analysis",
                 "anchor_text": "Subscriber-only analysis",
                 "context": "Subscriber analysis context",
@@ -59,7 +61,7 @@ def test_paywalled_stories_are_excluded_from_digest(monkeypatch, tmp_path):
                 "from": "Blocked Wire",
                 "source_name": "Blocked Wire",
                 "source_type": "additional_source",
-                "date": "2026-03-21T05:00:00+00:00",
+                "date": (now_utc - timedelta(hours=4)).isoformat(),
                 "url": "https://example.com/markets/js-blocked",
                 "anchor_text": "Markets deep dive",
                 "context": "Blocked placeholder context",
