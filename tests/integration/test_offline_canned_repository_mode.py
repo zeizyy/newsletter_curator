@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import importlib
+import json
 
 from curator.jobs import get_repository_from_config, run_fetch_sources_job
 from tests.fakes import FakeGmailService
@@ -9,6 +11,16 @@ from tests.helpers import write_temp_config
 
 def test_offline_canned_repository_mode(monkeypatch, repo_root, tmp_path):
     main = importlib.import_module("main")
+    canned_sources = json.loads(
+        (repo_root / "tests" / "fixtures" / "canned_sources.json").read_text(encoding="utf-8")
+    )
+    now_utc = datetime.now(UTC)
+    for index, story in enumerate(canned_sources):
+        published_at = (now_utc - timedelta(hours=index + 1)).isoformat()
+        story["date"] = published_at
+        story["published_at"] = published_at
+    canned_sources_path = tmp_path / "canned_sources.json"
+    canned_sources_path.write_text(json.dumps(canned_sources), encoding="utf-8")
 
     config_path = write_temp_config(
         tmp_path,
@@ -16,7 +28,7 @@ def test_offline_canned_repository_mode(monkeypatch, repo_root, tmp_path):
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "development": {
                 "use_canned_sources": True,
-                "canned_sources_file": str(repo_root / "tests" / "fixtures" / "canned_sources.json"),
+                "canned_sources_file": str(canned_sources_path),
                 "fake_inference": True,
             },
             "email": {

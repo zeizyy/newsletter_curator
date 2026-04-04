@@ -330,10 +330,19 @@ The workflow:
 - reapplies both `crontab` and the `systemd --user` admin service on each deploy
 
 Behavior notes:
+- `.github/workflows/ci.yml` runs the full `uv run pytest` suite on pull requests to `main` and on pushes to `main`.
+- GitHub Actions cannot prevent a `git push` from reaching GitHub after the push event has already fired. If you want to block bad code from landing on `main`, use branch protection with the CI test job as a required status check before merge.
+- The deploy workflow is still valuable as the last line of defense on `main`, but the primary policy gate should be branch protection.
 - The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
 - The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
 - The workflow logs a redacted bootstrap command in the Actions output before running it on the server.
 - It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
+
+Recommended branch protection for `main`:
+- Require a pull request before merging.
+- Require status checks to pass before merging.
+- Mark `CI / test` as a required check.
+- Optionally require branches to be up to date before merging if you want the PR head re-tested against the latest `main`.
 
 Required GitHub repo configuration:
 - variable `CURATOR_SSH_HOST`

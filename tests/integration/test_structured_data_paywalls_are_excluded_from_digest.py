@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import importlib
 
 from curator.content import extract_article_details_from_html
@@ -10,6 +11,7 @@ from tests.helpers import write_temp_config
 
 def test_structured_data_paywalls_are_excluded_from_digest(monkeypatch, tmp_path):
     main = importlib.import_module("main")
+    now_utc = datetime.now(UTC)
 
     config_path = write_temp_config(
         tmp_path,
@@ -38,7 +40,7 @@ def test_structured_data_paywalls_are_excluded_from_digest(monkeypatch, tmp_path
                 "from": "Open Wire",
                 "source_name": "Open Wire",
                 "source_type": "additional_source",
-                "date": "2026-03-24T07:30:00+00:00",
+                "date": (now_utc - timedelta(hours=2)).isoformat(),
                 "url": "https://example.com/markets/public-article",
                 "anchor_text": "Public article",
                 "context": "Open article context",
@@ -49,7 +51,7 @@ def test_structured_data_paywalls_are_excluded_from_digest(monkeypatch, tmp_path
                 "from": "Metered Wire",
                 "source_name": "Metered Wire",
                 "source_type": "additional_source",
-                "date": "2026-03-24T06:00:00+00:00",
+                "date": (now_utc - timedelta(hours=3)).isoformat(),
                 "url": "https://example.com/media/metered-article",
                 "anchor_text": "Metered article",
                 "context": "Metered article context",
