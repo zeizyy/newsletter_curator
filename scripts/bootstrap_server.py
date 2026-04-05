@@ -4,12 +4,13 @@ from __future__ import annotations
 import argparse
 import getpass
 import grp
+import ipaddress
 import os
 import shlex
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,6 +130,42 @@ def build_env_file(
     )
 
 
+def _is_direct_access_hostname(hostname: str) -> bool:
+    normalized = str(hostname or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return True
+
+
+def normalize_public_base_url(public_base_url: str, admin_port: int) -> str:
+    configured = str(public_base_url or "").strip()
+    if not configured:
+        return ""
+    parsed = urlparse(configured)
+    if not parsed.scheme or not parsed.netloc or parsed.port is not None:
+        return configured.rstrip("/")
+
+    default_port = 80 if parsed.scheme == "http" else 443 if parsed.scheme == "https" else None
+    if admin_port == default_port or not _is_direct_access_hostname(parsed.hostname or ""):
+        return configured.rstrip("/")
+
+    hostname = str(parsed.hostname or "").strip()
+    host_display = f"[{hostname}]" if ":" in hostname else hostname
+    userinfo = ""
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo += f":{parsed.password}"
+        userinfo += "@"
+    return urlunparse(parsed._replace(netloc=f"{userinfo}{host_display}:{admin_port}")).rstrip("/")
+
+
 def public_base_url_warning(public_base_url: str, admin_port: int) -> str:
     configured = str(public_base_url or "").strip()
     if not configured:
@@ -139,6 +176,8 @@ def public_base_url_warning(public_base_url: str, admin_port: int) -> str:
     if parsed.port is not None:
         return ""
     if admin_port in {80, 443}:
+        return ""
+    if _is_direct_access_hostname(parsed.hostname or ""):
         return ""
     return (
         "Warning: --public-base-url has no explicit port while --admin-port is set to "
@@ -343,6 +382,7 @@ def main() -> None:
     args = parse_args()
     if not str(args.mcp_token or "").strip():
         args.mcp_token = args.admin_token
+    normalized_public_base_url = normalize_public_base_url(args.public_base_url, args.admin_port)
     repo_dir = args.repo_dir.resolve()
     output_dir = (
         args.output_dir.resolve()
@@ -402,7 +442,7 @@ def main() -> None:
             admin_service_name=args.service_name,
             openai_api_key=openai_api_key,
             buttondown_api_key=buttondown_api_key,
-            public_base_url=args.public_base_url,
+            public_base_url=normalized_public_base_url,
             enable_telemetry=args.enable_telemetry,
         ),
         mode=0o600,
@@ -530,7 +570,7 @@ def main() -> None:
         print("- Admin app not started by default. Pass --install-systemd-user to install "
               "and start it.")
     print("- If you passed --install-crontab, check: crontab -l")
-    base_url_warning = public_base_url_warning(args.public_base_url, args.admin_port)
+    base_url_warning = public_base_url_warning(normalized_public_base_url, args.admin_port)
     if base_url_warning:
         print(f"- {base_url_warning}")
 

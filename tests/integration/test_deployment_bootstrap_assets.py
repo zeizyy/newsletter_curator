@@ -265,6 +265,50 @@ def test_bootstrap_reuses_existing_api_keys_when_flags_are_omitted(tmp_path, rep
     assert "Generated deployment assets:" in result.stdout
 
 
+def test_bootstrap_adds_admin_port_to_direct_access_public_base_url(tmp_path, repo_root):
+    output_dir = tmp_path / "deploy-generated"
+    script_path = repo_root / "scripts" / "bootstrap_server.py"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            "--repo-dir",
+            str(repo_root),
+            "--output-dir",
+            str(output_dir),
+            "--uv-bin",
+            "/usr/local/bin/uv",
+            "--config-path",
+            str(repo_root / "config.yaml"),
+            "--admin-host",
+            "0.0.0.0",
+            "--admin-port",
+            "9090",
+            "--admin-token",
+            "test-admin-token",
+            "--debug-log-token",
+            "test-debug-log-token",
+            "--public-base-url",
+            "http://159.65.104.249/",
+            "--enable-telemetry",
+            "--openai-api-key",
+            "test-openai-key",
+            "--buttondown-api-key",
+            "test-buttondown-key",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    env_text = (output_dir / "newsletter-curator.env").read_text(encoding="utf-8")
+
+    assert "CURATOR_PUBLIC_BASE_URL=http://159.65.104.249:9090" in env_text
+    assert "Warning: --public-base-url has no explicit port while --admin-port is set to 9090." not in result.stdout
+
+
 def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(tmp_path, repo_root):
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
