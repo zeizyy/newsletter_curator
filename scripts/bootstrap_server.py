@@ -649,6 +649,8 @@ def main() -> None:
             args.logrotate_dir.resolve(),
             args.service_name,
         )
+    if args.install_systemd_user:
+        install_systemd_user_service(service_file, args.service_name)
     installed_caddy_path: Path | None = None
     if args.install_caddy:
         if not normalized_public_base_url:
@@ -658,8 +660,6 @@ def main() -> None:
             args.caddyfile_path.resolve(),
             args.caddy_service_name,
         )
-    if args.install_systemd_user:
-        install_systemd_user_service(service_file, args.service_name)
     if args.enable_linger:
         enable_user_linger(args.linger_user)
 
