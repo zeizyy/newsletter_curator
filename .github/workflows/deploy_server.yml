@@ -90,6 +90,8 @@ jobs:
           caddy_service_name="${CURATOR_CADDY_SERVICE_NAME:-$DEFAULT_CADDY_SERVICE_NAME}"
           if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ] && [ "$caddy_service_name" = "caddy" ]; then
             if ! systemctl cat "$caddy_service_name" >/dev/null 2>&1; then
+              rm -f /etc/apt/sources.list.d/caddy-stable.list
+              rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
               apt-get update
               apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg
               install -m 0755 -d /usr/share/keyrings
