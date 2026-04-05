@@ -3,6 +3,7 @@ import traceback
 
 from openai import OpenAI
 
+from curator.alerts import send_delivery_failure_alert_if_needed as _send_delivery_failure_alert_if_needed
 from curator import config as config_module
 from curator import content, dev, gmail, llm, pipeline, rendering, sources
 from curator.telemetry import (
@@ -58,6 +59,26 @@ render_digest_html = rendering.render_digest_html
 post_process_selected = pipeline.post_process_selected
 normalize_source_quotas = pipeline.normalize_source_quotas
 format_counts = pipeline.format_counts
+
+
+def send_delivery_failure_alert_if_needed(
+    config: dict,
+    service,
+    *,
+    source: str,
+    result: dict | None = None,
+    exception: Exception | None = None,
+    traceback_text: str = "",
+) -> bool:
+    return _send_delivery_failure_alert_if_needed(
+        config,
+        service,
+        send_email_fn=send_email,
+        source=source,
+        result=result,
+        exception=exception,
+        traceback_text=traceback_text,
+    )
 
 
 def select_top_stories(
@@ -175,6 +196,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         {
             "email": str(subscriber.get("email", "")).strip().lower(),
             "persona_text": str(subscriber.get("persona_text", "")).strip(),
+            "delivery_format": str(subscriber.get("delivery_format", "email")).strip() or "email",
             "preferred_sources": list(subscriber.get("preferred_sources") or []),
             "profile_key": str(subscriber.get("profile_key", "")).strip(),
         }
@@ -184,6 +206,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     def run_profile_delivery(
         *,
         persona_text: str,
+        delivery_format: str,
         preferred_sources: list[str],
         recipients: list[str],
         use_cached_newsletter: bool,
@@ -261,15 +284,19 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
             audience_key=audience_key,
+            delivery_format=delivery_format,
         )
 
     personalized_delivery = service is not None and any(
-        subscriber["persona_text"] != default_persona_text or subscriber["preferred_sources"]
+        subscriber["persona_text"] != default_persona_text
+        or subscriber["preferred_sources"]
+        or subscriber["delivery_format"] != "email"
         for subscriber in subscribers
     )
     if not personalized_delivery:
         profile_result = run_profile_delivery(
             persona_text=default_persona_text,
+            delivery_format="email",
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
             use_cached_newsletter=True,
@@ -289,6 +316,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     for group in delivery_groups:
         profile_result = run_profile_delivery(
             persona_text=group["persona_text"],
+            delivery_format=group["delivery_format"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
             use_cached_newsletter=True,
@@ -304,6 +332,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 "profile_key": group["profile_key"],
                 "audience_key": str(profile_result.get("audience_key", "")).strip(),
                 "persona_text": group["persona_text"],
+                "delivery_format": group["delivery_format"],
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],
                 "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),
@@ -345,21 +374,29 @@ def main():
     service = None
     try:
         service = get_gmail_service(config["paths"])
-        run_job(config, service)
-    except Exception:
+        result = run_job(config, service)
+        try:
+            send_delivery_failure_alert_if_needed(
+                config,
+                service,
+                source="main.py",
+                result=result,
+            )
+        except Exception as alert_exc:
+            print(f"Failed to send alert email: {alert_exc}")
+    except Exception as exc:
         error_details = traceback.format_exc()
         print(error_details)
-        alert_recipient = str(config.get("email", {}).get("alert_recipient", "")).strip()
-        if service and alert_recipient:
-            try:
-                send_email(
-                    service,
-                    to_address=alert_recipient,
-                    subject=f"{config['email']['alert_subject_prefix']}",
-                    body=error_details,
-                )
-            except Exception as exc:
-                print(f"Failed to send alert email: {exc}")
+        try:
+            send_delivery_failure_alert_if_needed(
+                config,
+                service,
+                source="main.py",
+                exception=exc,
+                traceback_text=error_details,
+            )
+        except Exception as alert_exc:
+            print(f"Failed to send alert email: {alert_exc}")
         raise
 
 

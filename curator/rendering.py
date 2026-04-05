@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .config import DIGEST_TEMPLATE_PATH, EMAIL_SAFE_DIGEST_TEMPLATE_PATH
 from .summary_format import extract_structured_summary
+from .telemetry import TRACKED_LINK_MARKER
 
 RenderPayload = list[dict] | dict[str, list[dict]]
 
@@ -321,7 +322,8 @@ def _render_email_safe_story_card(entry: dict) -> str:
     why_text = str(normalized_entry["why_this_matters"]).strip()
     other = [str(item) for item in normalized_entry["other_paragraphs"]]
     link_html = (
-        f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
+        f'<a {TRACKED_LINK_MARKER} href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
+        'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
         if url
         else ""
     )
@@ -421,7 +423,21 @@ def render_digest_html(render_payload: RenderPayload) -> str:
     return rendered.replace("{{HERO_COUNT}}", str(total_entries))
 
 
-def render_email_safe_digest_html(render_payload: RenderPayload) -> str:
+def _render_settings_link_html(settings_url: str) -> str:
+    normalized = str(settings_url or "").strip()
+    if not normalized:
+        return ""
+    safe_url = html.escape(normalized)
+    return (
+        '<div style="margin:12px 0 0 0;font-size:13px;line-height:1.6;color:rgba(243,255,251,0.88);">'
+        'Manage your digest: '
+        f'<a href="{safe_url}" target="_blank" rel="noreferrer noopener" '
+        'style="color:#f3fffb;text-decoration:underline;font-weight:700;">Subscriber settings</a>'
+        '</div>'
+    )
+
+
+def render_email_safe_digest_html(render_payload: RenderPayload, *, settings_url: str = "") -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_email_safe_story_card(entry) for entry in entries)
     total_entries = len(entries)
@@ -429,4 +445,5 @@ def render_email_safe_digest_html(render_payload: RenderPayload) -> str:
     with EMAIL_SAFE_DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
     rendered = template_html.replace("{{CATEGORY_SECTIONS}}", story_cards)
+    rendered = rendered.replace("{{HEADER_LINKS}}", _render_settings_link_html(settings_url))
     return rendered.replace("{{HERO_COUNT}}", str(total_entries))

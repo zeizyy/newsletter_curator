@@ -42,6 +42,46 @@
     <section class="surface surface-section">
       <div class="section-head">
         <div>
+          <div class="section-kicker">Delivery</div>
+          <h2>Choose how the digest arrives</h2>
+        </div>
+      </div>
+      <p class="section-copy">Email stays the default. PDF delivery keeps the normal digest email and adds a Kindle-friendly PDF attachment.</p>
+      <div class="toggle-grid">
+        <label class="toggle-card">
+          <div class="stack">
+            <strong>Email digest</strong>
+            <span class="pill">Default</span>
+          </div>
+          <div class="checkbox-row">
+            <input
+              type="radio"
+              name="delivery_format"
+              value="email"
+              {% if profile.delivery_format != 'pdf' %}checked{% endif %}
+            />
+          </div>
+        </label>
+        <label class="toggle-card">
+          <div class="stack">
+            <strong>PDF attachment</strong>
+            <span class="pill">Kindle-ready</span>
+          </div>
+          <div class="checkbox-row">
+            <input
+              type="radio"
+              name="delivery_format"
+              value="pdf"
+              {% if profile.delivery_format == 'pdf' %}checked{% endif %}
+            />
+          </div>
+        </label>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
           <div class="section-kicker">Preferred Sources</div>
           <h2>Choose the sources you care about most</h2>
         </div>

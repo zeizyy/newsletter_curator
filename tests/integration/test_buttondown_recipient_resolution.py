@@ -322,18 +322,21 @@ def test_buttondown_recipients_without_db_profiles_use_default_personalization(m
         {
             "email": "macro-one@example.com",
             "persona_text": "Generalist tech reader.",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         },
         {
             "email": "macro-two@example.com",
             "persona_text": "Generalist tech reader.",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][1]["profile_key"],
         },
         {
             "email": "chips@example.com",
             "persona_text": "Generalist tech reader.",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][2]["profile_key"],
         },

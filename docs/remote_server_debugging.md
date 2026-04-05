@@ -1,10 +1,20 @@
-# Remote Server Debugging
+# Remote Server Debugging Playbook
 
-This note captures the production-debug workflow that worked during an incident review of a missed newsletter delivery.
+Use this playbook for remote investigation of production issues on the curator server, not just missed newsletter deliveries.
+
+## Start With Operator Inputs
+
+Before attempting any remote investigation, ask the operator for:
+
+- server host
+- server port
+- debug log token
+
+In Codex sessions, prefer an explicit ask-user step before proceeding. If a dedicated ask-user tool is unavailable in the current mode, ask for the values directly in the conversation rather than guessing from old notes or prior commands.
 
 ## Use The Debug Endpoint First
 
-If the admin server exposes the token-gated debug route, prefer that before SSH:
+Always prefer the token-gated debug endpoint over SSH for remote investigation:
 
 ```bash
 curl -sS \
@@ -12,11 +22,28 @@ curl -sS \
   'http://YOUR_SERVER:PORT/debug/logs?merged=1&lines=500'
 ```
 
-Notes:
+This should be the default path for:
+
+- delivery failures
+- ingest failures
+- scheduler or orchestrator failures
+- admin-server request failures
+- unexpected job timing or missing-stage behavior
+- production verification after a fix
+
+If the current debug endpoint does not expose enough information for a read-only investigation, treat that as missing product functionality and prefer implementing the missing debug surface instead of defaulting to SSH.
+
+SSH should be reserved for exceptional cases where:
+
+- the server is not reachable over the exposed admin interface
+- the debug endpoint is unavailable because the service is down
+- the user explicitly asks for SSH-based investigation
+
+## Debug Endpoint Notes
 
 - `merged=1` reads the current debug log plus rotated siblings like `debug.ndjson.1` and `debug.ndjson.2.gz`.
 - `lines` is capped at `500`.
-- The response includes `source_paths`, which tells you exactly which files were merged.
+- The response includes `source_paths`, which shows exactly which files were merged.
 - Without `merged=1`, the route only returns the currently configured debug log file.
 
 ## Sandbox Caveat
@@ -59,36 +86,39 @@ for line in lines:
 PY
 ```
 
-Focus first on:
+## General Triage Flow
+
+1. Ask the user for the server host, port, and debug token.
+2. Check `/health` to confirm the admin service is reachable.
+3. Fetch `/debug/logs?merged=1&lines=500`.
+4. Save the payload locally if it is too large to inspect inline.
+5. Filter to the incident date or suspected failure window.
+6. Identify the last successful stage and the first failing or missing stage.
+7. Decide whether the failure is in service reachability, ingest, ranking, rendering, persistence, or outbound delivery.
+8. If the logs lack a decisive signal, extend the debug endpoint or emitted events before attempting a more invasive remote workflow.
+
+## Useful Event Families
+
+Start with the event names that bracket stage transitions and failures:
 
 - `daily_orchestrator_stage_started`
 - `daily_orchestrator_stage_completed`
 - `daily_orchestrator_stage_failed`
+- `daily_orchestrator`
 - `delivery_readiness`
 - `delivery_recipients`
 - `delivery_started`
 - `delivery_send_started`
 - `delivery_send_completed`
 - `delivery_failed`
-- `daily_orchestrator`
 
-## What The Incident Showed
+Also look for any event names tied to the subsystem under investigation, then correlate them by timestamp.
 
-During the investigated missed-delivery incident:
+## Interpreting Results
 
-- ingest completed successfully
-- source fetch completed successfully
-- the newsletter pipeline completed and persisted the daily newsletter
-- the failure happened after `delivery_send_started`
-- the concrete error was `Broken pipe`
-
-That means the failure was in the outbound email send path, not in story collection, ranking, or newsletter rendering.
-
-## Quick Triage Checklist
-
-1. Check `/health` first to confirm the admin service is reachable.
-2. Fetch `/debug/logs?merged=1&lines=500`.
-3. Save the payload locally if the response is too large to inspect inline.
-4. Filter to the incident date.
-5. Confirm whether the run failed in ingest, delivery readiness, or actual send.
-6. If `delivery_send_started` exists but `delivery_send_completed` does not, inspect the corresponding `delivery_failed` event.
+- If `/health` fails, start with service reachability and deployment state.
+- If stage start events are missing entirely, investigate scheduler or invocation problems.
+- If ingest stages fail, focus on Gmail, publisher-feed fetch, parsing, and persistence.
+- If newsletter generation finishes but delivery does not, focus on recipient resolution and outbound email send.
+- If delivery starts but never completes, inspect the corresponding `delivery_failed` event or transport error.
+- If the current event stream is insufficient to answer the question, add the missing structured event or read-only debug view and retry through the endpoint.

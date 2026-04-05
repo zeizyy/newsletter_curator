@@ -28,7 +28,7 @@ from curator.mcp_server import (
     supports_http_protocol_version,
 )
 from curator.repository import SQLiteRepository
-from curator.telemetry import strip_tracking_pixel
+from curator.telemetry import resolve_tracking_base_url, strip_tracking_pixel, telemetry_enabled
 
 CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
@@ -106,6 +106,378 @@ def resolve_path_from_config(value: str) -> Path:
     if not path.is_absolute():
         path = config_module.BASE_DIR / path
     return path
+
+
+def open_repository_status(config: dict) -> tuple[SQLiteRepository | None, dict]:
+    database_cfg = config.get("database", {})
+    database_path = resolve_path_from_config(database_cfg.get("path", "data/newsletter_curator.sqlite3"))
+    allow_schema_reset = bool(database_cfg.get("allow_schema_reset", False)) or str(
+        os.getenv("CURATOR_ALLOW_SCHEMA_RESET", "")
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    try:
+        repository = SQLiteRepository(database_path)
+        repository.initialize(allow_schema_reset=allow_schema_reset)
+        with repository.connect() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return repository, {
+            "label": "SQLite Connectivity",
+            "status": "ok",
+            "tone": "success",
+            "summary": "Repository opened and responded to a read query.",
+            "details": [
+                f"database.path={database_path}",
+                "SQLite query check: SELECT 1",
+            ],
+        }
+    except Exception as exc:
+        return None, {
+            "label": "SQLite Connectivity",
+            "status": "error",
+            "tone": "warning",
+            "summary": "Repository could not be opened.",
+            "details": [
+                f"database.path={database_path}",
+                f"error={exc}",
+            ],
+        }
+
+
+def _clone_default_config() -> dict:
+    return config_module.merge_dicts(DEFAULT_CONFIG, {})
+
+
+def load_dashboard_config_state() -> tuple[dict, dict]:
+    config_path = Path(CONFIG_PATH)
+    try:
+        merged = load_merged_config()
+        return merged, {
+            "ok": True,
+            "config_path": str(config_path),
+            "errors": [],
+        }
+    except Exception as exc:
+        return _clone_default_config(), {
+            "ok": False,
+            "config_path": str(config_path),
+            "errors": [str(exc)],
+        }
+
+
+def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _format_age(value: str | None) -> str:
+    parsed = _parse_iso_datetime(value)
+    if parsed is None:
+        return "unknown"
+    delta = dt.datetime.now(dt.UTC) - parsed.astimezone(dt.UTC)
+    total_seconds = max(0, int(delta.total_seconds()))
+    if total_seconds < 60:
+        return f"{total_seconds}s ago"
+    if total_seconds < 3600:
+        return f"{total_seconds // 60}m ago"
+    if total_seconds < 86400:
+        return f"{total_seconds // 3600}h ago"
+    return f"{total_seconds // 86400}d ago"
+
+
+def _int_config_error(name: str, value, *, minimum: int = 0) -> str | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return f"{name} must be an integer."
+    if parsed < minimum:
+        return f"{name} must be >= {minimum}."
+    return None
+
+
+def build_config_validity_check(config: dict, config_state: dict) -> dict:
+    errors = list(config_state.get("errors", []) or [])
+    limits = config.get("limits", {})
+    source_quotas = limits.get("source_quotas", {})
+    for field_name, raw_value, minimum in [
+        ("limits.max_links_per_email", limits.get("max_links_per_email"), 1),
+        ("limits.select_top_stories", limits.get("select_top_stories"), 1),
+        ("limits.max_per_category", limits.get("max_per_category"), 1),
+        ("limits.final_top_stories", limits.get("final_top_stories"), 1),
+        ("limits.source_quotas.gmail", source_quotas.get("gmail"), 0),
+        ("limits.source_quotas.additional_source", source_quotas.get("additional_source"), 0),
+    ]:
+        error = _int_config_error(field_name, raw_value, minimum=minimum)
+        if error:
+            errors.append(error)
+    try:
+        final_top_stories = int(limits.get("final_top_stories", 0) or 0)
+        gmail_quota = int(source_quotas.get("gmail", 0) or 0)
+        additional_quota = int(source_quotas.get("additional_source", 0) or 0)
+        if final_top_stories != gmail_quota + additional_quota:
+            errors.append(
+                "limits.final_top_stories must equal limits.source_quotas.gmail + limits.source_quotas.additional_source."
+            )
+    except (TypeError, ValueError):
+        pass
+    if not str(config.get("gmail", {}).get("query_time_window", "")).strip():
+        errors.append("gmail.query_time_window must not be blank.")
+    if not str(config.get("database", {}).get("path", "")).strip():
+        errors.append("database.path must not be blank.")
+    if not str(config.get("paths", {}).get("credentials", "")).strip():
+        errors.append("paths.credentials must not be blank.")
+    if not str(config.get("paths", {}).get("token", "")).strip():
+        errors.append("paths.token must not be blank.")
+    if errors:
+        return {
+            "label": "Config Validity",
+            "status": "error",
+            "tone": "warning",
+            "summary": "Config is loaded with validation errors.",
+            "details": [f"config_path={config_state['config_path']}", *errors],
+        }
+    return {
+        "label": "Config Validity",
+        "status": "ok",
+        "tone": "success",
+        "summary": "Config loaded and passed structural checks.",
+        "details": [f"config_path={config_state['config_path']}"],
+    }
+
+
+def build_gmail_auth_presence_check(config: dict) -> dict:
+    credentials_path = resolve_path_from_config(config.get("paths", {}).get("credentials", ""))
+    token_path = resolve_path_from_config(config.get("paths", {}).get("token", ""))
+    details = [
+        f"credentials={credentials_path}",
+        f"token={token_path}",
+    ]
+    missing: list[str] = []
+    if not credentials_path.exists():
+        missing.append("credentials file missing")
+    if not token_path.exists():
+        missing.append("token file missing")
+    if missing:
+        return {
+            "label": "Gmail Auth Presence",
+            "status": "error",
+            "tone": "warning",
+            "summary": "Gmail auth files are incomplete.",
+            "details": [*details, *missing],
+        }
+    return {
+        "label": "Gmail Auth Presence",
+        "status": "ok",
+        "tone": "success",
+        "summary": "Credentials and token files are present.",
+        "details": details,
+    }
+
+
+def build_public_base_url_check(config: dict) -> dict:
+    tracking_on = telemetry_enabled(config)
+    tracking_base_url = resolve_tracking_base_url(config)
+    subscriber_base = subscriber_public_base_url()
+    details = [
+        f"tracking_enabled={tracking_on}",
+        f"tracking_base_url={tracking_base_url or '(blank)'}",
+        f"subscriber_public_base_url={subscriber_base or '(blank)'}",
+    ]
+    if not tracking_on:
+        return {
+            "label": "Public Base URL Consistency",
+            "status": "info",
+            "tone": "info",
+            "summary": "Tracking is disabled; public base URL consistency is not required right now.",
+            "details": details,
+        }
+    parsed_tracking = urlsplit(tracking_base_url)
+    if not tracking_base_url or parsed_tracking.scheme not in {"http", "https"} or not parsed_tracking.netloc:
+        return {
+            "label": "Public Base URL Consistency",
+            "status": "error",
+            "tone": "warning",
+            "summary": "Tracking is enabled but the public base URL is not a valid absolute HTTP(S) URL.",
+            "details": details,
+        }
+    if tracking_base_url.rstrip("/") != subscriber_base.rstrip("/"):
+        return {
+            "label": "Public Base URL Consistency",
+            "status": "error",
+            "tone": "warning",
+            "summary": "Mismatch between tracking base URL and subscriber public base URL.",
+            "details": details,
+        }
+    return {
+        "label": "Public Base URL Consistency",
+        "status": "ok",
+        "tone": "success",
+        "summary": "Tracking links and subscriber links resolve to the same public host.",
+        "details": details,
+    }
+
+
+def _query_window_seconds(query: str) -> int:
+    normalized = str(query or "").strip().lower()
+    if normalized.startswith("newer_than:") and normalized.endswith("d"):
+        try:
+            return int(normalized.removeprefix("newer_than:")[:-1]) * 86400
+        except ValueError:
+            return 86400
+    if normalized.startswith("newer_than:") and normalized.endswith("h"):
+        try:
+            return int(normalized.removeprefix("newer_than:")[:-1]) * 3600
+        except ValueError:
+            return 86400
+    return 86400
+
+
+def _freshness_tone(age_seconds: int, *, threshold_seconds: int) -> tuple[str, str]:
+    if age_seconds <= threshold_seconds:
+        return "ok", "success"
+    if age_seconds <= threshold_seconds * 2:
+        return "warning", "info"
+    return "error", "warning"
+
+
+def _run_age_seconds(run: dict | None) -> int | None:
+    if not isinstance(run, dict):
+        return None
+    finished_at = _parse_iso_datetime(run.get("finished_at"))
+    if finished_at is None:
+        return None
+    return max(0, int((dt.datetime.now(dt.UTC) - finished_at.astimezone(dt.UTC)).total_seconds()))
+
+
+def build_ingest_freshness_check(config: dict, repository) -> dict:
+    source_labels = [("gmail", "Gmail")]
+    if bool(config.get("additional_sources", {}).get("enabled", False)):
+        source_labels.append(("additional_source", "Additional Sources"))
+    details: list[str] = []
+    overall_status = "ok"
+    overall_tone = "success"
+    for source_type, label in source_labels:
+        latest_completed = repository.get_latest_ingestion_run(source_type, status="completed") if repository else None
+        latest_any = repository.get_latest_ingestion_run(source_type) if repository else None
+        threshold_seconds = (
+            _query_window_seconds(config.get("gmail", {}).get("query_time_window", "newer_than:1d"))
+            if source_type == "gmail"
+            else max(1, int(config.get("additional_sources", {}).get("hours", 24) or 24)) * 3600
+        )
+        if latest_completed is None:
+            overall_status = "error"
+            overall_tone = "warning"
+            latest_status = str((latest_any or {}).get("status", "")).strip() or "none"
+            details.append(f"{label}: no successful ingest run yet (latest status={latest_status})")
+            continue
+        age_seconds = _run_age_seconds(latest_completed) or 0
+        status, tone = _freshness_tone(age_seconds, threshold_seconds=threshold_seconds)
+        if status == "error":
+            overall_status = "error"
+            overall_tone = "warning"
+        elif status == "warning" and overall_status == "ok":
+            overall_status = "warning"
+            overall_tone = "info"
+        details.append(
+            (
+                f"{label}: last completed run #{latest_completed['id']} "
+                f"finished { _format_age(latest_completed.get('finished_at')) } "
+                f"(threshold {max(1, threshold_seconds // 3600)}h)"
+            )
+        )
+        if latest_any and latest_any["id"] != latest_completed["id"]:
+            details.append(f"{label}: latest run status={latest_any['status']}")
+    summary = "All required ingest pipelines have recent successful runs."
+    if overall_status == "warning":
+        summary = "At least one successful ingest run is getting stale."
+    elif overall_status == "error":
+        summary = "At least one ingest pipeline is missing a recent successful run."
+    return {
+        "label": "Last Successful Ingest",
+        "status": overall_status,
+        "tone": overall_tone,
+        "summary": summary,
+        "details": details or ["No ingest sources are enabled."],
+    }
+
+
+def build_delivery_freshness_check(repository) -> dict:
+    recent_runs = repository.list_recent_delivery_runs(limit=10) if repository else []
+    latest_completed = next(
+        (run for run in recent_runs if str(run.get("status", "")).strip() == "completed"),
+        None,
+    )
+    if latest_completed is None:
+        latest_status = str(recent_runs[0].get("status", "")).strip() if recent_runs else "none"
+        return {
+            "label": "Last Successful Delivery",
+            "status": "error",
+            "tone": "warning",
+            "summary": "No successful delivery run is available.",
+            "details": [f"latest_delivery_status={latest_status}"],
+        }
+    age_seconds = _run_age_seconds(latest_completed) or 0
+    status, tone = _freshness_tone(age_seconds, threshold_seconds=36 * 3600)
+    metadata = latest_completed.get("metadata", {}) or {}
+    summary = "Latest successful delivery is recent."
+    if status == "warning":
+        summary = "Latest successful delivery is older than expected."
+    elif status == "error":
+        summary = "Latest successful delivery is stale."
+    return {
+        "label": "Last Successful Delivery",
+        "status": status,
+        "tone": tone,
+        "summary": summary,
+        "details": [
+            f"run_id={latest_completed['id']}",
+            f"newsletter_date={metadata.get('newsletter_date', '')}",
+            f"finished={latest_completed.get('finished_at', '')}",
+            f"age={_format_age(latest_completed.get('finished_at'))}",
+        ],
+    }
+
+
+def build_delivery_status_rows(repository, *, limit: int = 14) -> list[dict]:
+    rows: list[dict] = []
+    for run in repository.list_recent_delivery_runs(limit=limit) if repository else []:
+        metadata = run.get("metadata", {}) or {}
+        pipeline_result = metadata.get("pipeline_result", {}) or {}
+        rows.append(
+            {
+                "run_id": run["id"],
+                "newsletter_date": str(
+                    metadata.get("newsletter_date")
+                    or pipeline_result.get("newsletter_date")
+                    or ""
+                ).strip(),
+                "status": str(run.get("status", "")).strip(),
+                "finished_at": str(run.get("finished_at", "")).strip(),
+                "age": _format_age(run.get("finished_at")),
+                "audience_key": str(
+                    metadata.get("audience_key")
+                    or pipeline_result.get("audience_key")
+                    or ""
+                ).strip(),
+                "sent_recipients": int(pipeline_result.get("sent_recipients", 0) or 0),
+                "failed_recipients": int(pipeline_result.get("failed_recipient_count", 0) or 0),
+                "cached_newsletter": bool(metadata.get("cached_newsletter", False)),
+                "recipient_source": str(pipeline_result.get("recipient_source", "")).strip(),
+            }
+        )
+    return rows
+
+
+def overall_dashboard_tone(checks: list[dict]) -> str:
+    statuses = {str(check.get("status", "")).strip() for check in checks}
+    if "error" in statuses:
+        return "warning"
+    if "warning" in statuses:
+        return "info"
+    return "success"
 
 
 def normalize_story_source_name(story: dict) -> dict:
@@ -982,6 +1354,7 @@ def subscriber_settings():
     profile = repository.get_subscriber_profile(int(subscriber["id"])) if repository else {
         "subscriber_id": int(subscriber["id"]),
         "persona_text": "",
+        "delivery_format": "email",
         "preferred_sources": [],
         "created_at": "",
         "updated_at": "",
@@ -990,7 +1363,12 @@ def subscriber_settings():
     message = ""
 
     if request.method == "POST":
+        from curator.repository import normalize_subscriber_delivery_format
+
         persona_text = str(request.form.get("persona_text", "") or "").strip()
+        delivery_format = normalize_subscriber_delivery_format(
+            str(request.form.get("delivery_format", "") or "").strip()
+        )
         preferred_sources = normalize_subscriber_preferred_sources(
             request.form,
             available_sources=available_sources,
@@ -999,6 +1377,7 @@ def subscriber_settings():
         profile = repository.upsert_subscriber_profile(
             int(subscriber["id"]),
             persona_text=persona_text,
+            delivery_format=delivery_format,
             preferred_sources=preferred_sources,
         )
         return redirect(url_for("subscriber_settings", saved="1"))
@@ -1326,6 +1705,34 @@ def analytics_dashboard():
             recent_newsletters=recent_newsletters,
             window_stats=window_stats,
             top_clicked_stories=top_clicked_stories,
+        )
+    )
+    return response
+
+
+@app.route("/operations", methods=["GET"])
+def operations_dashboard():
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    merged, config_state = load_dashboard_config_state()
+    repository, sqlite_check = open_repository_status(merged)
+    checks = [
+        sqlite_check,
+        build_config_validity_check(merged, config_state),
+        build_gmail_auth_presence_check(merged),
+        build_public_base_url_check(merged),
+        build_ingest_freshness_check(merged, repository),
+        build_delivery_freshness_check(repository),
+    ]
+    recent_delivery_rows = build_delivery_status_rows(repository, limit=14)
+    response = make_response(
+        render_admin_template(
+            "health_dashboard.html",
+            config_path=CONFIG_PATH,
+            checks=checks,
+            overall_tone=overall_dashboard_tone(checks),
+            recent_delivery_rows=recent_delivery_rows,
         )
     )
     return response

@@ -130,6 +130,26 @@ def _delivery_send_error_status_code(exc: Exception) -> int | None:
         return None
 
 
+def _delivery_send_error_code(exc: Exception) -> str:
+    for attribute_name in ("errno", "code"):
+        value = getattr(exc, attribute_name, None)
+        if value is None:
+            continue
+        rendered = str(value).strip()
+        if rendered:
+            return rendered
+    return ""
+
+
+def _delivery_send_error_details(exc: Exception) -> dict:
+    return {
+        "error": str(exc),
+        "error_type": exc.__class__.__name__,
+        "error_status_code": _delivery_send_error_status_code(exc),
+        "error_code": _delivery_send_error_code(exc),
+    }
+
+
 def is_retryable_delivery_send_error(exc: Exception) -> bool:
     if isinstance(exc, OSError):
         return True
@@ -146,11 +166,19 @@ def is_ambiguous_delivery_send_error(exc: Exception) -> bool:
 
 
 def supports_message_id_header(send_email_fn) -> bool:
+    return _supports_keyword_argument(send_email_fn, "message_id_header")
+
+
+def supports_attachments(send_email_fn) -> bool:
+    return _supports_keyword_argument(send_email_fn, "attachments")
+
+
+def _supports_keyword_argument(send_email_fn, parameter_name: str) -> bool:
     try:
         signature = inspect.signature(send_email_fn)
     except (TypeError, ValueError):
         return False
-    parameter = signature.parameters.get("message_id_header")
+    parameter = signature.parameters.get(parameter_name)
     if parameter is None:
         return False
     return parameter.kind in {
@@ -187,6 +215,7 @@ def send_email_with_retry_and_dedupe(
     subject: str,
     body: str,
     html_body: str | None = None,
+    attachments: list[dict] | None = None,
     newsletter_date: str,
     audience_key: str,
     daily_newsletter_id: int | None,
@@ -202,6 +231,7 @@ def send_email_with_retry_and_dedupe(
         recipient=to_address,
     )
     send_email_supports_message_id = supports_message_id_header(send_email_fn)
+    send_email_supports_attachments = supports_attachments(send_email_fn)
     events: list[dict] = []
     attempt = 0
     while attempt < max_attempts:
@@ -226,6 +256,8 @@ def send_email_with_retry_and_dedupe(
             send_kwargs = {}
             if send_email_supports_message_id:
                 send_kwargs["message_id_header"] = message_id_header
+            if send_email_supports_attachments and attachments:
+                send_kwargs["attachments"] = attachments
             send_email_fn(
                 service,
                 to_address=to_address,
@@ -235,7 +267,8 @@ def send_email_with_retry_and_dedupe(
                 **send_kwargs,
             )
         except Exception as exc:
-            last_error = str(exc)
+            error_details = _delivery_send_error_details(exc)
+            last_error = error_details["error"]
             retryable = is_retryable_delivery_send_error(exc)
             if service is not None and is_ambiguous_delivery_send_error(exc):
                 if message_exists_in_sent(service, message_id_header=message_id_header):
@@ -245,6 +278,9 @@ def send_email_with_retry_and_dedupe(
                         "message_id_header": message_id_header,
                         "attempts": attempt,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                         "retryable": retryable,
                         "events": events
                         + [
@@ -252,6 +288,9 @@ def send_email_with_retry_and_dedupe(
                                 "event": "verified_after_error",
                                 "attempt": attempt,
                                 "error": last_error,
+                                "error_type": error_details["error_type"],
+                                "error_status_code": error_details["error_status_code"],
+                                "error_code": error_details["error_code"],
                             }
                         ],
                     }
@@ -262,6 +301,9 @@ def send_email_with_retry_and_dedupe(
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                     }
                 )
                 sleep_fn(initial_backoff_seconds * (2 ** (attempt - 1)))
@@ -272,6 +314,9 @@ def send_email_with_retry_and_dedupe(
                 "message_id_header": message_id_header,
                 "attempts": attempt,
                 "error": last_error,
+                "error_type": error_details["error_type"],
+                "error_status_code": error_details["error_status_code"],
+                "error_code": error_details["error_code"],
                 "retryable": retryable,
                 "events": events
                 + [
@@ -280,6 +325,9 @@ def send_email_with_retry_and_dedupe(
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                         "retryable": retryable,
                     }
                 ],
@@ -488,6 +536,7 @@ def send_email(
     html_body: str | None = None,
     *,
     message_id_header: str = "",
+    attachments: list[dict] | None = None,
 ) -> None:
     message = EmailMessage()
     message["To"] = to_address
@@ -498,6 +547,19 @@ def send_email(
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")
+    for attachment in attachments or []:
+        mime_type = str(attachment.get("mime_type", "application/octet-stream") or "application/octet-stream")
+        maintype, _, subtype = mime_type.partition("/")
+        content_bytes = attachment.get("content_bytes", b"")
+        if isinstance(content_bytes, str):
+            content_bytes = content_bytes.encode("utf-8")
+        filename = str(attachment.get("filename", "attachment.bin") or "attachment.bin")
+        message.add_attachment(
+            bytes(content_bytes),
+            maintype=maintype or "application",
+            subtype=subtype or "octet-stream",
+            filename=filename,
+        )
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
     service.users().messages().send(userId="me", body={"raw": encoded_message}).execute()
 

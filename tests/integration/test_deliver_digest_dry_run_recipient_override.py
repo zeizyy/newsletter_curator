@@ -17,6 +17,12 @@ class FixedDateTime(datetime):
         return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
 
 
+class FakeRateLimitError(RuntimeError):
+    def __init__(self, message: str = "rate limit exceeded", *, status_code: int = 429):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _seed_cached_newsletter(repository, newsletter_date: str) -> None:
     repository.upsert_daily_newsletter(
         newsletter_date=newsletter_date,
@@ -140,6 +146,7 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
         {
             "email": "dry-run@example.com",
             "persona_text": "",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }
@@ -284,14 +291,16 @@ def test_cached_delivery_reports_partial_failure_and_continues(monkeypatch, tmp_
     assert result["status"] == "partial_failure"
     assert result["sent_recipients"] == 1
     assert result["failed_recipient_count"] == 1
-    assert result["failed_recipients"] == [
-        {
-            "recipient": "fail@example.com",
-            "attempts": 3,
-            "error": "broken pipe",
-            "retryable": True,
-        }
-    ]
+    assert len(result["failed_recipients"]) == 1
+    failed_recipient = result["failed_recipients"][0]
+    assert failed_recipient["recipient"] == "fail@example.com"
+    assert failed_recipient["attempts"] == 3
+    assert failed_recipient["error"] == "broken pipe"
+    assert failed_recipient["error_type"] == "BrokenPipeError"
+    assert failed_recipient["error_status_code"] is None
+    assert failed_recipient["error_code"] == ""
+    assert failed_recipient["retryable"] is True
+    assert failed_recipient["message_id_header"].startswith("<delivery-")
     assert sent_messages == ["ok@example.com"]
     completion_event = next(entry for entry in events if entry["event"] == "delivery_send_completed")
     assert completion_event["status"] == "partial_failure"
@@ -300,6 +309,85 @@ def test_cached_delivery_reports_partial_failure_and_continues(monkeypatch, tmp_
         entry["event"] == "delivery_recipient_send_failed" and entry["recipient"] == "fail@example.com"
         for entry in events
     )
+
+
+def test_deliver_digest_sends_admin_alert_with_exact_error_code_and_log_context(
+    monkeypatch, tmp_path
+):
+    main = importlib.import_module("main")
+    deliver_digest = importlib.import_module("deliver_digest")
+    gmail = importlib.import_module("curator.gmail")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["fail@example.com", "ok@example.com"],
+                "digest_subject": "Cached Daily Digest",
+                "alert_recipient": "admin@example.com",
+                "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
+            },
+        },
+    )
+    debug_log_path = tmp_path / "delivery-debug.log"
+    monkeypatch.setenv("CURATOR_DEBUG_LOG_PATH", str(debug_log_path))
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        deliver_digest,
+        "parse_args",
+        lambda: SimpleNamespace(dry_run_recipient=""),
+    )
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    rendered_output: list[str] = []
+    monkeypatch.setattr(
+        deliver_digest,
+        "print",
+        lambda text: rendered_output.append(text),
+        raising=False,
+    )
+    monkeypatch.setattr(main, "get_gmail_service", lambda paths: FakeGmailService(messages=[]))
+
+    sent_messages: list[str] = []
+    alert_messages: list[dict] = []
+
+    def selective_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        if to_address == "fail@example.com":
+            raise FakeRateLimitError()
+        if to_address == "admin@example.com":
+            alert_messages.append(
+                {
+                    "to": to_address,
+                    "subject": subject,
+                    "body": body,
+                }
+            )
+            return
+        sent_messages.append(to_address)
+
+    monkeypatch.setattr(main, "send_email", selective_send_email)
+
+    deliver_digest.main()
+    result = json.loads(rendered_output[-1])
+
+    assert result["status"] == "partial_failure"
+    assert sent_messages == ["ok@example.com"]
+    assert len(alert_messages) == 1
+    alert = alert_messages[0]
+    assert alert["to"] == "admin@example.com"
+    assert alert["subject"] == "[ALERT] Newsletter Curator Failure: partial_failure [deliver_digest.py]"
+    assert "recipient=fail@example.com" in alert["body"]
+    assert "exact_error_code=status_code=429, error_type=FakeRateLimitError" in alert["body"]
+    assert '"event": "delivery_recipient_send_failed"' in alert["body"]
+    assert '"error_status_code": 429' in alert["body"]
+    assert str(debug_log_path) in alert["body"]
 
 
 def test_cached_delivery_verifies_sent_message_before_retrying_ambiguous_failure(monkeypatch, tmp_path, capsys):
@@ -490,6 +578,7 @@ def test_dry_run_recipient_without_db_profile_uses_default_personalization(monke
         {
             "email": "dry-run@example.com",
             "persona_text": "Generalist tech reader.",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }
