@@ -86,6 +86,6 @@ email:
   alert_subject_prefix: "[ALERT] Newsletter Curator Failure"
 
 tracking:
-  enabled: false
+  enabled: true
   open_enabled: true
-  click_enabled: false
+  click_enabled: true
