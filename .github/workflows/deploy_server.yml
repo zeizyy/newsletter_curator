@@ -28,6 +28,7 @@ jobs:
       DEFAULT_SERVICE_NAME: ${{ vars.CURATOR_SERVICE_NAME || 'newsletter-curator-admin' }}
       DEFAULT_CADDYFILE_PATH: ${{ vars.CURATOR_CADDYFILE_PATH || '/etc/caddy/Caddyfile' }}
       DEFAULT_CADDY_SERVICE_NAME: ${{ vars.CURATOR_CADDY_SERVICE_NAME || 'caddy' }}
+      PUBLIC_BASE_URL_OVERRIDE: ${{ vars.CURATOR_PUBLIC_BASE_URL || format('https://{0}', vars.CURATOR_SSH_HOST) }}
     steps:
       - name: Validate workflow configuration
         env:
@@ -55,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            "DEPLOY_BRANCH='$DEPLOY_BRANCH' REMOTE_REPO_DIR='$REMOTE_REPO_DIR' DEFAULT_SERVICE_NAME='$DEFAULT_SERVICE_NAME' DEFAULT_CADDYFILE_PATH='$DEFAULT_CADDYFILE_PATH' DEFAULT_CADDY_SERVICE_NAME='$DEFAULT_CADDY_SERVICE_NAME' bash -se" <<'REMOTE'
+            "DEPLOY_BRANCH='$DEPLOY_BRANCH' REMOTE_REPO_DIR='$REMOTE_REPO_DIR' DEFAULT_SERVICE_NAME='$DEFAULT_SERVICE_NAME' DEFAULT_CADDYFILE_PATH='$DEFAULT_CADDYFILE_PATH' DEFAULT_CADDY_SERVICE_NAME='$DEFAULT_CADDY_SERVICE_NAME' PUBLIC_BASE_URL_OVERRIDE='$PUBLIC_BASE_URL_OVERRIDE' bash -se" <<'REMOTE'
           set -euo pipefail
 
           cd "$REMOTE_REPO_DIR"
@@ -78,6 +79,11 @@ jobs:
           set -a
           . "$env_file"
           set +a
+
+          if [ -n "${PUBLIC_BASE_URL_OVERRIDE:-}" ]; then
+            CURATOR_PUBLIC_BASE_URL="$PUBLIC_BASE_URL_OVERRIDE"
+            export CURATOR_PUBLIC_BASE_URL
+          fi
 
           uv_bin="$(command -v uv || true)"
           if [ -z "$uv_bin" ]; then
