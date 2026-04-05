@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import stat
 import subprocess
@@ -563,3 +564,68 @@ def test_install_caddy_config_is_rerunnable(monkeypatch, tmp_path):
     assert installed_path.exists()
     assert installed_path.read_text(encoding="utf-8") == caddy_file.read_text(encoding="utf-8")
     assert calls == [["systemctl", "reload-or-restart", "caddy"]]
+
+
+def test_main_restarts_admin_service_before_reloading_caddy(monkeypatch, tmp_path):
+    repo_dir = tmp_path / "repo"
+    output_dir = tmp_path / "generated"
+    repo_dir.mkdir()
+
+    monkeypatch.setattr(
+        bootstrap_server,
+        "parse_args",
+        lambda: argparse.Namespace(
+            repo_dir=repo_dir,
+            output_dir=output_dir,
+            uv_bin="/usr/local/bin/uv",
+            config_path=repo_dir / "config.yaml",
+            app_host="127.0.0.1",
+            app_port=8080,
+            admin_token="test-admin-token",
+            mcp_token="",
+            debug_log_token="test-debug-log-token",
+            openai_api_key="test-openai-key",
+            buttondown_api_key="test-buttondown-key",
+            public_base_url="http://159.65.104.249:8080",
+            caddyfile_path=tmp_path / "etc" / "caddy" / "Caddyfile",
+            caddy_service_name="caddy",
+            cron_timezone="",
+            daily_schedule="0 13 * * *",
+            cron_log_file=None,
+            debug_log_file=None,
+            logrotate_file=None,
+            logrotate_dir=tmp_path / "etc" / "logrotate.d",
+            logrotate_rotate_count=7,
+            install_logrotate=False,
+            service_name="newsletter-curator-admin",
+            install_crontab=False,
+            install_caddy=True,
+            install_systemd_user=True,
+            enable_linger=False,
+            linger_user="deploy-user",
+        ),
+    )
+    monkeypatch.setattr(bootstrap_server, "read_env_assignments", lambda path: {})
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_install_systemd_user_service(service_file, service_name):
+        calls.append(("systemd", service_name))
+
+    def fake_install_caddy_config(caddy_file, target_path, service_name):
+        calls.append(("caddy", service_name))
+        return target_path
+
+    monkeypatch.setattr(
+        bootstrap_server,
+        "install_systemd_user_service",
+        fake_install_systemd_user_service,
+    )
+    monkeypatch.setattr(bootstrap_server, "install_caddy_config", fake_install_caddy_config)
+
+    bootstrap_server.main()
+
+    assert calls == [
+        ("systemd", "newsletter-curator-admin"),
+        ("caddy", "caddy"),
+    ]
