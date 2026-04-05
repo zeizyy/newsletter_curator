@@ -16,6 +16,9 @@ def _run_bootstrap(
     extra_env: dict[str, str] | None = None,
     uv_bin: str = "/usr/local/bin/uv",
     include_api_keys: bool = True,
+    app_host: str = "0.0.0.0",
+    app_port: int = 9090,
+    public_base_url: str = "https://curator.example.com",
 ):
     output_dir = tmp_path / "deploy-generated"
     script_path = repo_root / "scripts" / "bootstrap_server.py"
@@ -37,15 +40,15 @@ def _run_bootstrap(
         "--config-path",
         str(config_path),
         "--app-host",
-        "0.0.0.0",
+        app_host,
         "--app-port",
-        "9090",
+        str(app_port),
         "--admin-token",
         "test-admin-token",
         "--debug-log-token",
         "test-debug-log-token",
         "--public-base-url",
-        "https://curator.example.com",
+        public_base_url,
     ]
     if include_api_keys:
         command.extend(
@@ -367,6 +370,25 @@ def test_bootstrap_accepts_legacy_admin_host_and_port_flags(tmp_path, repo_root)
 
     assert "CURATOR_APP_HOST=127.0.0.1" in env_text
     assert "CURATOR_APP_PORT=9090" in env_text
+
+
+def test_bootstrap_normalizes_internal_app_port_when_public_origin_matches_it(tmp_path, repo_root):
+    result, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        app_port=9090,
+        public_base_url="http://159.65.104.249:9090",
+    )
+
+    env_text = paths["env_file"].read_text(encoding="utf-8")
+    caddy_text = paths["caddy_file"].read_text(encoding="utf-8")
+
+    assert "CURATOR_APP_HOST=127.0.0.1" in env_text
+    assert "CURATOR_APP_PORT=9091" in env_text
+    assert "CURATOR_PUBLIC_BASE_URL=http://159.65.104.249:9090" in env_text
+    assert "http://159.65.104.249:9090 {" in caddy_text
+    assert "reverse_proxy 127.0.0.1:9091" in caddy_text
+    assert "App bind port normalized for reverse proxy use: 9090 -> 9091" in result.stdout
 
 
 def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(tmp_path, repo_root):
