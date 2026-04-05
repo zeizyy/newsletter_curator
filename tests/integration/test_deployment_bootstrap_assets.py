@@ -330,6 +330,29 @@ def test_bootstrap_adds_admin_port_to_direct_access_public_base_url(tmp_path, re
     assert "Warning: --public-base-url has no explicit port" not in result.stdout
 
 
+def test_bootstrap_generates_https_raw_ip_caddy_config(tmp_path, repo_root):
+    result, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        app_port=9090,
+        public_base_url="https://159.65.104.249",
+    )
+
+    env_text = paths["env_file"].read_text(encoding="utf-8")
+    caddy_text = paths["caddy_file"].read_text(encoding="utf-8")
+
+    assert "CURATOR_APP_PORT=9090" in env_text
+    assert "CURATOR_PUBLIC_BASE_URL=https://159.65.104.249" in env_text
+    assert "http://159.65.104.249 {" in caddy_text
+    assert "redir https://159.65.104.249{uri} permanent" in caddy_text
+    assert "https://159.65.104.249 {" in caddy_text
+    assert "issuer acme {" in caddy_text
+    assert "dir https://acme-v02.api.letsencrypt.org/directory" in caddy_text
+    assert "profile shortlived" in caddy_text
+    assert "reverse_proxy 127.0.0.1:9090" in caddy_text
+    assert "App bind port normalized" not in result.stdout
+
+
 def test_bootstrap_accepts_legacy_admin_host_and_port_flags(tmp_path, repo_root):
     output_dir = tmp_path / "deploy-generated"
     script_path = repo_root / "scripts" / "bootstrap_server.py"

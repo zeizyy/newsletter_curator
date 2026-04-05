@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import grp
+import ipaddress
 import os
 import shlex
 import shutil
@@ -293,6 +294,14 @@ def _normalize_reverse_proxy_host(app_host: str) -> str:
     return normalized_host
 
 
+def _hostname_is_ip(hostname: str) -> bool:
+    try:
+        ipaddress.ip_address(str(hostname or "").strip())
+    except ValueError:
+        return False
+    return True
+
+
 def build_caddyfile(*, public_base_url: str, app_host: str, app_port: int) -> str:
     configured = normalize_public_base_url(public_base_url)
     parsed = urlparse(configured)
@@ -308,6 +317,18 @@ def build_caddyfile(*, public_base_url: str, app_host: str, app_port: int) -> st
     site_label = f"{parsed.scheme}://{parsed.netloc}"
     lines = [
         f"{site_label} {{",
+        *(
+            [
+                "    tls {",
+                "        issuer acme {",
+                "            dir https://acme-v02.api.letsencrypt.org/directory",
+                "            profile shortlived",
+                "        }",
+                "    }",
+            ]
+            if parsed.scheme == "https" and _hostname_is_ip(parsed.hostname or "")
+            else []
+        ),
         "    encode zstd gzip",
         "    header {",
         '        X-Content-Type-Options "nosniff"',
