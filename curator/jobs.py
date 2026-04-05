@@ -1410,12 +1410,9 @@ def run_delivery_job(
         audience_key=audience_key,
         delivery_format=delivery_format,
         cached_newsletter_available=cached_newsletter is not None,
-        telemetry_enabled=delivery_format == DEFAULT_SUBSCRIBER_DELIVERY_FORMAT
-        and (open_tracking_enabled or click_tracking_enabled),
-        open_tracking_enabled=delivery_format == DEFAULT_SUBSCRIBER_DELIVERY_FORMAT
-        and open_tracking_enabled,
-        click_tracking_enabled=delivery_format == DEFAULT_SUBSCRIBER_DELIVERY_FORMAT
-        and click_tracking_enabled,
+        telemetry_enabled=open_tracking_enabled or click_tracking_enabled,
+        open_tracking_enabled=open_tracking_enabled,
+        click_tracking_enabled=click_tracking_enabled,
         persist_newsletter=persist_newsletter,
         recipient_count=len(resolved_recipients),
         readiness_ok=readiness["ok"],
