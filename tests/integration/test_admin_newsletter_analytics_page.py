@@ -38,6 +38,18 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
         ],
         metadata={"test": True},
     )
+    newsletter_a_personalized_id = repository.upsert_daily_newsletter(
+        newsletter_date=newsletter_a_date,
+        audience_key="df18eaca02a227a7",
+        subject="Digest A Personalized",
+        body="Digest A personalized body",
+        html_body="<html><body>Digest A Personalized</body></html>",
+        selected_items=[
+            {"title": "AI infra economics", "url": "https://example.com/ai-infra"},
+            {"title": "GPU capex revival", "url": "https://example.com/gpu-capex"},
+        ],
+        metadata={"test": True, "personalized": True},
+    )
     newsletter_b_id = repository.upsert_daily_newsletter(
         newsletter_date=newsletter_b_date,
         subject="Digest B",
@@ -58,6 +70,13 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
             {"title": "Search interface reset", "url": "https://example.com/search-reset"},
         ],
     )
+    tracked_links_a_personalized = repository.ensure_tracked_links(
+        newsletter_a_personalized_id,
+        [
+            {"title": "AI infra economics", "url": "https://example.com/ai-infra"},
+            {"title": "GPU capex revival", "url": "https://example.com/gpu-capex"},
+        ],
+    )
     tracked_links_b = repository.ensure_tracked_links(
         newsletter_b_id,
         [
@@ -73,16 +92,34 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
         for link in tracked_links_a
         if link["story_title"] == "Search interface reset"
     )
+    gpu_capex_click = next(
+        link["click_token"]
+        for link in tracked_links_a_personalized
+        if link["story_title"] == "GPU capex revival"
+    )
     model_margin_click = tracked_links_b[0]["click_token"]
 
     repository.record_newsletter_open(open_token_a, user_agent="Mail/1.0", ip_address="1.1.1.1")
     repository.record_newsletter_open(open_token_a, user_agent="Mail/1.0", ip_address="1.1.1.1")
     repository.record_newsletter_open(open_token_a, user_agent="Mail/2.0", ip_address="2.2.2.2")
+    open_token_a_personalized = repository.ensure_newsletter_open_token(newsletter_a_personalized_id)
+    repository.record_newsletter_open(
+        open_token_a_personalized,
+        user_agent="Mail/2.0",
+        ip_address="2.2.2.2",
+    )
+    repository.record_newsletter_open(
+        open_token_a_personalized,
+        user_agent="Mail/4.0",
+        ip_address="4.4.4.4",
+    )
     repository.record_newsletter_open(open_token_b, user_agent="Mail/3.0", ip_address="3.3.3.3")
 
     repository.record_newsletter_click(ai_infra_click, user_agent="Mail/1.0", ip_address="1.1.1.1")
     repository.record_newsletter_click(ai_infra_click, user_agent="Mail/1.0", ip_address="1.1.1.1")
     repository.record_newsletter_click(search_reset_click, user_agent="Mail/2.0", ip_address="2.2.2.2")
+    repository.record_newsletter_click(gpu_capex_click, user_agent="Mail/2.0", ip_address="2.2.2.2")
+    repository.record_newsletter_click(gpu_capex_click, user_agent="Mail/4.0", ip_address="4.4.4.4")
     repository.record_newsletter_click(model_margin_click, user_agent="Mail/3.0", ip_address="3.3.3.3")
 
     client = admin_app.app.test_client()
@@ -95,11 +132,12 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     assert "Command Rail" in html
     assert "Tracked opens are approximate" in html
     assert "Digest A" in html
+    assert "Digest A Personalized" not in html
     assert "Digest B" in html
-    assert "3 opens" in html
-    assert "2 unique" in html
+    assert "5 opens" in html
+    assert "3 unique" in html
     assert "AI infra economics" in html
-    assert "2 clicks" in html
-    assert "4 clicks" in html
-    assert "3 unique clicks" in html
+    assert "5 clicks" in html
+    assert "6 clicks" in html
+    assert "5 unique clicks" in html
     assert "100.0%" in html
