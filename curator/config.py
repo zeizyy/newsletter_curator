@@ -50,7 +50,7 @@ DEFAULT_CONFIG = {
     },
     "email": {
         "digest_recipients": [],
-        "digest_subject": "Daily Newsletter Digest",
+        "digest_subject": "AI Signal Daily",
         "alert_recipient": "",
         "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
     },

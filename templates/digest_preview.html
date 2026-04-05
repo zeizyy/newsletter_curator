@@ -11,7 +11,7 @@
   {% endif %}
 {% endblock %}
 {% block page_title %}Briefing Desk{% endblock %}
-{% block page_lead %}Inspect the exact digest payload the system will send, compare the web-first and email-safe renderings, and catch layout problems before delivery.{% endblock %}
+{% block page_lead %}Inspect the stored digest payload, compare the browser-review and email-safe delivery renderings, and catch layout problems before delivery.{% endblock %}
 {% block page_meta %}Generated on demand from repository-backed delivery data in <code>{{ config_path }}</code>{% endblock %}
 {% block page_actions %}
   <a class="button-link {% if preview_template == 'market_tape' %}primary{% else %}ghost{% endif %}" href="{{ url_for('preview_newsletter', template='market_tape') }}">Web Template</a>
@@ -132,27 +132,27 @@
           <div class="stat-label">Render Mode</div>
           <div class="stat-value">
             {% if preview_template == "email_safe" %}
-              Email
+              Delivered email
             {% elif preview_template == "gmail_lab" %}
               Gmail
             {% else %}
-              Web
+              Browser review
             {% endif %}
           </div>
           <div class="stat-sub">
             {% if preview_template == "gmail_lab" %}
-              Side-by-side mobile approximation.
+              Browser-review versus delivered-email comparison.
             {% elif preview_template == "email_safe" %}
-              Table-safe HTML candidate.
+              Table-safe HTML used for delivery.
             {% else %}
-              Browser-first market tape layout.
+              Browser-first editorial review layout.
             {% endif %}
           </div>
         </article>
         <article class="stat-card">
           <div class="stat-label">Body Format</div>
           <div class="stat-value">Dual</div>
-          <div class="stat-sub">HTML preview plus the plain-text fallback sit on the same review surface.</div>
+          <div class="stat-sub">HTML review surfaces plus the plain-text fallback sit on the same desk.</div>
         </article>
       </div>
     </section>
@@ -167,24 +167,24 @@
       </div>
       {% if preview_template == "gmail_lab" %}
         <p class="gmail-note">
-          This is a local Gmail-focused approximation: it constrains the newsletter to a mobile viewport and lets you compare the current sent template against the email-safe version before sending.
+          This is a local Gmail-focused approximation: it constrains the newsletter to a mobile viewport and lets you compare the browser-review layout against the actual email-safe delivery artifact before sending.
           It does not perfectly reproduce Gmail app dark-mode rewriting.
         </p>
         <div class="gmail-lab-grid">
           <div class="gmail-lab-card">
-            <div class="preview-label">Actual Sent Template</div>
+            <div class="preview-label">Browser Review Template</div>
             <div class="gmail-shell">
               <div class="gmail-shell-header">
                 <span>Gmail Mobile</span>
                 <span>390px</span>
               </div>
               <div class="gmail-shell-screen">
-                <iframe title="Actual sent template" srcdoc="{{ preview.market_tape_html | e }}"></iframe>
+                <iframe title="Browser review template" srcdoc="{{ preview.market_tape_html | e }}"></iframe>
               </div>
             </div>
           </div>
           <div class="gmail-lab-card">
-            <div class="preview-label">Email-Safe Candidate</div>
+            <div class="preview-label">Email-Safe Delivery Template</div>
             <div class="gmail-shell">
               <div class="gmail-shell-header">
                 <span>Gmail Mobile</span>

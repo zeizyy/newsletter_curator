@@ -69,9 +69,9 @@
         <div class="stat-sub">{{ enabled_source_count }} currently eligible during delivery.</div>
       </article>
       <article class="stat-card">
-        <div class="stat-label">Digest Recipients</div>
+        <div class="stat-label">Fallback Recipients</div>
         <div class="stat-value">{{ config.email.digest_recipients|length }}</div>
-        <div class="stat-sub">{{ config.email.digest_subject }}</div>
+        <div class="stat-sub">Used only when Buttondown sync is not supplying the live audience.</div>
       </article>
       <article class="stat-card">
         <div class="stat-label">Story Budget</div>
@@ -216,7 +216,7 @@
           <div class="section-kicker">Editorial Direction</div>
           <h2>Persona lens</h2>
         </div>
-        <div class="section-copy">This guidance influences ingest scoring, final ranking, and the why-this-matters framing that readers see in the digest.</div>
+        <div class="section-copy">This guidance only affects the final ranking pass that chooses which already-stored stories make today&apos;s digest. Ingest scoring and stored summaries stay persona-neutral.</div>
       </div>
       <div class="field-grid">
         <div class="field field-span-full">
@@ -233,7 +233,7 @@
           <div class="section-kicker">Delivery</div>
           <h2>Email output</h2>
         </div>
-        <div class="section-copy">Set the subject line, alert fallback, and the final recipient list that receives the published briefing.</div>
+        <div class="section-copy">Set the subject line, alert fallback, and the configured fallback audience. If `BUTTONDOWN_API_KEY` is set, active Buttondown subscribers override `email.digest_recipients` during delivery.</div>
       </div>
       <div class="field-grid">
         <div class="field">
@@ -252,7 +252,7 @@
           <label class="field-label" for="email_digest_recipients">email.digest_recipients</label>
           <textarea id="email_digest_recipients" name="email_digest_recipients">{% for r in config.email.digest_recipients %}{{ r }}
 {% endfor %}</textarea>
-          <div class="field-note">Enter one recipient per line.</div>
+          <div class="field-note">Enter one recipient per line for the fallback audience used when Buttondown is not supplying recipients.</div>
         </div>
       </div>
     </section>

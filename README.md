@@ -1,6 +1,6 @@
 # Newsletter Curator
 
-Personal newsletter curator with a repository-first architecture: Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
+Newsletter Curator is the self-hosted app and operator console for the reader-facing digest `AI Signal Daily`. Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
 
 Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to get something like this everyday:
 
@@ -10,7 +10,7 @@ Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to g
 - Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
 - Single daily orchestrator for production cron scheduling
 - Local SQLite repository for normalized stories, article snapshots, and run history
-- Admin UI for source selection plus subscriber login and settings
+- Admin UI for source selection plus subscriber login and settings for `AI Signal Daily`
 - Repo-only delivery job with no live Gmail reads or live article fetches at send time
 - Two-stage LLM flow: persona-neutral ingest scoring and summaries, followed by persona-aware final ranking
 - Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
@@ -451,14 +451,16 @@ Edit `config.yaml`:
 - `gmail.label` (default `Newsletters`)
 - `gmail.query_time_window` (default `newer_than:1d`)
 - `database.path` (default `data/newsletter_curator.sqlite3`)
+- `database.newsletter_ttl_days` (default `7`; falls back to `database.ttl_days`)
+- `database.allow_schema_reset` (default `false`; required before managed schema resets are allowed)
 - `persona.text`
 - `development.use_canned_sources`
 - `development.canned_sources_file`
 - `development.fake_inference`
-- `additional_sources.enabled` (default `true` in current checked-in config)
+- `additional_sources.enabled` (runtime default `false`; `true` in the current checked-in `config.yaml`)
 - `additional_sources.script_path` (default `skills/daily-news-curator/scripts/build_daily_digest.py`)
 - `additional_sources.feeds_file` (optional custom feed list for the source script)
-- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total`
+- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total` (runtime default `30`; current checked-in `config.yaml` uses `20`)
 - `limits.max_links_per_email`
 - `limits.select_top_stories`
 - `limits.max_per_category`
@@ -466,12 +468,13 @@ Edit `config.yaml`:
 - `limits.source_quotas` (default `gmail: 10`, `additional_source: 5`)
 - `limits.max_article_chars`
 - `limits.max_summary_workers`
+- `email.digest_subject` (default `AI Signal Daily`)
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
 - `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
-- `tracking.open_enabled` (optional explicit toggle for the open pixel)
-- `tracking.click_enabled` (optional explicit toggle for tracked link redirects)
-- `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
+- `tracking.open_enabled` (optional explicit toggle for the open pixel; checked-in config keeps it `false` until you opt in)
+- `tracking.click_enabled` (optional explicit toggle for tracked link redirects; checked-in config keeps it `false` until you opt in)
+- `tracking.base_url` (optional; falls back only to `CURATOR_PUBLIC_BASE_URL`)
 - `email.digest_recipients` and `email.alert_recipient`
 
 ### Persona Behavior
@@ -489,10 +492,10 @@ Delivery recipient membership is still resolved in this order:
 
 Resolved recipients are automatically upserted into the `subscribers` table during delivery so the DB becomes the durable recipient registry over time. Personalization only comes from the matching `subscriber_profiles` row:
 - blank or missing `persona_text` falls back to the global `persona.text`
-- blank or missing `preferred_sources` means no per-user source filter
-- Buttondown metadata and legacy `config.yaml` subscriber overrides no longer affect personalization
+- blank or missing `preferred_sources` means no per-user source preference signal
+- Buttondown metadata and legacy YAML subscriber overrides no longer affect personalization
 
-`preferred_sources` is a per-subscriber narrowing filter on top of the global source allowlist. Matching is exact after trim/lowercase against each candidate item's `source_name`, so it can narrow already-enabled sources but cannot re-enable a globally disabled source.
+`preferred_sources` is a per-subscriber soft uprank signal that only applies during the final ranking pass. Matching is exact after trim or lowercase against each candidate item's `source_name`, so it can favor already-enabled sources when quality is close, but it cannot re-enable a globally disabled source and it does not filter ingest or stored summaries.
 
 The subscriber-facing rollout is:
 1. Keep Buttondown or `email.digest_recipients` configured so recipient discovery still works.
@@ -502,12 +505,13 @@ The subscriber-facing rollout is:
 
 Current operator caveats:
 - preview still uses the default audience rather than generating one preview per personalized profile
+- the browser-first preview is an editorial review surface, while `template=email_safe` reflects the actual delivered HTML artifact
 - newsletter history and analytics remain focused on the default audience instead of listing every personalized variant
-- YAML `subscribers` entries are legacy-only and should be removed from `config.yaml` during rollout cleanup
+- if you still have legacy YAML `subscribers` entries in an older private config, delivery ignores them for personalization
 
 Rollback:
 - keep recipient discovery on Buttondown or `email.digest_recipients`
-- remove or ignore `subscriber_profiles` rows to fall back to the global `persona.text` plus no per-user source filters
+- remove or ignore `subscriber_profiles` rows to fall back to the global `persona.text` plus no per-user source preferences
 - no rollback is required for Buttondown metadata because delivery no longer reads personalization from Buttondown at all
 
 You can override the config file path with `NEWSLETTER_CONFIG`.

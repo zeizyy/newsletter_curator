@@ -36,6 +36,14 @@ This file is append-only. Each coding session should add a short dated entry wit
 
 Add new entries below this line.
 
+### 2026-04-05 - T72 resolved README, checked-in config, and UI artifact consistency drift
+- Context: Audited the checked-in docs, defaults, preview surfaces, subscriber settings copy, and PDF naming after the recent subscriber and public-host work, then tightened the repo so those surfaces describe the same product behavior again.
+- Files changed: `README.md`, `config.yaml`, `curator/config.py`, `admin_app.py`, `main.py`, `curator/jobs.py`, `curator/pdf.py`, `templates/admin_config.html`, `templates/digest_preview.html`, `templates/subscriber_account.html`, `templates/subscriber_login.html`, `templates/subscriber_settings.html`, `tests/integration/test_config_and_preview_consistency.py`, `tests/integration/test_admin_config_page_uses_shared_shell.py`, `tests/integration/test_admin_preview_renders_digest.py`, `tests/integration/test_subscriber_settings_page_persists_profile.py`, `tests/integration/test_subscriber_pdf_delivery_opt_in.py`, `agent_spec.md`, `agent_tasks.json`, `agent_contracts/T72_consistency_pass.md`
+- Tests run: `uv run pytest tests/integration/test_config_and_preview_consistency.py tests/integration/test_admin_config_page_uses_shared_shell.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_subscriber_settings_page_persists_profile.py tests/integration/test_subscriber_pdf_delivery_opt_in.py -q`; `uv run pytest tests/integration/test_delivery_public_host_links_and_fallback.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_default_config_includes_repo_persona.py -q`; `python3 -m json.tool agent_tasks.json >/dev/null`; `git diff --check`
+- Outcome: The checked-in config now keeps telemetry off by default and explicitly carries the newer database or tracking knobs, the README matches the current personalization and tracking behavior, admin and subscriber copy now describe persona and preferred sources as final-ranking-only signals, email-safe preview reuses the delivered settings-link logic, preview capture preserves attachment metadata, and the PDF artifact now uses digest-facing naming.
+- Open risks: Preview still shows only the default audience variant, so personalized-profile preview remains out of scope for this pass.
+- Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
 ### 2026-03-21 - T0 initialized offline test scaffolding
 - Context: Built the first executable engineering task in the harness and kept the current pipeline behavior unchanged.
 - Files changed: `pyproject.toml`, `uv.lock`, `tests/__init__.py`, `tests/conftest.py`, `tests/fakes.py`, `tests/helpers.py`, `tests/fixtures/newsletter_sample.html`, `tests/integration/test_smoke_offline_pipeline.py`, `agent_tasks.json`

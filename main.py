@@ -160,13 +160,23 @@ def run_job(config: dict, service, *, recipient_override: str | None = None) -> 
 def preview_job(config: dict) -> dict:
     captured_messages: list[dict] = []
 
-    def capture_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+    def capture_send_email(
+        service,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: list[dict] | None = None,
+        message_id_header: str = "",
+    ):
         captured_messages.append(
             {
                 "to": to_address,
                 "subject": subject,
                 "body": body,
                 "html_body": html_body or "",
+                "attachments": list(attachments or []),
+                "message_id_header": message_id_header,
             }
         )
 

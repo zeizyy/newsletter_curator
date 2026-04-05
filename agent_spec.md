@@ -59,3 +59,4 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T69` flatten final delivery email ranking and remove footer CTA
 - `T70` opt-in PDF delivery format for subscriber profiles
 - `T71` delivery public-host hardening plus direct-link fallback
+- `T72` resolve doc, config, and artifact consistency drift

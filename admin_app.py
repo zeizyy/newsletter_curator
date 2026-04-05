@@ -28,7 +28,12 @@ from curator.mcp_server import (
     supports_http_protocol_version,
 )
 from curator.repository import SQLiteRepository
-from curator.telemetry import resolve_tracking_base_url, strip_tracking_pixel, telemetry_enabled
+from curator.telemetry import (
+    build_settings_url,
+    resolve_tracking_base_url,
+    strip_tracking_pixel,
+    telemetry_enabled,
+)
 
 CONFIG_PATH = config_module.DEFAULT_CONFIG_PATH
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
@@ -487,7 +492,12 @@ def normalize_story_source_name(story: dict) -> dict:
     return normalized
 
 
-def build_preview_payload(newsletter: dict | None, *, preview_template: str = "market_tape") -> dict | None:
+def build_preview_payload(
+    newsletter: dict | None,
+    *,
+    preview_template: str = "market_tape",
+    settings_url: str = "",
+) -> dict | None:
     if not newsletter:
         return None
     content = newsletter.get("content", {}) or {}
@@ -508,7 +518,7 @@ def build_preview_payload(newsletter: dict | None, *, preview_template: str = "m
 
         plain_body = render_digest_text(render_groups)
         market_tape_html = render_digest_html(render_groups)
-        email_safe_html = render_email_safe_digest_html(render_groups)
+        email_safe_html = render_email_safe_digest_html(render_groups, settings_url=settings_url)
     elif rerender_stored_newsletters_enabled():
         market_tape_html = stored_html
         email_safe_html = stored_html
@@ -678,16 +688,16 @@ def send_subscriber_login_email(config: dict, to_address: str, confirm_url: str)
     token_path = resolve_path_from_config(config.get("paths", {}).get("token", ""))
     if not credentials_path.exists() or not token_path.exists():
         return {"sent": False, "error": "gmail_credentials_unavailable"}
-    subject = "Your Newsletter Curator sign-in link"
+    subject = "Your AI Signal Daily sign-in link"
     body = (
-        "Use this secure sign-in link to access your Newsletter Curator account:\n\n"
+        "Use this secure sign-in link to access your AI Signal Daily settings in Newsletter Curator:\n\n"
         f"{confirm_url}\n\n"
         f"This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
         "If you did not request it, you can ignore this email."
     )
     html_body = (
         "<html><body>"
-        "<p>Use this secure sign-in link to access your Newsletter Curator account:</p>"
+        "<p>Use this secure sign-in link to access your AI Signal Daily settings in Newsletter Curator:</p>"
         f'<p><a href="{confirm_url}">{confirm_url}</a></p>'
         f"<p>This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
         "If you did not request it, you can ignore this email.</p>"
@@ -1034,7 +1044,10 @@ def update_config_from_form(raw_config: dict, form) -> tuple[dict, list[str]]:
             1,
         )
         additional_sources["max_total"] = parse_int(
-            "additional_sources.max_total", form.get("additional_max_total", "20"), 1
+            "additional_sources.max_total",
+            form.get("additional_max_total", "").strip()
+            or str(DEFAULT_CONFIG["additional_sources"]["max_total"]),
+            1,
         )
 
         limits = ensure(["limits"])
@@ -1467,6 +1480,7 @@ def preview_newsletter():
     preview_template = resolve_preview_template()
     merged = load_merged_config()
     repository = load_repository(merged)
+    settings_url = build_settings_url(resolve_tracking_base_url(merged))
     error = ""
     preview = None
     result = None
@@ -1482,7 +1496,11 @@ def preview_newsletter():
     else:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
-            preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
+            preview = build_preview_payload(
+                cached_newsletter,
+                preview_template=preview_template,
+                settings_url=settings_url,
+            )
             metadata = cached_newsletter.get("metadata", {})
             result = {
                 "status": "completed",
@@ -1528,7 +1546,11 @@ def preview_newsletter():
     if generation_in_progress and repository:
         cached_newsletter = repository.get_daily_newsletter(newsletter_date)
         if cached_newsletter is not None:
-            preview = build_preview_payload(cached_newsletter, preview_template=preview_template)
+            preview = build_preview_payload(
+                cached_newsletter,
+                preview_template=preview_template,
+                settings_url=settings_url,
+            )
             metadata = cached_newsletter.get("metadata", {})
             result = {
                 "status": "completed",

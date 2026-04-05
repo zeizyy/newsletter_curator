@@ -61,7 +61,7 @@ def render_digest_pdf(
         rightMargin=0.45 * inch,
         topMargin=0.55 * inch,
         bottomMargin=0.55 * inch,
-        title=str(subject or "").strip() or "Newsletter Curator",
+        title=str(subject or "").strip() or "AI Signal Daily",
         author="Newsletter Curator",
     )
 
@@ -122,7 +122,7 @@ def render_digest_pdf(
     )
 
     elements = [
-        Paragraph(escape(str(subject or "").strip() or "Newsletter Curator"), title_style),
+        Paragraph(escape(str(subject or "").strip() or "AI Signal Daily"), title_style),
     ]
     if str(newsletter_date or "").strip():
         elements.append(Paragraph(escape(str(newsletter_date).strip()), meta_style))

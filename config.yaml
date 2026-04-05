@@ -9,6 +9,8 @@ paths:
 database:
   path: data/newsletter_curator.sqlite3
   ttl_days: 7
+  newsletter_ttl_days: 7
+  allow_schema_reset: false
 
 development:
   use_canned_sources: false
@@ -34,26 +36,6 @@ persona:
 
     Avoid:
     PR fluff, hype, generic macro, repetitive benchmark news, shallow summaries
-
-subscribers:
-  # Subscribers only override matched resolved recipients. They do not add
-  # recipients by themselves; delivery still comes from --dry-run-recipient,
-  # Buttondown, or email.digest_recipients.
-  #
-  # - email: analyst@example.com
-  #   persona:
-  #     text: |
-  #       Macro investor focused on rates, valuations, and software demand shifts.
-  #   preferred_sources:
-  #     - Macro Wire
-  #     - General Tech
-  # - email: infra@example.com
-  #   persona:
-  #     text: |
-  #       AI infrastructure builder focused on model costs, chips, and inference economics.
-  #   preferred_sources:
-  #     - Chip Insider
-  []
 
 additional_sources:
   enabled: true
@@ -81,11 +63,12 @@ limits:
 
 email:
   digest_recipients: []
-  digest_subject: Daily Newsletter Digest
+  digest_subject: AI Signal Daily
   alert_recipient: ""
   alert_subject_prefix: "[ALERT] Newsletter Curator Failure"
 
 tracking:
-  enabled: true
-  open_enabled: true
-  click_enabled: true
+  enabled: false
+  open_enabled: false
+  click_enabled: false
+  base_url: ""
