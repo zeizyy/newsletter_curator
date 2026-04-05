@@ -127,14 +127,15 @@ def test_subscriber_settings_page_can_persist_pdf_delivery_format(monkeypatch, t
 
     response = client.post(
         "/settings",
-        data={"persona_text": "", "delivery_format": "pdf"},
+        data={"persona_text": "", "pdf_delivery_enabled": "1"},
         follow_redirects=True,
     )
 
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "PDF attachment" in page
-    assert 'value="pdf"' in page
+    assert "Add a PDF copy" in page
+    assert "Add PDF attachment" in page
+    assert 'name="pdf_delivery_enabled"' in page
 
     profile = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile["delivery_format"] == "pdf"

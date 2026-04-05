@@ -43,7 +43,8 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "Existing persona" in page
-    assert "PDF attachment" in page
+    assert "Add a PDF copy" in page
+    assert "Add PDF attachment" in page
     assert "Macro Wire" in page
     assert "AI Wire" in page
     assert "Unavailable" in page
@@ -54,7 +55,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
         "/settings",
         data={
             "persona_text": "  Focus on chips and costs.  ",
-            "delivery_format": "pdf",
+            "pdf_delivery_enabled": "1",
             "preferred_source": ["Macro Wire", "Signal Mail"],
         },
         follow_redirects=True,
@@ -78,7 +79,8 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     second_page = second_response.get_data(as_text=True)
     assert second_response.status_code == 200
     assert "Focus on chips and costs." in second_page
-    assert 'value="pdf"' in second_page
+    assert 'name="pdf_delivery_enabled"' in second_page
+    assert 'value="1"' in second_page
     assert "Signal Mail" in second_page
     assert "AI Wire" in second_page
 
