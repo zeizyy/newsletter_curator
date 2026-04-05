@@ -257,7 +257,6 @@ OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --admin-token 'choose-a-long-random-token' \
   --debug-log-token 'choose-a-separate-long-random-token' \
   --buttondown-api-key 'your_buttondown_api_key' \
-  --enable-telemetry \
   --enable-linger \
   --install-crontab
 ```
@@ -285,8 +284,7 @@ Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
-- Telemetry tracking is now disabled by default. Pass `--enable-telemetry` only when the `/track/*` endpoints are publicly reachable.
-- Set `--public-base-url` to the externally reachable admin origin for subscriber login links, telemetry links, and open-tracking pixels. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
+- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin consumed by login links and `tracking.base_url` fallback behavior. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
@@ -336,7 +334,7 @@ Behavior notes:
 - The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
 - The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
 - The workflow logs a redacted bootstrap command in the Actions output before running it on the server.
-- Telemetry is enabled by default during workflow-driven bootstrap reruns when `CURATOR_PUBLIC_BASE_URL` is set. Set `CURATOR_ENABLE_TELEMETRY=0` on the server if you need an explicit opt-out.
+- Workflow-driven bootstrap reruns no longer toggle tracking on your behalf; tracking enablement should live in the config file pointed to by `NEWSLETTER_CONFIG`.
 - It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
 
 Recommended branch protection for `main`:

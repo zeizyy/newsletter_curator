@@ -108,25 +108,6 @@ jobs:
             bootstrap_args+=(--buttondown-api-key "$BUTTONDOWN_API_KEY")
           fi
 
-          enable_telemetry=0
-          case "${CURATOR_ENABLE_TELEMETRY:-}" in
-            1|true|TRUE|yes|YES|on|ON)
-              enable_telemetry=1
-              ;;
-            0|false|FALSE|no|NO|off|OFF)
-              enable_telemetry=0
-              ;;
-            "")
-              if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ]; then
-                enable_telemetry=1
-              fi
-              ;;
-          esac
-
-          if [ "$enable_telemetry" = "1" ]; then
-            bootstrap_args+=(--enable-telemetry)
-          fi
-
           bootstrap_args+=(--install-crontab --install-systemd-user)
           bootstrap_display_args=(
             --repo-dir "$REMOTE_REPO_DIR"
@@ -149,10 +130,6 @@ jobs:
 
           if [ -n "${BUTTONDOWN_API_KEY:-}" ]; then
             bootstrap_display_args+=(--buttondown-api-key "[redacted]")
-          fi
-
-          if [ "$enable_telemetry" = "1" ]; then
-            bootstrap_display_args+=(--enable-telemetry)
           fi
 
           bootstrap_display_args+=(--install-crontab --install-systemd-user)

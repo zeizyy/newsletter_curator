@@ -46,7 +46,6 @@ def _run_bootstrap(
         "test-debug-log-token",
         "--public-base-url",
         "https://curator.example.com",
-        "--enable-telemetry",
     ]
     if include_api_keys:
         command.extend(
@@ -162,7 +161,6 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "OPENAI_API_KEY=test-openai-key" in env_text
     assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "CURATOR_PUBLIC_BASE_URL=https://curator.example.com" in env_text
-    assert "CURATOR_ENABLE_TELEMETRY=1" in env_text
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
 
     admin_script_text = admin_script.read_text(encoding="utf-8")
@@ -291,7 +289,6 @@ def test_bootstrap_adds_admin_port_to_direct_access_public_base_url(tmp_path, re
             "test-debug-log-token",
             "--public-base-url",
             "http://159.65.104.249/",
-            "--enable-telemetry",
             "--openai-api-key",
             "test-openai-key",
             "--buttondown-api-key",
