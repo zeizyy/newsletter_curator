@@ -336,6 +336,7 @@ Behavior notes:
 - The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
 - The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
 - The workflow logs a redacted bootstrap command in the Actions output before running it on the server.
+- Telemetry is enabled by default during workflow-driven bootstrap reruns when `CURATOR_PUBLIC_BASE_URL` is set. Set `CURATOR_ENABLE_TELEMETRY=0` on the server if you need an explicit opt-out.
 - It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
 
 Recommended branch protection for `main`:
