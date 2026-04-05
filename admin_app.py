@@ -774,6 +774,23 @@ def allowed_mcp_origins() -> set[str]:
     return origins
 
 
+def configured_app_host() -> str:
+    return (
+        os.getenv("CURATOR_APP_HOST", "").strip()
+        or os.getenv("CURATOR_ADMIN_HOST", "").strip()
+        or "127.0.0.1"
+    )
+
+
+def configured_app_port() -> int:
+    raw_value = (
+        os.getenv("CURATOR_APP_PORT", "").strip()
+        or os.getenv("CURATOR_ADMIN_PORT", "").strip()
+        or "8080"
+    )
+    return int(raw_value)
+
+
 def mcp_origin_allowed() -> bool:
     origin = request.headers.get("Origin", "").strip()
     if not origin:
@@ -1785,6 +1802,4 @@ def operations_dashboard():
 
 
 if __name__ == "__main__":
-    host = os.getenv("CURATOR_ADMIN_HOST", "127.0.0.1")
-    port = int(os.getenv("CURATOR_ADMIN_PORT", "8080"))
-    app.run(host=host, port=port, debug=False)
+    app.run(host=configured_app_host(), port=configured_app_port(), debug=False)

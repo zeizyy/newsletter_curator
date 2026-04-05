@@ -69,6 +69,24 @@ def test_admin_form_blank_fields_use_runtime_defaults():
     assert updated["email"]["digest_subject"] == DEFAULT_CONFIG["email"]["digest_subject"]
 
 
+def test_app_host_and_port_prefer_new_env_names_with_legacy_fallback(monkeypatch):
+    admin_app = importlib.import_module("admin_app")
+
+    monkeypatch.delenv("CURATOR_APP_HOST", raising=False)
+    monkeypatch.delenv("CURATOR_APP_PORT", raising=False)
+    monkeypatch.setenv("CURATOR_ADMIN_HOST", "0.0.0.0")
+    monkeypatch.setenv("CURATOR_ADMIN_PORT", "9090")
+
+    assert admin_app.configured_app_host() == "0.0.0.0"
+    assert admin_app.configured_app_port() == 9090
+
+    monkeypatch.setenv("CURATOR_APP_HOST", "127.0.0.1")
+    monkeypatch.setenv("CURATOR_APP_PORT", "8080")
+
+    assert admin_app.configured_app_host() == "127.0.0.1"
+    assert admin_app.configured_app_port() == 8080
+
+
 def test_preview_job_preserves_attachment_metadata(monkeypatch):
     main = importlib.import_module("main")
 

@@ -251,8 +251,8 @@ cd /root/newsletter_curator
 uv sync
 OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
-  --admin-host 0.0.0.0 \
-  --admin-port 8080 \
+  --app-host 0.0.0.0 \
+  --app-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --debug-log-token 'choose-a-separate-long-random-token' \
@@ -386,8 +386,8 @@ cd /root/newsletter_curator
 OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
   --output-dir /root/newsletter_curator/deploy/generated-preview \
-  --admin-host 0.0.0.0 \
-  --admin-port 8080 \
+  --app-host 0.0.0.0 \
+  --app-port 8080 \
   --admin-token 'choose-a-long-random-token'
 ```
 
@@ -412,8 +412,9 @@ Optional Buttondown recipient sync:
 - Delivery will fetch active subscribers from Buttondown first and fall back to `email.digest_recipients` if the API key is missing, the API request fails, or Buttondown returns no deliverable subscribers.
 
 Optional host/port overrides:
-- `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
-- `CURATOR_ADMIN_PORT` (default `8080`)
+- `CURATOR_APP_HOST` (default `127.0.0.1`)
+- `CURATOR_APP_PORT` (default `8080`)
+- `CURATOR_ADMIN_HOST` / `CURATOR_ADMIN_PORT` remain supported as legacy fallbacks.
 - `CURATOR_ADMIN_ENABLE_PREVIEW=1` enables live `/preview` generation. By default the admin app runs in lightweight debug mode and only serves read-only repository views plus any already-stored newsletter for today.
 - `CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS=1` is now only a legacy fallback for stored newsletters that do not have cached `render_groups`. When `render_groups` exist, cached admin previews render from stored content automatically.
 

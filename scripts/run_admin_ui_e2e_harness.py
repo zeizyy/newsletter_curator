@@ -254,8 +254,8 @@ def start_admin_server(
             "CURATOR_ADMIN_TOKEN": admin_token,
             "CURATOR_ADMIN_ENABLE_PREVIEW": "1",
             "CURATOR_EXPOSE_LOGIN_LINKS": "1",
-            "CURATOR_ADMIN_HOST": host,
-            "CURATOR_ADMIN_PORT": str(port),
+            "CURATOR_APP_HOST": host,
+            "CURATOR_APP_PORT": str(port),
             "CURATOR_PUBLIC_BASE_URL": public_base_url,
         }
     )

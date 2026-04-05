@@ -133,8 +133,8 @@ def test_delivery_uses_configured_public_host_for_settings_and_tracking(monkeypa
 
 def test_delivery_skips_tracking_when_public_host_is_unconfigured(monkeypatch, tmp_path):
     monkeypatch.delenv("CURATOR_PUBLIC_BASE_URL", raising=False)
-    monkeypatch.setenv("CURATOR_ADMIN_HOST", "0.0.0.0")
-    monkeypatch.setenv("CURATOR_ADMIN_PORT", "8080")
+    monkeypatch.setenv("CURATOR_APP_HOST", "0.0.0.0")
+    monkeypatch.setenv("CURATOR_APP_PORT", "8080")
 
     result, sent_messages, repository = _run_delivery(
         monkeypatch,
