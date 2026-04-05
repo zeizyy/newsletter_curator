@@ -108,11 +108,24 @@ jobs:
             bootstrap_args+=(--buttondown-api-key "$BUTTONDOWN_API_KEY")
           fi
 
-          case "${CURATOR_ENABLE_TELEMETRY:-0}" in
+          enable_telemetry=0
+          case "${CURATOR_ENABLE_TELEMETRY:-}" in
             1|true|TRUE|yes|YES|on|ON)
-              bootstrap_args+=(--enable-telemetry)
+              enable_telemetry=1
+              ;;
+            0|false|FALSE|no|NO|off|OFF)
+              enable_telemetry=0
+              ;;
+            "")
+              if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ]; then
+                enable_telemetry=1
+              fi
               ;;
           esac
+
+          if [ "$enable_telemetry" = "1" ]; then
+            bootstrap_args+=(--enable-telemetry)
+          fi
 
           bootstrap_args+=(--install-crontab --install-systemd-user)
           bootstrap_display_args=(
@@ -138,11 +151,9 @@ jobs:
             bootstrap_display_args+=(--buttondown-api-key "[redacted]")
           fi
 
-          case "${CURATOR_ENABLE_TELEMETRY:-0}" in
-            1|true|TRUE|yes|YES|on|ON)
-              bootstrap_display_args+=(--enable-telemetry)
-              ;;
-          esac
+          if [ "$enable_telemetry" = "1" ]; then
+            bootstrap_display_args+=(--enable-telemetry)
+          fi
 
           bootstrap_display_args+=(--install-crontab --install-systemd-user)
           printf 'Bootstrap command:\n'
