@@ -87,6 +87,23 @@ jobs:
 
           "$uv_bin" sync --frozen
 
+          caddy_service_name="${CURATOR_CADDY_SERVICE_NAME:-$DEFAULT_CADDY_SERVICE_NAME}"
+          if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ] && [ "$caddy_service_name" = "caddy" ]; then
+            if ! systemctl cat "$caddy_service_name" >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg
+              install -m 0755 -d /etc/apt/keyrings
+              curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | \
+                gpg --dearmor -o /etc/apt/keyrings/caddy-stable-archive-keyring.gpg
+              chmod a+r /etc/apt/keyrings/caddy-stable-archive-keyring.gpg
+              curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt | \
+                tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+              chmod a+r /etc/apt/sources.list.d/caddy-stable.list
+              apt-get update
+              apt-get install -y caddy
+            fi
+          fi
+
           bootstrap_args=(
             --repo-dir "$REMOTE_REPO_DIR"
             --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
