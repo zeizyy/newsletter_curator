@@ -204,7 +204,7 @@ Example response shape:
 
 This endpoint reads exactly one configured file path, does not accept a file parameter, and is intended for sharing a temporary read-only debug surface with Codex during production incidents by providing the endpoint URL plus the token separately.
 The app write path only appends to the configured file. If you use `scripts/bootstrap_server.py`, it also generates a companion `logrotate` config for that path so retention can stay outside the app.
-See `docs/remote_server_debugging.md` for a step-by-step remote incident workflow, including merged rotated-log access and sandbox escalation guidance.
+See `docs/remote_server_debugging.md` for a general remote server troubleshooting playbook, including merged rotated-log access, debug-endpoint-first investigation, and sandbox escalation guidance.
 
 For an end-to-end delivery dry run that sends only to one test inbox:
 
