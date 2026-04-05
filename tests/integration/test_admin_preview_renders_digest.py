@@ -28,6 +28,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "https://curator.example.com")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
@@ -129,6 +130,8 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Rates reset changes software valuations" in email_safe_page
     assert 'role="presentation"' in email_safe_page
     assert "AI Signal Daily" in email_safe_page
+    assert "Subscriber settings" in email_safe_page
+    assert "https://curator.example.com/settings" in email_safe_page
     assert "max-width:640px" in email_safe_page
     assert "border-collapse:collapse" in email_safe_page
     assert 'font-family:Georgia' in email_safe_page
@@ -146,8 +149,8 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     assert "Gmail App Lab" in gmail_lab_page
     assert "Briefing Desk" in gmail_lab_page
     assert "This is a local Gmail-focused approximation" in gmail_lab_page
-    assert "Actual Sent Template" in gmail_lab_page
-    assert "Email-Safe Candidate" in gmail_lab_page
-    assert 'title="Actual sent template"' in gmail_lab_page
+    assert "Browser Review Template" in gmail_lab_page
+    assert "Email-Safe Delivery Template" in gmail_lab_page
+    assert 'title="Browser review template"' in gmail_lab_page
     assert 'title="Email-safe template"' in gmail_lab_page
     assert "srcdoc=" in gmail_lab_page

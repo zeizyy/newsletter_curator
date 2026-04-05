@@ -15,7 +15,6 @@ def test_delivery_tracking_disabled_by_default(monkeypatch, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
-            "tracking": {"base_url": "http://curator.test"},
             "email": {
                 "digest_recipients": ["tracking@example.com"],
                 "digest_subject": "Untracked Digest",
@@ -28,6 +27,7 @@ def test_delivery_tracking_disabled_by_default(monkeypatch, tmp_path):
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://curator.test")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     config = main.load_config()
     now_utc = datetime.now(UTC)
@@ -95,7 +95,6 @@ def test_delivery_open_tracking_enabled_without_click_rewriting(monkeypatch, tmp
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
             "tracking": {
-                "base_url": "http://curator.test",
                 "open_enabled": True,
                 "click_enabled": False,
             },
@@ -111,6 +110,7 @@ def test_delivery_open_tracking_enabled_without_click_rewriting(monkeypatch, tmp
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://curator.test")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     config = main.load_config()

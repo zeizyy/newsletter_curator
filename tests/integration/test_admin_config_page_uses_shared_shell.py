@@ -50,6 +50,9 @@ def test_admin_config_page_uses_shared_shell(monkeypatch, tmp_path):
     assert "Operations Console" in page
     assert "Operational Snapshot" in page
     assert "Command Rail" in page
+    assert "Fallback Recipients" in page
+    assert "active Buttondown subscribers override `email.digest_recipients` during delivery" in page
+    assert "stored summaries stay persona-neutral" in page
     assert "Repository source selection" in page
     assert "Macro Wire" in page
     assert "Save Config" in page

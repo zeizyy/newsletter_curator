@@ -1528,7 +1528,7 @@ def run_delivery_job(
         if delivery_format == "pdf":
             attachments = [
                 {
-                    "filename": f"newsletter-curator-{newsletter_date}.pdf",
+                    "filename": f"ai-signal-daily-{newsletter_date}.pdf",
                     "mime_type": "application/pdf",
                     "content_bytes": render_digest_pdf(
                         content.get("render_groups", {}) if isinstance(content, dict) else {},

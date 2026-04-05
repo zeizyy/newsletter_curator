@@ -2,10 +2,10 @@
 
 {% block title %}Subscriber Login | Newsletter Curator{% endblock %}
 {% block eyebrow %}Subscriber Access{% endblock %}
-{% block page_title %}Sign in to Newsletter Curator{% endblock %}
-{% block page_lead %}Use a one-time email link to access your subscriber account without managing a password.{% endblock %}
+{% block page_title %}Sign in to manage AI Signal Daily{% endblock %}
+{% block page_lead %}Use a one-time email link to access your reader account in Newsletter Curator without managing a password.{% endblock %}
 {% block utility_label %}Subscriber Rail{% endblock %}
-{% block utility_copy %}Request a fresh sign-in link, confirm your active session, and move into your subscriber account without exposing operator controls.{% endblock %}
+{% block utility_copy %}Request a fresh sign-in link, confirm your active session, and move into your AI Signal Daily reader settings without exposing operator controls.{% endblock %}
 {% block utility_nav %}
   <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
 {% endblock %}
@@ -30,7 +30,7 @@
         <span class="pill muted-pill">Offline fallback</span>
       {% endif %}
     </div>
-    <p class="section-copy">Enter the email address you want to use for your subscriber account. The server will attempt to deliver a one-time sign-in link when Gmail credentials are configured.</p>
+    <p class="section-copy">Enter the email address you use for AI Signal Daily. The server will attempt to deliver a one-time sign-in link when Gmail credentials are configured.</p>
     <form method="post" class="stack">
       <div class="field">
         <label class="field-label" for="email_address">Email address</label>

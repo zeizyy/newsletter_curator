@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-04-04",
+  "updated_at": "2026-04-05",
   "agent_roles": {
     "planner": "Maintains agent_spec.md, keeps the task map aligned to the product shape, and drafts each sprint contract before coding.",
     "generator": "Implements exactly one bounded task per session, updates tests, and leaves the repo mergeable.",
@@ -1748,6 +1748,46 @@
         "Delivered newsletters include a settings link at the top when public host config is available",
         "Telemetry URLs no longer fall back to localhost or admin-bind host values in outbound email",
         "Readers still have a visible direct article link even if the tracking host is unavailable",
+        "The targeted integration tests pass offline"
+      ]
+    },
+    {
+      "id": "T72",
+      "title": "Resolve README, default-config, and UI artifact consistency drift",
+      "status": "completed",
+      "depends_on": ["T70", "T71"],
+      "scope": [
+        "Align README and the checked-in config with the current delivery, tracking, personalization, and rollout behavior",
+        "Correct admin and subscriber copy so persona and preferred-source settings describe the final-ranking-only behavior the code actually uses",
+        "Bring preview, email-safe rendering, and PDF-facing artifact details back into sync with delivered output and current product language"
+      ],
+      "artifacts": [
+        "README.md",
+        "config.yaml",
+        "agent_contracts/T72_consistency_pass.md",
+        "admin_app.py",
+        "main.py",
+        "templates/admin_config.html",
+        "templates/digest_preview.html",
+        "templates/subscriber_account.html",
+        "templates/subscriber_login.html",
+        "templates/subscriber_settings.html",
+        "curator/pdf.py",
+        "tests/integration/"
+      ],
+      "contract_file": "agent_contracts/T72_consistency_pass.md",
+      "test_command": "uv run pytest tests/integration/test_config_and_preview_consistency.py tests/integration/test_admin_config_page_uses_shared_shell.py tests/integration/test_admin_preview_renders_digest.py tests/integration/test_subscriber_settings_page_persists_profile.py tests/integration/test_subscriber_pdf_delivery_opt_in.py -q",
+      "integration_test": "tests/integration/test_config_and_preview_consistency.py",
+      "evaluator_checks": [
+        "README statements about tracking fallbacks, personalization semantics, and checked-in defaults match the current implementation and checked-in config",
+        "The checked-in config does not enable telemetry by default without an explicit public-host configuration",
+        "Admin and subscriber copy no longer claims persona or preferred sources affect ingest scoring or stored summaries",
+        "The admin preview and delivery-facing artifacts expose the same settings-link and PDF messaging expectations called out in the docs"
+      ],
+      "done_when": [
+        "The README and checked-in config describe the current product behavior without contradicting the code",
+        "Subscriber and admin settings surfaces explain persona and preferred-source behavior accurately",
+        "Preview and delivery artifacts no longer drift on settings-link, PDF, or template labeling details",
         "The targeted integration tests pass offline"
       ]
     }

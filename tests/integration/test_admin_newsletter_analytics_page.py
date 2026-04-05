@@ -14,10 +14,7 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
 
     config_path = write_temp_config(
         tmp_path,
-        overrides={
-            "database": {"path": str(tmp_path / "curator.sqlite3")},
-            "tracking": {"base_url": "http://curator.test"},
-        },
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))

@@ -65,7 +65,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Subscriber settings saved." in saved_page
     assert "Focus on chips and costs." in saved_page
     assert "Signal Mail" in saved_page
-    assert "Preferred sources narrow the story pool before your personalized ranking pass runs." in saved_page
+    assert "Preferred sources act as a soft uprank during your personalized final ranking pass." in saved_page
 
     profile = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile["persona_text"] == "Focus on chips and costs."

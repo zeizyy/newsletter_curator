@@ -88,8 +88,8 @@ jobs:
           bootstrap_args=(
             --repo-dir "$REMOTE_REPO_DIR"
             --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
-            --admin-host "${CURATOR_ADMIN_HOST:-0.0.0.0}"
-            --admin-port "${CURATOR_ADMIN_PORT:-8080}"
+            --app-host "${CURATOR_APP_HOST:-${CURATOR_ADMIN_HOST:-0.0.0.0}}"
+            --app-port "${CURATOR_APP_PORT:-${CURATOR_ADMIN_PORT:-8080}}"
             --admin-token "${CURATOR_ADMIN_TOKEN:-}"
             --mcp-token "${CURATOR_MCP_TOKEN:-}"
             --debug-log-token "${CURATOR_DEBUG_LOG_TOKEN:-}"
@@ -108,31 +108,12 @@ jobs:
             bootstrap_args+=(--buttondown-api-key "$BUTTONDOWN_API_KEY")
           fi
 
-          enable_telemetry=0
-          case "${CURATOR_ENABLE_TELEMETRY:-}" in
-            1|true|TRUE|yes|YES|on|ON)
-              enable_telemetry=1
-              ;;
-            0|false|FALSE|no|NO|off|OFF)
-              enable_telemetry=0
-              ;;
-            "")
-              if [ -n "${CURATOR_PUBLIC_BASE_URL:-}" ]; then
-                enable_telemetry=1
-              fi
-              ;;
-          esac
-
-          if [ "$enable_telemetry" = "1" ]; then
-            bootstrap_args+=(--enable-telemetry)
-          fi
-
           bootstrap_args+=(--install-crontab --install-systemd-user)
           bootstrap_display_args=(
             --repo-dir "$REMOTE_REPO_DIR"
             --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
-            --admin-host "${CURATOR_ADMIN_HOST:-0.0.0.0}"
-            --admin-port "${CURATOR_ADMIN_PORT:-8080}"
+            --app-host "${CURATOR_APP_HOST:-${CURATOR_ADMIN_HOST:-0.0.0.0}}"
+            --app-port "${CURATOR_APP_PORT:-${CURATOR_ADMIN_PORT:-8080}}"
             --admin-token "[redacted]"
             --mcp-token "[redacted]"
             --debug-log-token "[redacted]"
@@ -149,10 +130,6 @@ jobs:
 
           if [ -n "${BUTTONDOWN_API_KEY:-}" ]; then
             bootstrap_display_args+=(--buttondown-api-key "[redacted]")
-          fi
-
-          if [ "$enable_telemetry" = "1" ]; then
-            bootstrap_display_args+=(--enable-telemetry)
           fi
 
           bootstrap_display_args+=(--install-crontab --install-systemd-user)

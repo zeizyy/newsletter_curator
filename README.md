@@ -1,6 +1,6 @@
 # Newsletter Curator
 
-Personal newsletter curator with a repository-first architecture: Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
+Newsletter Curator is the self-hosted app and operator console for the reader-facing digest `AI Signal Daily`. Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
 
 Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to get something like this everyday:
 
@@ -10,7 +10,7 @@ Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to g
 - Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
 - Single daily orchestrator for production cron scheduling
 - Local SQLite repository for normalized stories, article snapshots, and run history
-- Admin UI for source selection plus subscriber login and settings
+- Admin UI for source selection plus subscriber login and settings for `AI Signal Daily`
 - Repo-only delivery job with no live Gmail reads or live article fetches at send time
 - Two-stage LLM flow: persona-neutral ingest scoring and summaries, followed by persona-aware final ranking
 - Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
@@ -251,13 +251,12 @@ cd /root/newsletter_curator
 uv sync
 OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
-  --admin-host 0.0.0.0 \
-  --admin-port 8080 \
+  --app-host 0.0.0.0 \
+  --app-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --debug-log-token 'choose-a-separate-long-random-token' \
   --buttondown-api-key 'your_buttondown_api_key' \
-  --enable-telemetry \
   --enable-linger \
   --install-crontab
 ```
@@ -285,8 +284,7 @@ Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
-- Telemetry tracking is now disabled by default. Pass `--enable-telemetry` only when the `/track/*` endpoints are publicly reachable.
-- Set `--public-base-url` to the externally reachable admin origin for subscriber login links, telemetry links, and open-tracking pixels. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
+- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin written to `CURATOR_PUBLIC_BASE_URL` in the generated server env file. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
@@ -336,7 +334,7 @@ Behavior notes:
 - The initial server bootstrap is still manual once so `deploy/generated/newsletter-curator.env` already exists.
 - The workflow now treats the generated cron file and admin service unit as managed deploy artifacts, so schedule or service changes in git are applied on every deploy.
 - The workflow logs a redacted bootstrap command in the Actions output before running it on the server.
-- Telemetry is enabled by default during workflow-driven bootstrap reruns when `CURATOR_PUBLIC_BASE_URL` is set. Set `CURATOR_ENABLE_TELEMETRY=0` on the server if you need an explicit opt-out.
+- Workflow-driven bootstrap reruns no longer toggle tracking on your behalf; tracking enablement should live in the config file pointed to by `NEWSLETTER_CONFIG`.
 - It assumes the remote repo does not carry uncommitted local edits; `git pull --ff-only` will fail otherwise.
 
 Recommended branch protection for `main`:
@@ -388,8 +386,8 @@ cd /root/newsletter_curator
 OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
   --output-dir /root/newsletter_curator/deploy/generated-preview \
-  --admin-host 0.0.0.0 \
-  --admin-port 8080 \
+  --app-host 0.0.0.0 \
+  --app-port 8080 \
   --admin-token 'choose-a-long-random-token'
 ```
 
@@ -414,8 +412,9 @@ Optional Buttondown recipient sync:
 - Delivery will fetch active subscribers from Buttondown first and fall back to `email.digest_recipients` if the API key is missing, the API request fails, or Buttondown returns no deliverable subscribers.
 
 Optional host/port overrides:
-- `CURATOR_ADMIN_HOST` (default `127.0.0.1`)
-- `CURATOR_ADMIN_PORT` (default `8080`)
+- `CURATOR_APP_HOST` (default `127.0.0.1`)
+- `CURATOR_APP_PORT` (default `8080`)
+- `CURATOR_ADMIN_HOST` / `CURATOR_ADMIN_PORT` remain supported as legacy fallbacks.
 - `CURATOR_ADMIN_ENABLE_PREVIEW=1` enables live `/preview` generation. By default the admin app runs in lightweight debug mode and only serves read-only repository views plus any already-stored newsletter for today.
 - `CURATOR_ADMIN_RERENDER_STORED_NEWSLETTERS=1` is now only a legacy fallback for stored newsletters that do not have cached `render_groups`. When `render_groups` exist, cached admin previews render from stored content automatically.
 
@@ -451,14 +450,16 @@ Edit `config.yaml`:
 - `gmail.label` (default `Newsletters`)
 - `gmail.query_time_window` (default `newer_than:1d`)
 - `database.path` (default `data/newsletter_curator.sqlite3`)
+- `database.newsletter_ttl_days` (default `7`; falls back to `database.ttl_days`)
+- `database.allow_schema_reset` (default `false`; required before managed schema resets are allowed)
 - `persona.text`
 - `development.use_canned_sources`
 - `development.canned_sources_file`
 - `development.fake_inference`
-- `additional_sources.enabled` (default `true` in current checked-in config)
+- `additional_sources.enabled` (runtime default `false`; `true` in the current checked-in `config.yaml`)
 - `additional_sources.script_path` (default `skills/daily-news-curator/scripts/build_daily_digest.py`)
 - `additional_sources.feeds_file` (optional custom feed list for the source script)
-- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total`
+- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total` (default `30`)
 - `limits.max_links_per_email`
 - `limits.select_top_stories`
 - `limits.max_per_category`
@@ -466,13 +467,15 @@ Edit `config.yaml`:
 - `limits.source_quotas` (default `gmail: 10`, `additional_source: 5`)
 - `limits.max_article_chars`
 - `limits.max_summary_workers`
+- `email.digest_subject` (default `AI Signal Daily`)
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
 - `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
-- `tracking.open_enabled` (optional explicit toggle for the open pixel)
-- `tracking.click_enabled` (optional explicit toggle for tracked link redirects)
-- `tracking.base_url` (optional; falls back to `CURATOR_PUBLIC_BASE_URL` or the admin host and port)
+- `tracking.open_enabled` (optional explicit toggle for the open pixel; the checked-in config currently enables it)
+- `tracking.click_enabled` (optional explicit toggle for tracked link redirects; the checked-in config currently enables it)
 - `email.digest_recipients` and `email.alert_recipient`
+
+The public origin for subscriber links, settings links, and tracked URLs is not stored in checked-in YAML. Set `CURATOR_PUBLIC_BASE_URL` through the bootstrap-generated server env file instead.
 
 ### Persona Behavior
 `persona.text` now affects only the final delivery ranking step.
@@ -489,10 +492,10 @@ Delivery recipient membership is still resolved in this order:
 
 Resolved recipients are automatically upserted into the `subscribers` table during delivery so the DB becomes the durable recipient registry over time. Personalization only comes from the matching `subscriber_profiles` row:
 - blank or missing `persona_text` falls back to the global `persona.text`
-- blank or missing `preferred_sources` means no per-user source filter
-- Buttondown metadata and legacy `config.yaml` subscriber overrides no longer affect personalization
+- blank or missing `preferred_sources` means no per-user source preference signal
+- Buttondown metadata and legacy YAML subscriber overrides no longer affect personalization
 
-`preferred_sources` is a per-subscriber narrowing filter on top of the global source allowlist. Matching is exact after trim/lowercase against each candidate item's `source_name`, so it can narrow already-enabled sources but cannot re-enable a globally disabled source.
+`preferred_sources` is a per-subscriber soft uprank signal that only applies during the final ranking pass. Matching is exact after trim or lowercase against each candidate item's `source_name`, so it can favor already-enabled sources when quality is close, but it cannot re-enable a globally disabled source and it does not filter ingest or stored summaries.
 
 The subscriber-facing rollout is:
 1. Keep Buttondown or `email.digest_recipients` configured so recipient discovery still works.
@@ -502,12 +505,13 @@ The subscriber-facing rollout is:
 
 Current operator caveats:
 - preview still uses the default audience rather than generating one preview per personalized profile
+- the browser-first preview is an editorial review surface, while `template=email_safe` reflects the actual delivered HTML artifact
 - newsletter history and analytics remain focused on the default audience instead of listing every personalized variant
-- YAML `subscribers` entries are legacy-only and should be removed from `config.yaml` during rollout cleanup
+- if you still have legacy YAML `subscribers` entries in an older private config, delivery ignores them for personalization
 
 Rollback:
 - keep recipient discovery on Buttondown or `email.digest_recipients`
-- remove or ignore `subscriber_profiles` rows to fall back to the global `persona.text` plus no per-user source filters
+- remove or ignore `subscriber_profiles` rows to fall back to the global `persona.text` plus no per-user source preferences
 - no rollback is required for Buttondown metadata because delivery no longer reads personalization from Buttondown at all
 
 You can override the config file path with `NEWSLETTER_CONFIG`.

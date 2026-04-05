@@ -126,7 +126,7 @@ def seed_review_fixture(
                 "source_quotas": {"gmail": 2, "additional_source": 4},
             },
             "persona": {"text": "Default persona for fallback testing."},
-            "tracking": {"enabled": False, "base_url": public_base_url},
+            "tracking": {"enabled": False},
         },
     )
     config = config_module.load_config(config_path)
@@ -254,8 +254,8 @@ def start_admin_server(
             "CURATOR_ADMIN_TOKEN": admin_token,
             "CURATOR_ADMIN_ENABLE_PREVIEW": "1",
             "CURATOR_EXPOSE_LOGIN_LINKS": "1",
-            "CURATOR_ADMIN_HOST": host,
-            "CURATOR_ADMIN_PORT": str(port),
+            "CURATOR_APP_HOST": host,
+            "CURATOR_APP_PORT": str(port),
             "CURATOR_PUBLIC_BASE_URL": public_base_url,
         }
     )

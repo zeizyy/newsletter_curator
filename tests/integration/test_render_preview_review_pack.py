@@ -25,9 +25,9 @@ def test_render_preview_review_pack_writes_html_and_screenshots(tmp_path, monkey
                 "final_top_stories": 2,
                 "source_quotas": {"gmail": 0, "additional_source": 2},
             },
-            "tracking": {"base_url": "http://curator.test"},
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://curator.test")
     admin_app.CONFIG_PATH = str(config_path)
     repository = get_repository_from_config(render_preview_review_pack.config_module.load_config(config_path))
     newsletter_date = dt.datetime.now(dt.UTC).date().isoformat()

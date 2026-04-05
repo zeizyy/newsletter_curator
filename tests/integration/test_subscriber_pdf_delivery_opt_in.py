@@ -158,7 +158,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
                 ],
                 "digest_subject": "Portable Digest",
             },
-            "tracking": {"enabled": True, "base_url": "https://curator.example.com"},
+            "tracking": {"enabled": True, "open_enabled": True, "click_enabled": True},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -167,6 +167,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "https://curator.example.com")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
 
     config = main.load_config()
@@ -275,6 +276,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     assert "/track/open/" in pdf_message["html_body"]
     pdf_attachment = pdf_message["attachments"][0]
     assert pdf_attachment["mime_type"] == "application/pdf"
+    assert pdf_attachment["filename"].startswith("ai-signal-daily-")
     assert pdf_attachment["filename"].endswith(".pdf")
 
     pdf_text = "\n".join(
