@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -12,6 +13,7 @@ from .debug_logs import append_debug_log_line
 
 
 _PROCESS_RUN_ID = uuid4().hex
+_RECENT_EVENT_LINES: deque[str] = deque(maxlen=500)
 
 
 def _event_timestamp() -> str:
@@ -44,8 +46,15 @@ def emit_event(event: str, /, **payload) -> None:
             **payload,
         }
     )
+    _RECENT_EVENT_LINES.append(rendered)
     print(rendered, flush=True)
     append_debug_log_line(rendered)
+
+
+def recent_event_lines(limit: int = 80) -> list[str]:
+    if limit <= 0:
+        return []
+    return list(_RECENT_EVENT_LINES)[-limit:]
 
 
 def compact_model_usage(usage_by_model: Mapping[str, object] | None) -> dict[str, dict[str, int]]:

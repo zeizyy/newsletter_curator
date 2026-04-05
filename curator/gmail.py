@@ -130,6 +130,26 @@ def _delivery_send_error_status_code(exc: Exception) -> int | None:
         return None
 
 
+def _delivery_send_error_code(exc: Exception) -> str:
+    for attribute_name in ("errno", "code"):
+        value = getattr(exc, attribute_name, None)
+        if value is None:
+            continue
+        rendered = str(value).strip()
+        if rendered:
+            return rendered
+    return ""
+
+
+def _delivery_send_error_details(exc: Exception) -> dict:
+    return {
+        "error": str(exc),
+        "error_type": exc.__class__.__name__,
+        "error_status_code": _delivery_send_error_status_code(exc),
+        "error_code": _delivery_send_error_code(exc),
+    }
+
+
 def is_retryable_delivery_send_error(exc: Exception) -> bool:
     if isinstance(exc, OSError):
         return True
@@ -247,7 +267,8 @@ def send_email_with_retry_and_dedupe(
                 **send_kwargs,
             )
         except Exception as exc:
-            last_error = str(exc)
+            error_details = _delivery_send_error_details(exc)
+            last_error = error_details["error"]
             retryable = is_retryable_delivery_send_error(exc)
             if service is not None and is_ambiguous_delivery_send_error(exc):
                 if message_exists_in_sent(service, message_id_header=message_id_header):
@@ -257,6 +278,9 @@ def send_email_with_retry_and_dedupe(
                         "message_id_header": message_id_header,
                         "attempts": attempt,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                         "retryable": retryable,
                         "events": events
                         + [
@@ -264,6 +288,9 @@ def send_email_with_retry_and_dedupe(
                                 "event": "verified_after_error",
                                 "attempt": attempt,
                                 "error": last_error,
+                                "error_type": error_details["error_type"],
+                                "error_status_code": error_details["error_status_code"],
+                                "error_code": error_details["error_code"],
                             }
                         ],
                     }
@@ -274,6 +301,9 @@ def send_email_with_retry_and_dedupe(
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                     }
                 )
                 sleep_fn(initial_backoff_seconds * (2 ** (attempt - 1)))
@@ -284,6 +314,9 @@ def send_email_with_retry_and_dedupe(
                 "message_id_header": message_id_header,
                 "attempts": attempt,
                 "error": last_error,
+                "error_type": error_details["error_type"],
+                "error_status_code": error_details["error_status_code"],
+                "error_code": error_details["error_code"],
                 "retryable": retryable,
                 "events": events
                 + [
@@ -292,6 +325,9 @@ def send_email_with_retry_and_dedupe(
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "error": last_error,
+                        "error_type": error_details["error_type"],
+                        "error_status_code": error_details["error_status_code"],
+                        "error_code": error_details["error_code"],
                         "retryable": retryable,
                     }
                 ],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import traceback
 
 import main as delivery_main
 from curator.jobs import get_repository_from_config, run_daily_orchestrator_job
@@ -23,19 +24,44 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     config = delivery_main.load_config()
     repository = get_repository_from_config(config)
-    service = delivery_main.get_gmail_service(config["paths"])
-    dry_run_recipient = str(args.dry_run_recipient or "").strip() or None
-    result = run_daily_orchestrator_job(
-        config,
-        service,
-        repository=repository,
-        delivery_runner_fn=lambda cfg, svc: delivery_main.run_job(
-            cfg,
-            svc,
-            recipient_override=dry_run_recipient,
-        ),
-    )
-    print(json.dumps(result, indent=2, sort_keys=True))
+    service = None
+    try:
+        service = delivery_main.get_gmail_service(config["paths"])
+        dry_run_recipient = str(args.dry_run_recipient or "").strip() or None
+        result = run_daily_orchestrator_job(
+            config,
+            service,
+            repository=repository,
+            delivery_runner_fn=lambda cfg, svc: delivery_main.run_job(
+                cfg,
+                svc,
+                recipient_override=dry_run_recipient,
+            ),
+        )
+        try:
+            delivery_main.send_delivery_failure_alert_if_needed(
+                config,
+                service,
+                source="daily_pipeline.py",
+                result=result,
+            )
+        except Exception as alert_exc:
+            print(f"Failed to send alert email: {alert_exc}")
+        print(json.dumps(result, indent=2, sort_keys=True))
+    except Exception as exc:
+        error_details = traceback.format_exc()
+        print(error_details)
+        try:
+            delivery_main.send_delivery_failure_alert_if_needed(
+                config,
+                service,
+                source="daily_pipeline.py",
+                exception=exc,
+                traceback_text=error_details,
+            )
+        except Exception as alert_exc:
+            print(f"Failed to send alert email: {alert_exc}")
+        raise
 
 
 if __name__ == "__main__":

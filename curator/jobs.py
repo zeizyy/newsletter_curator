@@ -1599,6 +1599,9 @@ def run_delivery_job(
                         attempt=int(event.get("attempt", 0) or 0),
                         max_attempts=int(event.get("max_attempts", 0) or 0),
                         error=str(event.get("error", "")).strip(),
+                        error_type=str(event.get("error_type", "")).strip(),
+                        error_status_code=event.get("error_status_code"),
+                        error_code=str(event.get("error_code", "")).strip(),
                     )
                 elif event_name == "verified_after_error":
                     emit_event(
@@ -1610,6 +1613,9 @@ def run_delivery_job(
                         message_id_header=message_id_header,
                         attempt=int(event.get("attempt", 0) or 0),
                         error=str(event.get("error", "")).strip(),
+                        error_type=str(event.get("error_type", "")).strip(),
+                        error_status_code=event.get("error_status_code"),
+                        error_code=str(event.get("error_code", "")).strip(),
                     )
                 elif event_name == "skipped_existing":
                     emit_event(
@@ -1627,7 +1633,11 @@ def run_delivery_job(
                             "recipient": recipient,
                             "attempts": int(send_result.get("attempts", 0) or 0),
                             "error": str(send_result.get("error", "")).strip(),
+                            "error_type": str(send_result.get("error_type", "")).strip(),
+                            "error_status_code": send_result.get("error_status_code"),
+                            "error_code": str(send_result.get("error_code", "")).strip(),
                             "retryable": bool(send_result.get("retryable", False)),
+                            "message_id_header": message_id_header,
                         }
                     )
                     emit_event(
@@ -1641,6 +1651,9 @@ def run_delivery_job(
                         max_attempts=int(event.get("max_attempts", 0) or 0),
                         retryable=bool(event.get("retryable", False)),
                         error=str(event.get("error", "")).strip(),
+                        error_type=str(event.get("error_type", "")).strip(),
+                        error_status_code=event.get("error_status_code"),
+                        error_code=str(event.get("error_code", "")).strip(),
                     )
                 elif event_name == "completed":
                     emit_event(
