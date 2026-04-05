@@ -722,6 +722,49 @@ class SQLiteRepository:
             ).fetchone()
         return self._run_row_to_dict(row)
 
+    def list_recent_ingestion_runs(
+        self,
+        *,
+        source_type: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if source_type:
+            conditions.append("source_type = ?")
+            params.append(source_type)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(max(1, int(limit)))
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, source_type, status, started_at, finished_at, metadata_json
+                FROM ingestion_runs
+                {where_clause}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [payload for row in rows if (payload := self._run_row_to_dict(row)) is not None]
+
+    def list_recent_delivery_runs(
+        self,
+        *,
+        limit: int = 30,
+    ) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, status, started_at, finished_at, metadata_json
+                FROM delivery_runs
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        return [payload for row in rows if (payload := self._run_row_to_dict(row)) is not None]
+
     def get_daily_newsletter(
         self,
         newsletter_date: str,
