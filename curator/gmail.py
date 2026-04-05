@@ -146,11 +146,19 @@ def is_ambiguous_delivery_send_error(exc: Exception) -> bool:
 
 
 def supports_message_id_header(send_email_fn) -> bool:
+    return _supports_keyword_argument(send_email_fn, "message_id_header")
+
+
+def supports_attachments(send_email_fn) -> bool:
+    return _supports_keyword_argument(send_email_fn, "attachments")
+
+
+def _supports_keyword_argument(send_email_fn, parameter_name: str) -> bool:
     try:
         signature = inspect.signature(send_email_fn)
     except (TypeError, ValueError):
         return False
-    parameter = signature.parameters.get("message_id_header")
+    parameter = signature.parameters.get(parameter_name)
     if parameter is None:
         return False
     return parameter.kind in {
@@ -187,6 +195,7 @@ def send_email_with_retry_and_dedupe(
     subject: str,
     body: str,
     html_body: str | None = None,
+    attachments: list[dict] | None = None,
     newsletter_date: str,
     audience_key: str,
     daily_newsletter_id: int | None,
@@ -202,6 +211,7 @@ def send_email_with_retry_and_dedupe(
         recipient=to_address,
     )
     send_email_supports_message_id = supports_message_id_header(send_email_fn)
+    send_email_supports_attachments = supports_attachments(send_email_fn)
     events: list[dict] = []
     attempt = 0
     while attempt < max_attempts:
@@ -226,6 +236,8 @@ def send_email_with_retry_and_dedupe(
             send_kwargs = {}
             if send_email_supports_message_id:
                 send_kwargs["message_id_header"] = message_id_header
+            if send_email_supports_attachments and attachments:
+                send_kwargs["attachments"] = attachments
             send_email_fn(
                 service,
                 to_address=to_address,
@@ -488,6 +500,7 @@ def send_email(
     html_body: str | None = None,
     *,
     message_id_header: str = "",
+    attachments: list[dict] | None = None,
 ) -> None:
     message = EmailMessage()
     message["To"] = to_address
@@ -498,6 +511,19 @@ def send_email(
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")
+    for attachment in attachments or []:
+        mime_type = str(attachment.get("mime_type", "application/octet-stream") or "application/octet-stream")
+        maintype, _, subtype = mime_type.partition("/")
+        content_bytes = attachment.get("content_bytes", b"")
+        if isinstance(content_bytes, str):
+            content_bytes = content_bytes.encode("utf-8")
+        filename = str(attachment.get("filename", "attachment.bin") or "attachment.bin")
+        message.add_attachment(
+            bytes(content_bytes),
+            maintype=maintype or "application",
+            subtype=subtype or "octet-stream",
+            filename=filename,
+        )
     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
     service.users().messages().send(userId="me", body={"raw": encoded_message}).execute()
 

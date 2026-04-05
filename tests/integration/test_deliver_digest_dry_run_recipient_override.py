@@ -140,6 +140,7 @@ def test_deliver_digest_dry_run_recipient_override(monkeypatch, tmp_path):
         {
             "email": "dry-run@example.com",
             "persona_text": "",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }
@@ -490,6 +491,7 @@ def test_dry_run_recipient_without_db_profile_uses_default_personalization(monke
         {
             "email": "dry-run@example.com",
             "persona_text": "Generalist tech reader.",
+            "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }

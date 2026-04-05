@@ -982,6 +982,7 @@ def subscriber_settings():
     profile = repository.get_subscriber_profile(int(subscriber["id"])) if repository else {
         "subscriber_id": int(subscriber["id"]),
         "persona_text": "",
+        "delivery_format": "email",
         "preferred_sources": [],
         "created_at": "",
         "updated_at": "",
@@ -990,7 +991,12 @@ def subscriber_settings():
     message = ""
 
     if request.method == "POST":
+        from curator.repository import normalize_subscriber_delivery_format
+
         persona_text = str(request.form.get("persona_text", "") or "").strip()
+        delivery_format = normalize_subscriber_delivery_format(
+            str(request.form.get("delivery_format", "") or "").strip()
+        )
         preferred_sources = normalize_subscriber_preferred_sources(
             request.form,
             available_sources=available_sources,
@@ -999,6 +1005,7 @@ def subscriber_settings():
         profile = repository.upsert_subscriber_profile(
             int(subscriber["id"]),
             persona_text=persona_text,
+            delivery_format=delivery_format,
             preferred_sources=preferred_sources,
         )
         return redirect(url_for("subscriber_settings", saved="1"))

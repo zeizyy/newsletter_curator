@@ -6,22 +6,26 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Add subscriber-facing `/login` and `/settings` pages in the existing Flask app.
 - Use passwordless login so the app stores only hashed login or session state, not raw passwords.
 - Let users edit `persona_text` and `preferred_sources` on the settings page.
+- Let users choose a delivery format on the settings page so Kindle-oriented readers can opt into a PDF attachment while email remains the default.
 - Render the final delivery email as one flat ranked story list without section headers or footer CTA chrome.
 
 # Technical Design
 - Add SQLite-backed user tables for identity, profile data, and login or session state.
 - Store `preferred_sources` as a JSON list so the UI can start simple without blocking future expansion.
+- Store a subscriber `delivery_format` in the profile record, defaulting existing readers to `email`.
 - Use the database as the source of truth for per-user personalization.
 - Keep Buttondown and YAML as migration fallbacks only until DB profiles are populated.
 - Keep the daily pipeline pure; service stop and start belongs in the generated deployment wrapper.
 - Reuse the existing Flask and repository stack; do not introduce a second web framework.
 - Persona text should only affect the final ranking or selection LLM call.
 - Increase early discovery recall by raising the initial candidate budget modestly, not by increasing final newsletter size.
+- Generate PDF output from the same canonical ranked newsletter content used by email delivery so story order and summary text stay aligned across formats.
 
 # Migration Strategy
 - Backfill current recipients into SQLite from the existing config or Buttondown-derived data.
 - Roll out auth first, then settings persistence, then delivery reads from the DB, then cleanup.
 - Preserve compatibility shims during migration so existing users still get a working digest.
+- Roll out PDF as an opt-in path that treats missing legacy `delivery_format` values as `email`.
 - Do not make the pending evaluation tasks (`T43` through `T46`) prerequisites for this feature wave.
 
 # MCP Tooling
@@ -50,3 +54,4 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T66` publish the MCP server for local agent discovery
 - `T68` secure read-only debug log endpoint for production troubleshooting
 - `T69` flatten final delivery email ranking and remove footer CTA
+- `T70` opt-in PDF delivery format for subscriber profiles

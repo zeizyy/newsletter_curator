@@ -175,6 +175,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         {
             "email": str(subscriber.get("email", "")).strip().lower(),
             "persona_text": str(subscriber.get("persona_text", "")).strip(),
+            "delivery_format": str(subscriber.get("delivery_format", "email")).strip() or "email",
             "preferred_sources": list(subscriber.get("preferred_sources") or []),
             "profile_key": str(subscriber.get("profile_key", "")).strip(),
         }
@@ -184,6 +185,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     def run_profile_delivery(
         *,
         persona_text: str,
+        delivery_format: str,
         preferred_sources: list[str],
         recipients: list[str],
         use_cached_newsletter: bool,
@@ -261,15 +263,19 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
             audience_key=audience_key,
+            delivery_format=delivery_format,
         )
 
     personalized_delivery = service is not None and any(
-        subscriber["persona_text"] != default_persona_text or subscriber["preferred_sources"]
+        subscriber["persona_text"] != default_persona_text
+        or subscriber["preferred_sources"]
+        or subscriber["delivery_format"] != "email"
         for subscriber in subscribers
     )
     if not personalized_delivery:
         profile_result = run_profile_delivery(
             persona_text=default_persona_text,
+            delivery_format="email",
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
             use_cached_newsletter=True,
@@ -289,6 +295,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     for group in delivery_groups:
         profile_result = run_profile_delivery(
             persona_text=group["persona_text"],
+            delivery_format=group["delivery_format"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
             use_cached_newsletter=True,
@@ -304,6 +311,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 "profile_key": group["profile_key"],
                 "audience_key": str(profile_result.get("audience_key", "")).strip(),
                 "persona_text": group["persona_text"],
+                "delivery_format": group["delivery_format"],
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],
                 "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),

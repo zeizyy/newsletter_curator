@@ -25,6 +25,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     repository.upsert_subscriber_profile(
         int(subscriber["id"]),
         persona_text="Existing persona",
+        delivery_format="email",
         preferred_sources=["Macro Wire", "AI Wire"],
     )
 
@@ -42,6 +43,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "Existing persona" in page
+    assert "PDF attachment" in page
     assert "Macro Wire" in page
     assert "AI Wire" in page
     assert "Unavailable" in page
@@ -52,6 +54,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
         "/settings",
         data={
             "persona_text": "  Focus on chips and costs.  ",
+            "delivery_format": "pdf",
             "preferred_source": ["Macro Wire", "Signal Mail"],
         },
         follow_redirects=True,
@@ -65,6 +68,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
 
     profile = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile["persona_text"] == "Focus on chips and costs."
+    assert profile["delivery_format"] == "pdf"
     assert profile["preferred_sources"] == ["Macro Wire", "Signal Mail", "AI Wire"]
 
     second_session = repository.create_subscriber_session(int(subscriber["id"]))
@@ -74,6 +78,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     second_page = second_response.get_data(as_text=True)
     assert second_response.status_code == 200
     assert "Focus on chips and costs." in second_page
+    assert 'value="pdf"' in second_page
     assert "Signal Mail" in second_page
     assert "AI Wire" in second_page
 

@@ -101,12 +101,40 @@ class _FakeMessagesResource:
         raw_message = body.get("raw", "")
         decoded_message = base64.urlsafe_b64decode(raw_message.encode("utf-8"))
         parsed_message = message_from_bytes(decoded_message)
+        text_parts: list[str] = []
+        html_parts: list[str] = []
+        attachments: list[dict] = []
+        for part in parsed_message.walk():
+            if part.is_multipart():
+                continue
+            content_disposition = str(part.get("Content-Disposition", "")).lower()
+            payload = part.get_payload(decode=True) or b""
+            mime_type = str(part.get_content_type() or "")
+            charset = part.get_content_charset() or "utf-8"
+            if "attachment" in content_disposition:
+                attachments.append(
+                    {
+                        "filename": str(part.get_filename() or ""),
+                        "mime_type": mime_type,
+                        "content_bytes": payload,
+                    }
+                )
+                continue
+            if mime_type == "text/plain":
+                text_parts.append(payload.decode(charset, errors="replace"))
+            elif mime_type == "text/html":
+                html_parts.append(payload.decode(charset, errors="replace"))
         sent_id = f"sent-{len(self._service.sent_messages) + 1}"
         self._service.sent_messages.append(
             {
                 "id": sent_id,
                 "raw": raw_message,
                 "message_id_header": str(parsed_message.get("Message-ID", "")).strip(),
+                "to": str(parsed_message.get("To", "")).strip(),
+                "subject": str(parsed_message.get("Subject", "")).strip(),
+                "body": "\n".join(part for part in text_parts if part).strip(),
+                "html_body": "\n".join(part for part in html_parts if part).strip(),
+                "attachments": attachments,
             }
         )
         return _ExecuteWrapper({"id": sent_id})

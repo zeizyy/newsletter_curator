@@ -1683,6 +1683,38 @@
         "The footer CTA chrome is absent from plain-text and HTML delivery output",
         "The targeted integration tests pass offline"
       ]
+    },
+    {
+      "id": "T70",
+      "title": "Add an opt-in PDF delivery format for subscriber profiles",
+      "status": "completed",
+      "depends_on": ["T60", "T69"],
+      "scope": [
+        "Add a subscriber profile delivery_format field with a non-destructive migration defaulting legacy rows to email",
+        "Expose the delivery-format choice in the subscriber settings UI and persist it in SQLite",
+        "Generate a canonical-content PDF artifact and send it as an attachment for opted-in subscribers",
+        "Keep normal plain-text and HTML email delivery unchanged for non-PDF subscribers"
+      ],
+      "artifacts": [
+        "subscriber profile repository schema and helpers",
+        "subscriber settings UI and handler updates",
+        "PDF rendering module and Gmail attachment support",
+        "integration coverage for mixed email and PDF delivery"
+      ],
+      "contract_file": "agent_contracts/T70_opt_in_pdf_delivery.md",
+      "test_command": "uv run pytest tests/integration/test_subscriber_pdf_delivery_opt_in.py tests/integration/test_subscriber_settings_page_persists_profile.py tests/integration/test_delivery_personalizes_by_subscriber_profile.py tests/integration/test_delivery_uses_db_backed_subscriber_profiles.py -q",
+      "integration_test": "tests/integration/test_subscriber_pdf_delivery_opt_in.py",
+      "evaluator_checks": [
+        "Legacy profiles still default to email without schema-reset-only migration behavior",
+        "PDF subscribers receive a parseable PDF attachment generated from canonical ranked content",
+        "Non-PDF subscribers still receive the existing email body and HTML digest",
+        "Delivery grouping or caching does not cross-send email and PDF artifacts"
+      ],
+      "done_when": [
+        "Subscribers can persist and reload an email or PDF delivery preference",
+        "The delivery job sends a PDF attachment only to opted-in subscribers",
+        "The PDF attachment text matches the canonical ranked newsletter content in test coverage"
+      ]
     }
   ]
 }

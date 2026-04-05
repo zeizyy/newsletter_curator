@@ -16,6 +16,11 @@ def utc_now() -> str:
 
 
 DEFAULT_AUDIENCE_KEY = "default"
+DEFAULT_SUBSCRIBER_DELIVERY_FORMAT = "email"
+SUPPORTED_SUBSCRIBER_DELIVERY_FORMATS = {
+    DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
+    "pdf",
+}
 
 
 def canonicalize_url(url: str) -> str:
@@ -31,6 +36,13 @@ def canonicalize_url(url: str) -> str:
 
 def hash_secret_token(token: str) -> str:
     return hashlib.sha256(str(token).encode("utf-8", errors="ignore")).hexdigest()
+
+
+def normalize_subscriber_delivery_format(value: str | None) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in SUPPORTED_SUBSCRIBER_DELIVERY_FORMATS:
+        return normalized
+    return DEFAULT_SUBSCRIBER_DELIVERY_FORMAT
 
 
 class SchemaResetRequiredError(RuntimeError):
@@ -191,6 +203,7 @@ class SQLiteRepository:
             "subscriber_profiles": {
                 "subscriber_id",
                 "persona_text",
+                "delivery_format",
                 "preferred_sources_json",
                 "created_at",
                 "updated_at",
@@ -236,6 +249,7 @@ class SQLiteRepository:
 
     def _migrate_compatible_schema(self, connection: sqlite3.Connection) -> None:
         self._migrate_daily_newsletters_audience_keys(connection)
+        self._migrate_subscriber_profiles_delivery_format(connection)
 
     def _migrate_daily_newsletters_audience_keys(self, connection: sqlite3.Connection) -> None:
         columns = self._table_columns(connection, "daily_newsletters")
@@ -378,6 +392,24 @@ class SQLiteRepository:
                     )
         finally:
             connection.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_subscriber_profiles_delivery_format(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "subscriber_profiles")
+        if not columns or "delivery_format" in columns:
+            return
+        connection.execute(
+            """
+            ALTER TABLE subscriber_profiles
+            ADD COLUMN delivery_format TEXT NOT NULL DEFAULT 'email'
+            """
+        )
+        connection.execute(
+            """
+            UPDATE subscriber_profiles
+            SET delivery_format = 'email'
+            WHERE TRIM(COALESCE(delivery_format, '')) = ''
+            """
+        )
 
     def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
         for table_name in [
@@ -547,6 +579,7 @@ class SQLiteRepository:
             CREATE TABLE IF NOT EXISTS subscriber_profiles (
                 subscriber_id INTEGER PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
                 persona_text TEXT NOT NULL DEFAULT '',
+                delivery_format TEXT NOT NULL DEFAULT 'email',
                 preferred_sources_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -1103,6 +1136,7 @@ class SQLiteRepository:
                     s.last_login_at,
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
+                    p.delivery_format,
                     p.preferred_sources_json
                 FROM subscribers s
                 LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
@@ -1125,6 +1159,7 @@ class SQLiteRepository:
                     s.last_login_at,
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
+                    p.delivery_format,
                     p.preferred_sources_json
                 FROM subscribers s
                 LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
@@ -1335,6 +1370,7 @@ class SQLiteRepository:
                 SELECT
                     subscriber_id,
                     persona_text,
+                    delivery_format,
                     preferred_sources_json,
                     created_at,
                     updated_at
@@ -1348,6 +1384,7 @@ class SQLiteRepository:
             return {
                 "subscriber_id": int(subscriber_id),
                 "persona_text": "",
+                "delivery_format": DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
                 "preferred_sources": [],
                 "created_at": "",
                 "updated_at": "",
@@ -1359,9 +1396,11 @@ class SQLiteRepository:
         subscriber_id: int,
         *,
         persona_text: str = "",
+        delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
         preferred_sources: list[str] | tuple[str, ...] | None = None,
     ) -> dict:
         normalized_persona = str(persona_text or "").strip()
+        normalized_delivery_format = normalize_subscriber_delivery_format(delivery_format)
         normalized_sources: list[str] = []
         seen: set[str] = set()
         for raw_source in preferred_sources or []:
@@ -1378,20 +1417,23 @@ class SQLiteRepository:
                 INSERT INTO subscriber_profiles (
                     subscriber_id,
                     persona_text,
+                    delivery_format,
                     preferred_sources_json,
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(subscriber_id)
                 DO UPDATE SET
                     persona_text = excluded.persona_text,
+                    delivery_format = excluded.delivery_format,
                     preferred_sources_json = excluded.preferred_sources_json,
                     updated_at = excluded.updated_at
                 """,
                 (
                     subscriber_id,
                     normalized_persona,
+                    normalized_delivery_format,
                     json.dumps(normalized_sources),
                     now,
                     now,
@@ -1402,6 +1444,7 @@ class SQLiteRepository:
                 SELECT
                     subscriber_id,
                     persona_text,
+                    delivery_format,
                     preferred_sources_json,
                     created_at,
                     updated_at
@@ -1438,6 +1481,7 @@ class SQLiteRepository:
         return {
             "subscriber_id": int(payload.get("subscriber_id") or 0),
             "persona_text": str(payload.get("persona_text", "") or ""),
+            "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
             "preferred_sources": json.loads(str(payload.get("preferred_sources_json", "[]") or "[]")),
             "created_at": str(payload.get("created_at", "") or ""),
             "updated_at": str(payload.get("updated_at", "") or ""),
@@ -1452,6 +1496,7 @@ class SQLiteRepository:
             "id": int(payload.get("id") or 0),
             "email_address": str(payload.get("email_address", "") or ""),
             "persona_text": str(payload.get("persona_text", "") or ""),
+            "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
             "preferred_sources": preferred_sources,
             "profile_exists": payload.get("profile_subscriber_id") is not None,
             "created_at": str(payload.get("created_at", "") or ""),
