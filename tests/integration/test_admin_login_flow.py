@@ -56,3 +56,25 @@ def test_admin_login_sets_cookie_and_removes_url_token_flow(monkeypatch, tmp_pat
     after_logout_response = client.get("/")
     assert after_logout_response.status_code == 302
     assert after_logout_response.headers["Location"].startswith("/admin/login?next=")
+
+
+def test_admin_login_marks_cookie_secure_when_proxy_headers_are_trusted(monkeypatch, tmp_path):
+    monkeypatch.setenv("CURATOR_TRUST_PROXY_HEADERS", "1")
+    admin_app = importlib.reload(importlib.import_module("admin_app"))
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_ADMIN_TOKEN", "ops-secret")
+
+    client = admin_app.app.test_client()
+    response = client.post(
+        "/admin/login",
+        data={"admin_token": "ops-secret"},
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "curator.example.com"},
+    )
+
+    assert response.status_code == 302
+    assert "Secure;" in response.headers.get("Set-Cookie", "")

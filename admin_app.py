@@ -8,6 +8,7 @@ import threading
 from urllib.parse import urlsplit
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 import yaml
 
 from curator import config as config_module
@@ -41,6 +42,9 @@ DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 
 
 app = Flask(__name__)
+if str(os.getenv("CURATOR_TRUST_PROXY_HEADERS", "")).strip().lower() in {"1", "true", "yes", "on"}:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
 ADMIN_TOKEN_COOKIE = "curator_admin_token"
 SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
 SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
