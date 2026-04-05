@@ -1366,9 +1366,14 @@ def subscriber_settings():
         from curator.repository import normalize_subscriber_delivery_format
 
         persona_text = str(request.form.get("persona_text", "") or "").strip()
-        delivery_format = normalize_subscriber_delivery_format(
-            str(request.form.get("delivery_format", "") or "").strip()
-        )
+        if "pdf_delivery_enabled" in request.form:
+            delivery_format = "pdf"
+        elif "delivery_format" in request.form:
+            delivery_format = normalize_subscriber_delivery_format(
+                str(request.form.get("delivery_format", "") or "").strip()
+            )
+        else:
+            delivery_format = "email"
         preferred_sources = normalize_subscriber_preferred_sources(
             request.form,
             available_sources=available_sources,

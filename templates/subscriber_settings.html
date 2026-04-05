@@ -43,35 +43,22 @@
       <div class="section-head">
         <div>
           <div class="section-kicker">Delivery</div>
-          <h2>Choose how the digest arrives</h2>
+          <h2>Add a PDF copy</h2>
         </div>
       </div>
-      <p class="section-copy">Email stays the default. PDF delivery keeps the normal digest email and adds a Kindle-friendly PDF attachment.</p>
-      <div class="toggle-grid">
+      <p class="section-copy">Email is always enabled. Turn this on to keep the normal digest email and add a Kindle-friendly PDF attachment.</p>
+      <div class="toggle-grid toggle-grid-single">
         <label class="toggle-card">
           <div class="stack">
-            <strong>Email digest</strong>
-            <span class="pill">Default</span>
-          </div>
-          <div class="checkbox-row">
-            <input
-              type="radio"
-              name="delivery_format"
-              value="email"
-              {% if profile.delivery_format != 'pdf' %}checked{% endif %}
-            />
-          </div>
-        </label>
-        <label class="toggle-card">
-          <div class="stack">
-            <strong>PDF attachment</strong>
+            <strong>Add PDF attachment</strong>
             <span class="pill">Kindle-ready</span>
+            <span>Email stays on either way.</span>
           </div>
           <div class="checkbox-row">
             <input
-              type="radio"
-              name="delivery_format"
-              value="pdf"
+              type="checkbox"
+              name="pdf_delivery_enabled"
+              value="1"
               {% if profile.delivery_format == 'pdf' %}checked{% endif %}
             />
           </div>
