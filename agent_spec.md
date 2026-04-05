@@ -8,6 +8,7 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Let users edit `persona_text` and `preferred_sources` on the settings page.
 - Let users choose a delivery format on the settings page so Kindle-oriented readers can opt into a PDF attachment while email remains the default.
 - Render the final delivery email as one flat ranked story list without section headers or footer CTA chrome.
+- Put a subscriber settings link in the delivered newsletter header before the first story card and keep a visible original-article fallback in delivered HTML so readers can still reach the source when tracking redirects are unavailable.
 
 # Technical Design
 - Add SQLite-backed user tables for identity, profile data, and login or session state.
@@ -20,6 +21,8 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - Persona text should only affect the final ranking or selection LLM call.
 - Increase early discovery recall by raising the initial candidate budget modestly, not by increasing final newsletter size.
 - Generate PDF output from the same canonical ranked newsletter content used by email delivery so story order and summary text stay aligned across formats.
+- Resolve outbound newsletter links from explicit public-host config only, using `tracking.base_url` first and `CURATOR_PUBLIC_BASE_URL` second.
+- Do not synthesize localhost or the admin bind host in outbound newsletter links; when no public host is configured, skip telemetry rewriting instead of emitting dead tracking URLs.
 
 # Migration Strategy
 - Backfill current recipients into SQLite from the existing config or Buttondown-derived data.
@@ -55,3 +58,4 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T68` secure read-only debug log endpoint for production troubleshooting
 - `T69` flatten final delivery email ranking and remove footer CTA
 - `T70` opt-in PDF delivery format for subscriber profiles
+- `T71` delivery public-host hardening plus direct-link fallback

@@ -35,7 +35,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
                 "digest_recipients": ["cached@example.com"],
                 "digest_subject": "Cached Daily Digest",
             },
-            "tracking": {"enabled": True},
+            "tracking": {"enabled": True, "base_url": "http://curator.test"},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,

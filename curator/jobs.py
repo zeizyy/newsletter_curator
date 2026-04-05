@@ -56,6 +56,7 @@ from .sources import (
 )
 from .summary_format import canonicalize_summary_json
 from .telemetry import (
+    build_settings_url,
     build_click_url,
     build_open_pixel_url,
     resolve_tracking_base_url,
@@ -1447,6 +1448,9 @@ def run_delivery_job(
         )
     )
 
+    public_base_url = resolve_tracking_base_url(config)
+    subscriber_settings_url = build_settings_url(public_base_url)
+
     def build_tracked_send_html(
         daily_newsletter_id: int,
         *,
@@ -1456,7 +1460,16 @@ def run_delivery_job(
         if not open_tracking_enabled and not click_tracking_enabled:
             return html_body, 0
 
-        base_url = resolve_tracking_base_url(config)
+        if not public_base_url:
+            emit_event(
+                "delivery_tracking_skipped",
+                audience_key=audience_key,
+                reason="missing_public_base_url",
+                open_tracking_enabled=open_tracking_enabled,
+                click_tracking_enabled=click_tracking_enabled,
+            )
+            return html_body, 0
+
         open_token = (
             repository.ensure_newsletter_open_token(daily_newsletter_id)
             if open_tracking_enabled
@@ -1471,7 +1484,7 @@ def run_delivery_job(
             [
                 {
                     **row,
-                    "tracked_url": build_click_url(base_url, str(row["click_token"])),
+                    "tracked_url": build_click_url(public_base_url, str(row["click_token"])),
                 }
                 for row in tracked_links
             ]
@@ -1483,7 +1496,7 @@ def run_delivery_job(
             audience_key=audience_key,
             daily_newsletter_id=daily_newsletter_id,
             tracked_link_count=len(tracked_links),
-            tracking_base_url=base_url,
+            tracking_base_url=public_base_url,
             open_tracking_enabled=open_tracking_enabled,
             click_tracking_enabled=click_tracking_enabled,
         )
@@ -1491,7 +1504,7 @@ def run_delivery_job(
             rewrite_newsletter_html_for_tracking(
                 html_body,
                 tracked_links=tracked_link_rows,
-                open_pixel_url=build_open_pixel_url(base_url, open_token) if open_token else "",
+                open_pixel_url=build_open_pixel_url(public_base_url, open_token) if open_token else "",
             ),
             len(tracked_links),
         )
@@ -1682,14 +1695,18 @@ def run_delivery_job(
     def render_delivery_body(content: dict, fallback_body: str) -> str:
         render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
         if not render_groups:
-            return fallback_body
-        return render_digest_text(render_groups)
+            body = fallback_body
+        else:
+            body = render_digest_text(render_groups)
+        if subscriber_settings_url:
+            body = f"Manage your settings: {subscriber_settings_url}\n\n{str(body).strip()}"
+        return body
 
     def render_delivery_html(content: dict, fallback_html: str) -> str:
         render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
         if not render_groups:
             return fallback_html
-        return render_email_safe_digest_html(render_groups)
+        return render_email_safe_digest_html(render_groups, settings_url=subscriber_settings_url)
 
     run_id = repository.create_delivery_run(
         metadata={

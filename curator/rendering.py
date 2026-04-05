@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from .config import DIGEST_TEMPLATE_PATH, EMAIL_SAFE_DIGEST_TEMPLATE_PATH
 from .summary_format import extract_structured_summary
+from .telemetry import TRACKED_LINK_MARKER
 
 RenderPayload = list[dict] | dict[str, list[dict]]
 
@@ -320,11 +321,21 @@ def _render_email_safe_story_card(entry: dict) -> str:
     takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
     why_text = str(normalized_entry["why_this_matters"]).strip()
     other = [str(item) for item in normalized_entry["other_paragraphs"]]
-    link_html = (
-        f'<a href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
-        if url
-        else ""
-    )
+    tracked_link_html = ""
+    direct_link_html = ""
+    if url:
+        tracked_link_html = (
+            f'<a {TRACKED_LINK_MARKER} href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
+            'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
+        )
+        direct_link_html = (
+            f'<a data-curator-direct-link="1" href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
+            'style="color:#5b6a78;text-decoration:underline;font-weight:600;">Direct link if tracking is unavailable</a>'
+        )
+    link_html = ""
+    if tracked_link_html or direct_link_html:
+        separator = " &nbsp;|&nbsp; " if tracked_link_html and direct_link_html else ""
+        link_html = f"{tracked_link_html}{separator}{direct_link_html}"
 
     metadata_parts = []
     if timestamp:
@@ -421,7 +432,24 @@ def render_digest_html(render_payload: RenderPayload) -> str:
     return rendered.replace("{{HERO_COUNT}}", str(total_entries))
 
 
-def render_email_safe_digest_html(render_payload: RenderPayload) -> str:
+def _render_settings_link_html(settings_url: str) -> str:
+    normalized = str(settings_url or "").strip()
+    if not normalized:
+        return ""
+    safe_url = html.escape(normalized)
+    return (
+        '<div style="padding:14px 18px 0 18px;background:#ffffff;">'
+        '<div style="padding:10px 12px;border:1px solid #d7efe6;border-radius:14px;'
+        'background:#eef8f4;font-size:13px;line-height:1.6;color:#244234;">'
+        'Manage your digest: '
+        f'<a href="{safe_url}" target="_blank" rel="noreferrer noopener" '
+        'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Subscriber settings</a>'
+        '</div>'
+        '</div>'
+    )
+
+
+def render_email_safe_digest_html(render_payload: RenderPayload, *, settings_url: str = "") -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_email_safe_story_card(entry) for entry in entries)
     total_entries = len(entries)
@@ -429,4 +457,5 @@ def render_email_safe_digest_html(render_payload: RenderPayload) -> str:
     with EMAIL_SAFE_DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
     rendered = template_html.replace("{{CATEGORY_SECTIONS}}", story_cards)
+    rendered = rendered.replace("{{HEADER_LINKS}}", _render_settings_link_html(settings_url))
     return rendered.replace("{{HERO_COUNT}}", str(total_entries))

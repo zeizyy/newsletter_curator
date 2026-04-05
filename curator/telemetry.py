@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 
 TRACKING_PIXEL_TAG_MARKER = "newsletter-tracking-pixel"
+TRACKED_LINK_MARKER = 'data-curator-track-link="1"'
 
 
 def _coerce_bool(raw_value) -> bool | None:
@@ -56,12 +57,14 @@ def resolve_tracking_base_url(config: dict) -> str:
     env_base_url = os.getenv("CURATOR_PUBLIC_BASE_URL", "").strip()
     if env_base_url:
         return env_base_url.rstrip("/")
+    return ""
 
-    host = os.getenv("CURATOR_ADMIN_HOST", "127.0.0.1").strip() or "127.0.0.1"
-    port = os.getenv("CURATOR_ADMIN_PORT", "8080").strip() or "8080"
-    if host in {"0.0.0.0", "::"}:
-        host = "127.0.0.1"
-    return f"http://{host}:{port}"
+
+def build_settings_url(base_url: str) -> str:
+    normalized = str(base_url or "").strip().rstrip("/")
+    if not normalized:
+        return ""
+    return f"{normalized}/settings"
 
 
 def build_click_url(base_url: str, click_token: str) -> str:
@@ -84,9 +87,11 @@ def rewrite_newsletter_html_for_tracking(
         tracked_url = str(link.get("tracked_url", "")).strip()
         if not target_url or not tracked_url:
             continue
+        target_marker = f'{TRACKED_LINK_MARKER} href="{html.escape(target_url)}"'
+        tracked_marker = f'{TRACKED_LINK_MARKER} href="{html.escape(tracked_url)}"'
         tracked_html = tracked_html.replace(
-            f'href="{html.escape(target_url)}"',
-            f'href="{html.escape(tracked_url)}"',
+            target_marker,
+            tracked_marker,
         )
 
     if not open_pixel_url:

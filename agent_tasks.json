@@ -1715,6 +1715,41 @@
         "The delivery job sends a PDF attachment only to opted-in subscribers",
         "The PDF attachment text matches the canonical ranked newsletter content in test coverage"
       ]
+    },
+    {
+      "id": "T71",
+      "title": "Harden delivered-newsletter links with a config-driven public host",
+      "status": "completed",
+      "depends_on": ["T70"],
+      "scope": [
+        "Add a subscriber settings link in the delivered newsletter header before the first story card using an explicit public-host resolver",
+        "Use the same public-host resolver for tracked open and click URLs and stop generating localhost or admin-bind-host links in outbound mail",
+        "When no public host is configured, skip telemetry rewriting and preserve the original article URLs instead of emitting dead tracking links",
+        "Render a visible direct original-article fallback link in delivered HTML that is explicitly excluded from tracked-link rewriting"
+      ],
+      "artifacts": [
+        "agent_contracts/T71_delivery_public_host_links_and_fallback.md",
+        "curator/telemetry.py",
+        "curator/jobs.py",
+        "curator/rendering.py",
+        "templates/digest_email_safe.html",
+        "tests/integration/test_delivery_public_host_links_and_fallback.py"
+      ],
+      "contract_file": "agent_contracts/T71_delivery_public_host_links_and_fallback.md",
+      "test_command": "uv run pytest tests/integration/test_delivery_public_host_links_and_fallback.py tests/integration/test_newsletter_telemetry_tracking_endpoints.py tests/integration/test_delivery_tracking_disabled_by_default.py tests/integration/test_preview_and_delivery_reuse_persisted_daily_newsletter.py tests/integration/test_subscriber_pdf_delivery_opt_in.py -q",
+      "integration_test": "tests/integration/test_delivery_public_host_links_and_fallback.py",
+      "evaluator_checks": [
+        "Delivered newsletter HTML shows a header-level subscriber settings link before the first story card when a public host is configured",
+        "Tracked open and click URLs use only `tracking.base_url` or `CURATOR_PUBLIC_BASE_URL` and never synthesize localhost or the admin bind host",
+        "If no public host is configured, delivery skips telemetry rewriting and preserves original article URLs",
+        "A direct original-article fallback link remains present in delivered HTML and is not rewritten to the tracked URL"
+      ],
+      "done_when": [
+        "Delivered newsletters include a settings link at the top when public host config is available",
+        "Telemetry URLs no longer fall back to localhost or admin-bind host values in outbound email",
+        "Readers still have a visible direct article link even if the tracking host is unavailable",
+        "The targeted integration tests pass offline"
+      ]
     }
   ]
 }
