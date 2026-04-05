@@ -16,36 +16,6 @@
   <section class="surface surface-section">
     <div class="section-head">
       <div>
-        <div class="section-kicker">System Checks</div>
-        <h2>Runtime health</h2>
-      </div>
-      <div class="section-copy">Every card is computed server-side so you can see the real state the admin app is using right now.</div>
-    </div>
-    <div class="stack">
-      {% for check in checks %}
-      <article class="state-shell is-{{ check.tone }}">
-        <div class="state-head">
-          <div>
-            <div class="section-kicker">{{ check.label }}</div>
-            <h2 class="state-title">{{ check.summary }}</h2>
-          </div>
-          <div><span class="pill {% if check.status in ['warning', 'info'] %}muted-pill{% endif %}">{{ check.status }}</span></div>
-        </div>
-        {% if check.details %}
-        <ul class="state-list">
-          {% for detail in check.details %}
-          <li>{{ detail }}</li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="surface surface-section">
-    <div class="section-head">
-      <div>
         <div class="section-kicker">Daily Delivery Status</div>
         <h2>Recent delivery runs</h2>
       </div>
@@ -103,5 +73,35 @@
       </div>
     </div>
     {% endif %}
+  </section>
+
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">System Checks</div>
+        <h2>Runtime health</h2>
+      </div>
+      <div class="section-copy">Every card is computed server-side so you can see the real state the admin app is using right now.</div>
+    </div>
+    <div class="stack">
+      {% for check in checks %}
+      <article class="state-shell is-{{ check.tone }}">
+        <div class="state-head">
+          <div>
+            <div class="section-kicker">{{ check.label }}</div>
+            <h2 class="state-title">{{ check.summary }}</h2>
+          </div>
+          <div><span class="pill {% if check.status in ['warning', 'info'] %}muted-pill{% endif %}">{{ check.status }}</span></div>
+        </div>
+        {% if check.details %}
+        <ul class="state-list">
+          {% for detail in check.details %}
+          <li>{{ detail }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
   </section>
 {% endblock %}
