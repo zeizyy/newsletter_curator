@@ -241,8 +241,9 @@ Use this when hosting the curator on a server. The intended production flow is:
 ### One-Time Bootstrap
 The repo includes a one-shot bootstrap script that generates:
 - a locked-down env file used by all jobs
-- wrapper scripts for the admin server, the single daily job, and the manual debug jobs
+- wrapper scripts for the Gunicorn admin server, the single daily job, and the manual debug jobs
 - a `systemd --user` service for the admin server
+- a Caddy config for the public HTTPS reverse proxy
 - a cron file for the single daily orchestrator schedule
 
 Run once on the server:
@@ -251,14 +252,16 @@ cd /root/newsletter_curator
 uv sync
 OPENAI_API_KEY='your_key' uv run python scripts/bootstrap_server.py \
   --repo-dir /root/newsletter_curator \
-  --app-host 0.0.0.0 \
+  --app-host 127.0.0.1 \
   --app-port 8080 \
   --public-base-url 'https://curator.example.com' \
   --admin-token 'choose-a-long-random-token' \
   --debug-log-token 'choose-a-separate-long-random-token' \
   --buttondown-api-key 'your_buttondown_api_key' \
   --enable-linger \
-  --install-crontab
+  --install-crontab \
+  --install-systemd-user \
+  --install-caddy
 ```
 
 What this writes by default:
@@ -271,23 +274,28 @@ What this writes by default:
 - `deploy/generated/newsletter-curator.logrotate`
 - `deploy/generated/newsletter_curator.cron`
 - `deploy/generated/newsletter-curator-admin.service`
+- `deploy/generated/newsletter-curator.Caddyfile`
 - `deploy/generated/debug.ndjson`
 
 What the script installs when flags are passed:
 - `--install-systemd-user`: copies the generated admin service into `~/.config/systemd/user/`, reloads `systemd --user`, and enables it immediately
 - rerunning the bootstrap is safe: it regenerates assets, reloads the user unit, and restarts the admin service so wrapper/env updates are picked up
+- `--install-caddy`: copies the generated Caddy config to `--caddyfile-path` (defaults to `/etc/caddy/Caddyfile`) and reloads the configured Caddy service
 - `--install-crontab`: installs the generated cron file as the current user’s crontab
 - `--install-logrotate`: copies the generated `logrotate` config into `--logrotate-dir` (defaults to `/etc/logrotate.d`)
 - `--enable-linger`: runs `loginctl enable-linger $USER` so the `systemd --user` admin service survives SSH logout
 
 Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
+- When `--public-base-url` is set, bootstrap normalizes `0.0.0.0` to `127.0.0.1` so Gunicorn listens on localhost behind Caddy instead of binding publicly.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
-- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin written to `CURATOR_PUBLIC_BASE_URL` in the generated server env file. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
+- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin written to `CURATOR_PUBLIC_BASE_URL` in the generated server env file.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
+- The generated env file also stores conservative Gunicorn defaults for a small box: one `gthread` worker process with four threads, plus `CURATOR_TRUST_PROXY_HEADERS=1` so Flask correctly honors `X-Forwarded-Proto` and marks cookies `Secure` behind Caddy.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
+- If you already use Caddy for other sites, point `--caddyfile-path` at the dedicated file your main Caddyfile imports instead of overwriting `/etc/caddy/Caddyfile`.
 - `--install-logrotate` usually needs root if you leave `--logrotate-dir` at `/etc/logrotate.d`.
 - The generated cron schedule defaults to:
   - `0 13 * * *` run `daily_pipeline.py`
@@ -303,6 +311,7 @@ Before running the bootstrap:
 - place Gmail OAuth credentials at `secrets/credentials.json`
 - create `secrets/token.json` once with an interactive Gmail-authenticated run if needed
 - ensure `uv` is installed and on `PATH`
+- install Caddy on the server if you plan to use `--install-caddy`
 
 ### Verification
 After bootstrap:
@@ -316,6 +325,12 @@ If you chose to install the admin service too:
 systemctl --user status newsletter-curator-admin
 ```
 
+If you chose to install the Caddy config too:
+```bash
+systemctl status caddy
+sudo caddy validate --config /etc/caddy/Caddyfile
+```
+
 ### GitHub Actions Server Sync
 After the first manual bootstrap, `.github/workflows/deploy_server.yml` can keep the server in sync on every push to `main` or from a manual `workflow_dispatch`.
 
@@ -325,7 +340,7 @@ The workflow:
 - runs `uv sync --frozen`
 - sources `deploy/generated/newsletter-curator.env`
 - reruns `scripts/bootstrap_server.py` with the current server-side tokens and keys
-- reapplies both `crontab` and the `systemd --user` admin service on each deploy
+- reapplies the managed `crontab`, the `systemd --user` Gunicorn service, and the Caddy config on each deploy
 
 Behavior notes:
 - `.github/workflows/ci.yml` runs the full `uv run pytest` suite on pull requests to `main` and on pushes to `main`.

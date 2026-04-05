@@ -76,6 +76,7 @@ def _run_bootstrap(
         "logrotate_file": output_dir / "newsletter-curator.logrotate",
         "cron_file": output_dir / "newsletter-curator.cron",
         "service_file": output_dir / "newsletter-curator-admin.service",
+        "caddy_file": output_dir / "newsletter-curator.Caddyfile",
     }
 
 
@@ -134,6 +135,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     logrotate_file = paths["logrotate_file"]
     cron_file = paths["cron_file"]
     service_file = paths["service_file"]
+    caddy_file = paths["caddy_file"]
     repo_dir = repo_root
 
     for path in [
@@ -146,11 +148,12 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
         logrotate_file,
         cron_file,
         service_file,
+        caddy_file,
     ]:
         assert path.exists()
 
     env_text = env_file.read_text(encoding="utf-8")
-    assert "CURATOR_APP_HOST=0.0.0.0" in env_text
+    assert "CURATOR_APP_HOST=127.0.0.1" in env_text
     assert "CURATOR_APP_PORT=9090" in env_text
     assert "CURATOR_ADMIN_TOKEN=test-admin-token" in env_text
     assert "CURATOR_MCP_TOKEN=test-admin-token" in env_text
@@ -158,17 +161,25 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"CURATOR_DEBUG_LOG_PATH={output_dir / 'debug.ndjson'}" in env_text
     assert "CURATOR_ADMIN_SERVICE_NAME=newsletter-curator-admin" in env_text
     assert "CURATOR_PAUSE_ADMIN_DURING_DAILY=1" in env_text
+    assert "CURATOR_TRUST_PROXY_HEADERS=1" in env_text
+    assert "CURATOR_GUNICORN_WORKERS=1" in env_text
+    assert "CURATOR_GUNICORN_WORKER_CLASS=gthread" in env_text
+    assert "CURATOR_GUNICORN_THREADS=4" in env_text
+    assert "CURATOR_GUNICORN_TIMEOUT=120" in env_text
+    assert "CURATOR_GUNICORN_GRACEFUL_TIMEOUT=30" in env_text
     assert "OPENAI_API_KEY=test-openai-key" in env_text
     assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "CURATOR_PUBLIC_BASE_URL=https://curator.example.com" in env_text
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
 
     admin_script_text = admin_script.read_text(encoding="utf-8")
-    assert "admin_app.py" in admin_script_text
+    assert "gunicorn" in admin_script_text
+    assert 'admin_app:app' in admin_script_text
+    assert '--worker-class "${CURATOR_GUNICORN_WORKER_CLASS:-gthread}"' in admin_script_text
     assert str(env_file) in admin_script_text
     assert 'error: OPENAI_API_KEY is empty after loading' in admin_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in admin_script_text
-    assert "\"$@\"" in admin_script_text
+    assert '  "$@" "admin_app:app"' in admin_script_text
     assert oct(admin_script.stat().st_mode & 0o777) == "0o700"
 
     deliver_script_text = deliver_script.read_text(encoding="utf-8")
@@ -208,10 +219,19 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"EnvironmentFile={env_file}" in service_text
     assert f"ExecStart={admin_script}" in service_text
 
+    caddy_text = caddy_file.read_text(encoding="utf-8")
+    assert "http://curator.example.com {" in caddy_text
+    assert "redir https://curator.example.com{uri} permanent" in caddy_text
+    assert "https://curator.example.com {" in caddy_text
+    assert "reverse_proxy 127.0.0.1:9090" in caddy_text
+    assert 'X-Content-Type-Options "nosniff"' in caddy_text
+
     assert "Generated deployment assets:" in result.stdout
     assert f"- Debug log file: {output_dir / 'debug.ndjson'}" in result.stdout
     assert f"- Logrotate config: {logrotate_file}" in result.stdout
-    assert "Warning: --public-base-url has no explicit port while --app-port is set to 9090." in result.stdout
+    assert f"- Generated Caddy config: {caddy_file}" in result.stdout
+    assert "Caddy config not installed by default. Pass --install-caddy to install and reload it." in result.stdout
+    assert "App bind host normalized for reverse proxy use: 0.0.0.0 -> 127.0.0.1" in result.stdout
 
 
 def test_generated_daily_wrapper_stops_and_restarts_admin_service(tmp_path, repo_root):
@@ -302,8 +322,8 @@ def test_bootstrap_adds_admin_port_to_direct_access_public_base_url(tmp_path, re
 
     env_text = (output_dir / "newsletter-curator.env").read_text(encoding="utf-8")
 
-    assert "CURATOR_PUBLIC_BASE_URL=http://159.65.104.249:9090" in env_text
-    assert "Warning: --public-base-url has no explicit port while --app-port is set to 9090." not in result.stdout
+    assert "CURATOR_PUBLIC_BASE_URL=http://159.65.104.249" in env_text
+    assert "Warning: --public-base-url has no explicit port" not in result.stdout
 
 
 def test_bootstrap_accepts_legacy_admin_host_and_port_flags(tmp_path, repo_root):
@@ -345,7 +365,7 @@ def test_bootstrap_accepts_legacy_admin_host_and_port_flags(tmp_path, repo_root)
 
     env_text = (output_dir / "newsletter-curator.env").read_text(encoding="utf-8")
 
-    assert "CURATOR_APP_HOST=0.0.0.0" in env_text
+    assert "CURATOR_APP_HOST=127.0.0.1" in env_text
     assert "CURATOR_APP_PORT=9090" in env_text
 
 
@@ -497,3 +517,27 @@ def test_install_logrotate_config_is_rerunnable(tmp_path):
     assert installed_path == target_dir / "newsletter-curator-admin"
     assert installed_path.exists()
     assert installed_path.read_text(encoding="utf-8") == logrotate_file.read_text(encoding="utf-8")
+
+
+def test_install_caddy_config_is_rerunnable(monkeypatch, tmp_path):
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, check):
+        calls.append(list(cmd))
+
+    monkeypatch.setattr(bootstrap_server.subprocess, "run", fake_run)
+
+    caddy_file = tmp_path / "newsletter-curator.Caddyfile"
+    caddy_file.write_text("https://curator.example.com {\n    reverse_proxy 127.0.0.1:8080\n}\n", encoding="utf-8")
+    target_path = tmp_path / "etc" / "caddy" / "Caddyfile"
+
+    installed_path = bootstrap_server.install_caddy_config(
+        caddy_file,
+        target_path,
+        "caddy",
+    )
+
+    assert installed_path == target_path
+    assert installed_path.exists()
+    assert installed_path.read_text(encoding="utf-8") == caddy_file.read_text(encoding="utf-8")
+    assert calls == [["systemctl", "reload-or-restart", "caddy"]]

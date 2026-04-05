@@ -4,13 +4,12 @@ from __future__ import annotations
 import argparse
 import getpass
 import grp
-import ipaddress
 import os
 import shlex
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,6 +55,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-api-key", default=os.getenv("OPENAI_API_KEY", ""))
     parser.add_argument("--buttondown-api-key", default=os.getenv("BUTTONDOWN_API_KEY", ""))
     parser.add_argument("--public-base-url", default=os.getenv("CURATOR_PUBLIC_BASE_URL", ""))
+    parser.add_argument(
+        "--caddyfile-path",
+        type=Path,
+        default=Path("/etc/caddy/Caddyfile"),
+        help="Target path for the generated Caddy config when --install-caddy is used.",
+    )
+    parser.add_argument(
+        "--caddy-service-name",
+        default="caddy",
+        help="Systemd service name to reload after installing the Caddy config.",
+    )
     parser.add_argument("--cron-timezone", default="")
     parser.add_argument("--daily-schedule", default="0 13 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
@@ -66,6 +76,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--install-logrotate", action="store_true")
     parser.add_argument("--service-name", default="newsletter-curator-admin")
     parser.add_argument("--install-crontab", action="store_true")
+    parser.add_argument(
+        "--install-caddy",
+        action="store_true",
+        help="Install the generated Caddy config and reload the configured Caddy service.",
+    )
     parser.add_argument(
         "--install-systemd-user",
         action="store_true",
@@ -126,6 +141,12 @@ def build_env_file(
             f"CURATOR_DEBUG_LOG_PATH={debug_log_path}",
             f"CURATOR_ADMIN_SERVICE_NAME={admin_service_name}",
             "CURATOR_PAUSE_ADMIN_DURING_DAILY=1",
+            "CURATOR_TRUST_PROXY_HEADERS=1",
+            "CURATOR_GUNICORN_WORKERS=1",
+            "CURATOR_GUNICORN_WORKER_CLASS=gthread",
+            "CURATOR_GUNICORN_THREADS=4",
+            "CURATOR_GUNICORN_TIMEOUT=120",
+            "CURATOR_GUNICORN_GRACEFUL_TIMEOUT=30",
             f"OPENAI_API_KEY={openai_api_key}",
             f"BUTTONDOWN_API_KEY={buttondown_api_key}",
             f"CURATOR_PUBLIC_BASE_URL={public_base_url}",
@@ -135,61 +156,34 @@ def build_env_file(
     )
 
 
-def _is_direct_access_hostname(hostname: str) -> bool:
-    normalized = str(hostname or "").strip().lower()
-    if not normalized:
-        return False
-    if normalized == "localhost":
-        return True
-    try:
-        ipaddress.ip_address(normalized)
-    except ValueError:
-        return False
-    return True
+def normalize_app_bind_host(app_host: str, public_base_url: str) -> str:
+    normalized_host = str(app_host or "").strip() or "127.0.0.1"
+    if not str(public_base_url or "").strip():
+        return normalized_host
+    if normalized_host == "0.0.0.0":
+        return "127.0.0.1"
+    if normalized_host == "::":
+        return "::1"
+    return normalized_host
 
 
-def normalize_public_base_url(public_base_url: str, app_port: int) -> str:
+def normalize_public_base_url(public_base_url: str) -> str:
     configured = str(public_base_url or "").strip()
     if not configured:
         return ""
-    parsed = urlparse(configured)
-    if not parsed.scheme or not parsed.netloc or parsed.port is not None:
-        return configured.rstrip("/")
-
-    default_port = 80 if parsed.scheme == "http" else 443 if parsed.scheme == "https" else None
-    if app_port == default_port or not _is_direct_access_hostname(parsed.hostname or ""):
-        return configured.rstrip("/")
-
-    hostname = str(parsed.hostname or "").strip()
-    host_display = f"[{hostname}]" if ":" in hostname else hostname
-    userinfo = ""
-    if parsed.username:
-        userinfo = parsed.username
-        if parsed.password:
-            userinfo += f":{parsed.password}"
-        userinfo += "@"
-    return urlunparse(parsed._replace(netloc=f"{userinfo}{host_display}:{app_port}")).rstrip("/")
+    return configured.rstrip("/")
 
 
-def public_base_url_warning(public_base_url: str, app_port: int) -> str:
+def public_base_url_warning(public_base_url: str) -> str:
     configured = str(public_base_url or "").strip()
     if not configured:
         return ""
     parsed = urlparse(configured)
     if not parsed.scheme or not parsed.netloc:
-        return ""
-    if parsed.port is not None:
-        return ""
-    if app_port in {80, 443}:
-        return ""
-    if _is_direct_access_hostname(parsed.hostname or ""):
-        return ""
-    return (
-        "Warning: --public-base-url has no explicit port while --app-port is set to "
-        f"{app_port}. This is correct only if your public origin is behind a reverse proxy on "
-        "the scheme default port. Otherwise subscriber login links and tracking links will omit "
-        f":{app_port}."
-    )
+        return "Warning: --public-base-url should be an absolute http:// or https:// URL."
+    if parsed.path not in {"", "/"}:
+        return "Warning: --public-base-url should be an origin only; path components are ignored by Caddy."
+    return ""
 
 
 def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoint: str) -> str:
@@ -216,6 +210,40 @@ def build_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str, entrypoi
     )
 
 
+def build_admin_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str) -> str:
+    return "\n".join(
+        [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            f"cd {quote(repo_dir)}",
+            "set -a",
+            f"source {quote(env_file)}",
+            "set +a",
+            "",
+            f'if [[ -z "${{OPENAI_API_KEY:-}}" ]]; then',
+            f'  echo "error: OPENAI_API_KEY is empty after loading {quote(env_file)}" >&2',
+            "  exit 1",
+            "fi",
+            f'if [[ -z "${{BUTTONDOWN_API_KEY:-}}" ]]; then',
+            f'  echo "error: BUTTONDOWN_API_KEY is empty after loading {quote(env_file)}" >&2',
+            "  exit 1",
+            "fi",
+            f"exec {quote(uv_bin)} run gunicorn \\",
+            '  --bind "${CURATOR_APP_HOST:-127.0.0.1}:${CURATOR_APP_PORT:-8080}" \\',
+            '  --workers "${CURATOR_GUNICORN_WORKERS:-1}" \\',
+            '  --worker-class "${CURATOR_GUNICORN_WORKER_CLASS:-gthread}" \\',
+            '  --threads "${CURATOR_GUNICORN_THREADS:-4}" \\',
+            '  --timeout "${CURATOR_GUNICORN_TIMEOUT:-120}" \\',
+            '  --graceful-timeout "${CURATOR_GUNICORN_GRACEFUL_TIMEOUT:-30}" \\',
+            "  --access-logfile - \\",
+            "  --error-logfile - \\",
+            "  --capture-output \\",
+            '  "$@" "admin_app:app"',
+            "",
+        ]
+    )
+
+
 def build_logrotate_config(
     *,
     debug_log_path: Path,
@@ -236,6 +264,51 @@ def build_logrotate_config(
             "",
         ]
     )
+
+
+def _normalize_reverse_proxy_host(app_host: str) -> str:
+    normalized_host = str(app_host or "").strip() or "127.0.0.1"
+    if normalized_host == "0.0.0.0":
+        return "127.0.0.1"
+    if normalized_host == "::":
+        return "::1"
+    return normalized_host
+
+
+def build_caddyfile(*, public_base_url: str, app_host: str, app_port: int) -> str:
+    configured = normalize_public_base_url(public_base_url)
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("--public-base-url must be an absolute http:// or https:// URL.")
+    if parsed.path not in {"", "/"}:
+        raise ValueError("--public-base-url must not include a path component.")
+
+    upstream_host = _normalize_reverse_proxy_host(app_host)
+    if ":" in upstream_host and not upstream_host.startswith("["):
+        upstream_host = f"[{upstream_host}]"
+    upstream = f"{upstream_host}:{app_port}"
+    site_label = f"{parsed.scheme}://{parsed.netloc}"
+    lines = [
+        f"{site_label} {{",
+        "    encode zstd gzip",
+        "    header {",
+        '        X-Content-Type-Options "nosniff"',
+        '        Referrer-Policy "strict-origin-when-cross-origin"',
+        '        X-Frame-Options "DENY"',
+        "    }",
+        f"    reverse_proxy {upstream}",
+        "}",
+        "",
+    ]
+    if parsed.scheme == "https":
+        lines = [
+            f"http://{parsed.netloc} {{",
+            f"    redir https://{parsed.netloc}{{uri}} permanent",
+            "}",
+            "",
+            *lines,
+        ]
+    return "\n".join(lines)
 
 
 def build_daily_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str) -> str:
@@ -383,11 +456,18 @@ def install_logrotate_config(logrotate_file: Path, target_dir: Path, service_nam
     return target_path
 
 
+def install_caddy_config(caddy_file: Path, target_path: Path, service_name: str) -> Path:
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    write_file(target_path, caddy_file.read_text(encoding="utf-8"))
+    subprocess.run(["systemctl", "reload-or-restart", service_name], check=True)
+    return target_path
+
+
 def main() -> None:
     args = parse_args()
     if not str(args.mcp_token or "").strip():
         args.mcp_token = args.admin_token
-    normalized_public_base_url = normalize_public_base_url(args.public_base_url, args.app_port)
+    normalized_public_base_url = normalize_public_base_url(args.public_base_url)
     repo_dir = args.repo_dir.resolve()
     output_dir = (
         args.output_dir.resolve()
@@ -396,6 +476,7 @@ def main() -> None:
     )
     config_path = (args.config_path or (repo_dir / "config.yaml")).resolve()
     log_file = (args.cron_log_file or (repo_dir / "deploy" / "generated" / "cron.log")).resolve()
+    normalized_app_host = normalize_app_bind_host(args.app_host, normalized_public_base_url)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -432,13 +513,14 @@ def main() -> None:
     deliver_script = output_dir / "run_deliver_digest.sh"
     cron_file = output_dir / "newsletter-curator.cron"
     service_file = output_dir / f"{args.service_name}.service"
+    caddy_file = output_dir / "newsletter-curator.Caddyfile"
 
     write_file(
         env_file,
         build_env_file(
             repo_dir=repo_dir,
             config_path=config_path,
-            app_host=args.app_host,
+            app_host=normalized_app_host,
             app_port=args.app_port,
             admin_token=args.admin_token,
             mcp_token=args.mcp_token,
@@ -453,11 +535,10 @@ def main() -> None:
     )
     write_file(
         admin_script,
-        build_runner_script(
+        build_admin_runner_script(
             repo_dir=repo_dir,
             env_file=env_file,
             uv_bin=args.uv_bin,
-            entrypoint="admin_app.py",
         ),
         mode=0o700,
     )
@@ -529,6 +610,16 @@ def main() -> None:
             admin_script=admin_script,
         ),
     )
+    if normalized_public_base_url:
+        write_file(
+            caddy_file,
+            build_caddyfile(
+                public_base_url=normalized_public_base_url,
+                app_host=normalized_app_host,
+                app_port=args.app_port,
+            ),
+            mode=0o644,
+        )
 
     if args.install_crontab:
         install_crontab(cron_file)
@@ -538,6 +629,15 @@ def main() -> None:
             logrotate_file,
             args.logrotate_dir.resolve(),
             args.service_name,
+        )
+    installed_caddy_path: Path | None = None
+    if args.install_caddy:
+        if not normalized_public_base_url:
+            raise SystemExit("--install-caddy requires --public-base-url.")
+        installed_caddy_path = install_caddy_config(
+            caddy_file,
+            args.caddyfile_path.resolve(),
+            args.caddy_service_name,
         )
     if args.install_systemd_user:
         install_systemd_user_service(service_file, args.service_name)
@@ -555,6 +655,7 @@ def main() -> None:
         logrotate_file,
         cron_file,
         service_file,
+        *([caddy_file] if normalized_public_base_url else []),
     ]:
         print(f"- {path}")
 
@@ -565,18 +666,32 @@ def main() -> None:
     print(f"- Log file: {log_file}")
     print(f"- Debug log file: {debug_log_path}")
     print(f"- Logrotate config: {logrotate_file}")
+    if normalized_public_base_url:
+        print(f"- Generated Caddy config: {caddy_file}")
     if installed_logrotate_path is not None:
         print(f"- Installed logrotate config: {installed_logrotate_path}")
+    if installed_caddy_path is not None:
+        print(f"- Installed Caddy config: {installed_caddy_path}")
     if args.install_systemd_user:
         print("- Admin app service installed and restarted. Check: systemctl --user status "
               f"{args.service_name}")
     else:
         print("- Admin app not started by default. Pass --install-systemd-user to install "
               "and start it.")
+    if args.install_caddy:
+        print(f"- Caddy config installed and reloaded. Check: systemctl status {args.caddy_service_name}")
+    elif normalized_public_base_url:
+        print("- Caddy config not installed by default. Pass --install-caddy to install "
+              "and reload it.")
     print("- If you passed --install-crontab, check: crontab -l")
-    base_url_warning = public_base_url_warning(normalized_public_base_url, args.app_port)
+    base_url_warning = public_base_url_warning(normalized_public_base_url)
     if base_url_warning:
         print(f"- {base_url_warning}")
+    if normalized_public_base_url and normalized_app_host != args.app_host:
+        print(
+            "- App bind host normalized for reverse proxy use: "
+            f"{args.app_host} -> {normalized_app_host}"
+        )
 
 
 if __name__ == "__main__":
