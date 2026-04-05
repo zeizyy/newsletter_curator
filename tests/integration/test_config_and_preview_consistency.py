@@ -44,6 +44,7 @@ def test_checked_in_config_keeps_tracking_safe_and_explicit():
     config = load_config("config.yaml")
 
     assert "subscribers" not in raw
+    assert config["additional_sources"]["max_total"] == DEFAULT_CONFIG["additional_sources"]["max_total"]
     assert config["database"]["newsletter_ttl_days"] == 7
     assert config["database"]["allow_schema_reset"] is False
     assert config["email"]["digest_subject"] == "AI Signal Daily"
@@ -51,6 +52,8 @@ def test_checked_in_config_keeps_tracking_safe_and_explicit():
     assert config["tracking"]["open_enabled"] is False
     assert config["tracking"]["click_enabled"] is False
     assert config["tracking"]["base_url"] == ""
+    assert DEFAULT_CONFIG["tracking"]["open_enabled"] is False
+    assert DEFAULT_CONFIG["tracking"]["click_enabled"] is False
 
 
 def test_admin_form_blank_fields_use_runtime_defaults():

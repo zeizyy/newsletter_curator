@@ -43,7 +43,7 @@ additional_sources:
   feeds_file: ""
   hours: 24
   top_per_category: 5
-  max_total: 20
+  max_total: 30
 
 openai:
   reasoning_model: gpt-5-mini

@@ -460,7 +460,7 @@ Edit `config.yaml`:
 - `additional_sources.enabled` (runtime default `false`; `true` in the current checked-in `config.yaml`)
 - `additional_sources.script_path` (default `skills/daily-news-curator/scripts/build_daily_digest.py`)
 - `additional_sources.feeds_file` (optional custom feed list for the source script)
-- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total` (runtime default `30`; current checked-in `config.yaml` uses `20`)
+- `additional_sources.hours`, `additional_sources.top_per_category`, `additional_sources.max_total` (default `30`)
 - `limits.max_links_per_email`
 - `limits.select_top_stories`
 - `limits.max_per_category`

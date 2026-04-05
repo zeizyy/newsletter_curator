@@ -44,6 +44,14 @@ Add new entries below this line.
 - Open risks: Preview still shows only the default audience variant, so personalized-profile preview remains out of scope for this pass.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
 
+### 2026-04-05 - T72 follow-up fixed remaining config parity
+- Context: A post-implementation evaluator pass caught one remaining drift point after the first commit: `additional_sources.max_total` and tracking toggle defaults still disagreed between runtime defaults and the checked-in config.
+- Files changed: `config.yaml`, `curator/config.py`, `README.md`, `tests/integration/test_config_and_preview_consistency.py`
+- Tests run: `uv run pytest tests/integration/test_config_and_preview_consistency.py tests/integration/test_discovery_fetch_budget_increases_recall.py tests/integration/test_default_config_includes_repo_persona.py -q`
+- Outcome: The checked-in config now uses `additional_sources.max_total = 30`, runtime defaults explicitly include `tracking.open_enabled` and `tracking.click_enabled`, and the config-parity regression now checks the actual intended alignment instead of asserting the mismatch.
+- Open risks: Preview still shows only the default audience variant, so personalized-profile preview remains out of scope for this pass.
+- Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
 ### 2026-03-21 - T0 initialized offline test scaffolding
 - Context: Built the first executable engineering task in the harness and kept the current pipeline behavior unchanged.
 - Files changed: `pyproject.toml`, `uv.lock`, `tests/__init__.py`, `tests/conftest.py`, `tests/fakes.py`, `tests/helpers.py`, `tests/fixtures/newsletter_sample.html`, `tests/integration/test_smoke_offline_pipeline.py`, `agent_tasks.json`
