@@ -113,22 +113,13 @@ def test_delivery_uses_configured_public_host_for_settings_and_tracking(monkeypa
 
     assert body.startswith("Manage your settings: https://curator.example.com/settings\n\n")
     settings_match = re.search(r'href="https://curator\.example\.com/settings"', html)
-    tracked_match = re.search(
-        r'data-curator-track-link="1" href="(https://curator\.example\.com/track/click/[^"]+)"',
-        html,
-    )
-    direct_match = re.search(
-        r'data-curator-direct-link="1" href="(https://example\.com/markets/rates-reset)"',
-        html,
-    )
+    tracked_match = re.search(r'href="(https://curator\.example\.com/track/click/[^"]+)"', html)
     open_match = re.search(r'src="(https://curator\.example\.com/track/open/[^"]+\.gif)"', html)
 
     assert settings_match is not None
     assert tracked_match is not None
-    assert direct_match is not None
     assert open_match is not None
     assert settings_match.start() < tracked_match.start()
-    assert tracked_match.group(1) != direct_match.group(1)
 
     counts = repository.get_table_counts()
     assert counts["newsletter_telemetry"] == 1
@@ -157,8 +148,7 @@ def test_delivery_skips_tracking_when_public_host_is_unconfigured(monkeypatch, t
     assert "/track/click/" not in html
     assert "127.0.0.1" not in html
     assert "0.0.0.0" not in html
-    assert 'data-curator-track-link="1" href="https://example.com/markets/rates-reset"' in html
-    assert 'data-curator-direct-link="1" href="https://example.com/markets/rates-reset"' in html
+    assert 'href="https://example.com/markets/rates-reset"' in html
 
     counts = repository.get_table_counts()
     assert counts["newsletter_telemetry"] == 0

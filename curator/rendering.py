@@ -321,21 +321,12 @@ def _render_email_safe_story_card(entry: dict) -> str:
     takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
     why_text = str(normalized_entry["why_this_matters"]).strip()
     other = [str(item) for item in normalized_entry["other_paragraphs"]]
-    tracked_link_html = ""
-    direct_link_html = ""
-    if url:
-        tracked_link_html = (
-            f'<a {TRACKED_LINK_MARKER} href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
-            'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
-        )
-        direct_link_html = (
-            f'<a data-curator-direct-link="1" href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
-            'style="color:#5b6a78;text-decoration:underline;font-weight:600;">Direct link if tracking is unavailable</a>'
-        )
-    link_html = ""
-    if tracked_link_html or direct_link_html:
-        separator = " &nbsp;|&nbsp; " if tracked_link_html and direct_link_html else ""
-        link_html = f"{tracked_link_html}{separator}{direct_link_html}"
+    link_html = (
+        f'<a {TRACKED_LINK_MARKER} href="{html.escape(url)}" target="_blank" rel="noreferrer noopener" '
+        'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Read original</a>'
+        if url
+        else ""
+    )
 
     metadata_parts = []
     if timestamp:
@@ -438,13 +429,10 @@ def _render_settings_link_html(settings_url: str) -> str:
         return ""
     safe_url = html.escape(normalized)
     return (
-        '<div style="padding:14px 18px 0 18px;background:#ffffff;">'
-        '<div style="padding:10px 12px;border:1px solid #d7efe6;border-radius:14px;'
-        'background:#eef8f4;font-size:13px;line-height:1.6;color:#244234;">'
+        '<div style="margin:12px 0 0 0;font-size:13px;line-height:1.6;color:rgba(243,255,251,0.88);">'
         'Manage your digest: '
         f'<a href="{safe_url}" target="_blank" rel="noreferrer noopener" '
-        'style="color:#0c7a5b;text-decoration:underline;font-weight:700;">Subscriber settings</a>'
-        '</div>'
+        'style="color:#f3fffb;text-decoration:underline;font-weight:700;">Subscriber settings</a>'
         '</div>'
     )
 
