@@ -167,6 +167,24 @@ def normalize_app_bind_host(app_host: str, public_base_url: str) -> str:
     return normalized_host
 
 
+def normalize_app_bind_port(app_port: int, public_base_url: str) -> int:
+    normalized_port = int(app_port)
+    configured = normalize_public_base_url(public_base_url)
+    if not configured:
+        return normalized_port
+    parsed = urlparse(configured)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return normalized_port
+    public_port = parsed.port
+    if public_port is None:
+        public_port = 443 if parsed.scheme == "https" else 80
+    if public_port != normalized_port:
+        return normalized_port
+    if normalized_port >= 65535:
+        return 65534
+    return max(1, normalized_port + 1)
+
+
 def normalize_public_base_url(public_base_url: str) -> str:
     configured = str(public_base_url or "").strip()
     if not configured:
@@ -477,6 +495,7 @@ def main() -> None:
     config_path = (args.config_path or (repo_dir / "config.yaml")).resolve()
     log_file = (args.cron_log_file or (repo_dir / "deploy" / "generated" / "cron.log")).resolve()
     normalized_app_host = normalize_app_bind_host(args.app_host, normalized_public_base_url)
+    normalized_app_port = normalize_app_bind_port(args.app_port, normalized_public_base_url)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -521,7 +540,7 @@ def main() -> None:
             repo_dir=repo_dir,
             config_path=config_path,
             app_host=normalized_app_host,
-            app_port=args.app_port,
+            app_port=normalized_app_port,
             admin_token=args.admin_token,
             mcp_token=args.mcp_token,
             debug_log_token=debug_log_token,
@@ -616,7 +635,7 @@ def main() -> None:
             build_caddyfile(
                 public_base_url=normalized_public_base_url,
                 app_host=normalized_app_host,
-                app_port=args.app_port,
+                app_port=normalized_app_port,
             ),
             mode=0o644,
         )
@@ -691,6 +710,11 @@ def main() -> None:
         print(
             "- App bind host normalized for reverse proxy use: "
             f"{args.app_host} -> {normalized_app_host}"
+        )
+    if normalized_public_base_url and normalized_app_port != args.app_port:
+        print(
+            "- App bind port normalized for reverse proxy use: "
+            f"{args.app_port} -> {normalized_app_port}"
         )
 
 
