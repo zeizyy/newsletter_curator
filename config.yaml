@@ -71,4 +71,3 @@ tracking:
   enabled: true
   open_enabled: true
   click_enabled: true
-  base_url: ""

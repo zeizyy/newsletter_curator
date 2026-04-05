@@ -58,7 +58,6 @@ DEFAULT_CONFIG = {
         "enabled": False,
         "open_enabled": False,
         "click_enabled": False,
-        "base_url": os.getenv("CURATOR_PUBLIC_BASE_URL", "").strip(),
     },
 }
 

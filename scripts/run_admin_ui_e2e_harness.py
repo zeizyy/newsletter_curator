@@ -126,7 +126,7 @@ def seed_review_fixture(
                 "source_quotas": {"gmail": 2, "additional_source": 4},
             },
             "persona": {"text": "Default persona for fallback testing."},
-            "tracking": {"enabled": False, "base_url": public_base_url},
+            "tracking": {"enabled": False},
         },
     )
     config = config_module.load_config(config_path)

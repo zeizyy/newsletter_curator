@@ -30,6 +30,7 @@ from curator.mcp_server import (
 from curator.repository import SQLiteRepository
 from curator.telemetry import (
     build_settings_url,
+    resolve_public_base_url,
     resolve_tracking_base_url,
     strip_tracking_pixel,
     telemetry_enabled,
@@ -284,11 +285,11 @@ def build_gmail_auth_presence_check(config: dict) -> dict:
 
 def build_public_base_url_check(config: dict) -> dict:
     tracking_on = telemetry_enabled(config)
-    tracking_base_url = resolve_tracking_base_url(config)
+    configured_public_base_url = resolve_public_base_url()
     subscriber_base = subscriber_public_base_url()
     details = [
         f"tracking_enabled={tracking_on}",
-        f"tracking_base_url={tracking_base_url or '(blank)'}",
+        f"configured_public_base_url={configured_public_base_url or '(blank)'}",
         f"subscriber_public_base_url={subscriber_base or '(blank)'}",
     ]
     if not tracking_on:
@@ -299,8 +300,12 @@ def build_public_base_url_check(config: dict) -> dict:
             "summary": "Tracking is disabled; public base URL consistency is not required right now.",
             "details": details,
         }
-    parsed_tracking = urlsplit(tracking_base_url)
-    if not tracking_base_url or parsed_tracking.scheme not in {"http", "https"} or not parsed_tracking.netloc:
+    parsed_public = urlsplit(configured_public_base_url)
+    if (
+        not configured_public_base_url
+        or parsed_public.scheme not in {"http", "https"}
+        or not parsed_public.netloc
+    ):
         return {
             "label": "Public Base URL Consistency",
             "status": "error",
@@ -308,12 +313,12 @@ def build_public_base_url_check(config: dict) -> dict:
             "summary": "Tracking is enabled but the public base URL is not a valid absolute HTTP(S) URL.",
             "details": details,
         }
-    if tracking_base_url.rstrip("/") != subscriber_base.rstrip("/"):
+    if configured_public_base_url.rstrip("/") != subscriber_base.rstrip("/"):
         return {
             "label": "Public Base URL Consistency",
             "status": "error",
             "tone": "warning",
-            "summary": "Mismatch between tracking base URL and subscriber public base URL.",
+            "summary": "Mismatch between configured public base URL and subscriber public base URL.",
             "details": details,
         }
     return {
@@ -671,9 +676,9 @@ def clear_admin_session_cookie(response) -> None:
 
 
 def subscriber_public_base_url() -> str:
-    configured = str(os.getenv("CURATOR_PUBLIC_BASE_URL", "")).strip()
+    configured = resolve_public_base_url()
     if configured:
-        return configured.rstrip("/")
+        return configured
     return request.url_root.rstrip("/")
 
 
@@ -761,7 +766,7 @@ def allowed_mcp_origins() -> set[str]:
     origins = {
         origin
         for origin in {
-            _normalize_origin(os.getenv("CURATOR_PUBLIC_BASE_URL", "")),
+            _normalize_origin(resolve_public_base_url()),
             _normalize_origin(request.url_root),
         }
         if origin

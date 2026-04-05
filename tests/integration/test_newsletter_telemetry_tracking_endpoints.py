@@ -18,7 +18,7 @@ def test_newsletter_telemetry_tracking_endpoints(monkeypatch, tmp_path):
         tmp_path,
         overrides={
             "database": {"path": str(tmp_path / "curator.sqlite3")},
-            "tracking": {"enabled": True, "base_url": "http://curator.test"},
+            "tracking": {"enabled": True, "open_enabled": True, "click_enabled": True},
             "email": {
                 "digest_recipients": ["tracking@example.com"],
                 "digest_subject": "Tracked Digest",
@@ -31,6 +31,7 @@ def test_newsletter_telemetry_tracking_endpoints(monkeypatch, tmp_path):
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://curator.test")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     config = main.load_config()

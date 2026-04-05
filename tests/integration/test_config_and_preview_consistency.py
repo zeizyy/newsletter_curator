@@ -39,7 +39,7 @@ def build_admin_form(config: dict) -> MultiDict:
     )
 
 
-def test_checked_in_config_keeps_tracking_safe_and_explicit():
+def test_checked_in_config_keeps_tracking_explicit_without_public_origin():
     raw = yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
     config = load_config("config.yaml")
 
@@ -51,7 +51,8 @@ def test_checked_in_config_keeps_tracking_safe_and_explicit():
     assert config["tracking"]["enabled"] is True
     assert config["tracking"]["open_enabled"] is True
     assert config["tracking"]["click_enabled"] is True
-    assert config["tracking"]["base_url"] == ""
+    assert "base_url" not in raw["tracking"]
+    assert "base_url" not in config["tracking"]
 
 
 def test_admin_form_blank_fields_use_runtime_defaults():

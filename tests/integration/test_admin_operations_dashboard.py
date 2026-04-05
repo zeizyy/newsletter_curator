@@ -25,7 +25,7 @@ def test_admin_operations_dashboard(monkeypatch, tmp_path):
                 "token": str(token_path),
             },
             "additional_sources": {"enabled": True, "hours": 24},
-            "tracking": {"enabled": True, "base_url": "https://tracking.example.com"},
+            "tracking": {"enabled": True, "open_enabled": True, "click_enabled": True},
         },
     )
     monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "https://subscriber.example.com")
@@ -103,8 +103,7 @@ def test_admin_operations_dashboard(monkeypatch, tmp_path):
     assert "Last Successful Ingest" in html
     assert "Last Successful Delivery" in html
     assert "Daily Delivery Status" in html
-    assert "Mismatch between tracking base URL and subscriber public base URL." in html
-    assert "tracking.example.com" in html
+    assert "Tracking links and subscriber links resolve to the same public host." in html
     assert "subscriber.example.com" in html
     assert "buttondown" in html
     assert "24 sent" in html

@@ -56,7 +56,7 @@ def _seed_ranked_stories(repository) -> None:
     )
 
 
-def _run_delivery(monkeypatch, tmp_path, *, tracking_overrides: dict) -> tuple[dict, list[dict], object]:
+def _run_delivery(monkeypatch, tmp_path, *, tracking_overrides: dict, public_base_url: str = "") -> tuple[dict, list[dict], object]:
     main = importlib.import_module("main")
     config_path = write_temp_config(
         tmp_path,
@@ -75,6 +75,10 @@ def _run_delivery(monkeypatch, tmp_path, *, tracking_overrides: dict) -> tuple[d
             },
         },
     )
+    if public_base_url:
+        monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", public_base_url)
+    else:
+        monkeypatch.delenv("CURATOR_PUBLIC_BASE_URL", raising=False)
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     config = main.load_config()
     repository = get_repository_from_config(config)
@@ -102,7 +106,8 @@ def test_delivery_uses_configured_public_host_for_settings_and_tracking(monkeypa
     result, sent_messages, repository = _run_delivery(
         monkeypatch,
         tmp_path,
-        tracking_overrides={"enabled": True, "base_url": "https://curator.example.com"},
+        tracking_overrides={"enabled": True, "open_enabled": True, "click_enabled": True},
+        public_base_url="https://curator.example.com",
     )
 
     assert result["status"] == "completed"
@@ -134,7 +139,7 @@ def test_delivery_skips_tracking_when_public_host_is_unconfigured(monkeypatch, t
     result, sent_messages, repository = _run_delivery(
         monkeypatch,
         tmp_path,
-        tracking_overrides={"enabled": True, "base_url": ""},
+        tracking_overrides={"enabled": True, "open_enabled": True, "click_enabled": True},
     )
 
     assert result["status"] == "completed"

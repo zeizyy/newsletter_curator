@@ -35,7 +35,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
                 "digest_recipients": ["cached@example.com"],
                 "digest_subject": "Cached Daily Digest",
             },
-            "tracking": {"enabled": True, "base_url": "http://curator.test"},
+            "tracking": {"enabled": True, "open_enabled": True, "click_enabled": True},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -44,6 +44,7 @@ def test_preview_and_delivery_reuse_persisted_daily_newsletter(monkeypatch, tmp_
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://curator.test")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)

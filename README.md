@@ -284,7 +284,7 @@ Notes:
 - The bootstrap does not start the admin app unless you explicitly pass `--install-systemd-user`.
 - The script reads `OPENAI_API_KEY` from the current environment if `--openai-api-key` is not passed explicitly.
 - The script reads `BUTTONDOWN_API_KEY` from the current environment if `--buttondown-api-key` is not passed explicitly.
-- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin consumed by login links and `tracking.base_url` fallback behavior. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
+- Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin written to `CURATOR_PUBLIC_BASE_URL` in the generated server env file. If you access the server directly on a non-default port such as `:8080`, include that port in the URL.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
@@ -470,10 +470,11 @@ Edit `config.yaml`:
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
 - `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
-- `tracking.open_enabled` (optional explicit toggle for the open pixel; checked-in config keeps it `false` until you opt in)
-- `tracking.click_enabled` (optional explicit toggle for tracked link redirects; checked-in config keeps it `false` until you opt in)
-- `tracking.base_url` (optional; falls back only to `CURATOR_PUBLIC_BASE_URL`)
+- `tracking.open_enabled` (optional explicit toggle for the open pixel; the checked-in config currently enables it)
+- `tracking.click_enabled` (optional explicit toggle for tracked link redirects; the checked-in config currently enables it)
 - `email.digest_recipients` and `email.alert_recipient`
+
+The public origin for subscriber links, settings links, and tracked URLs is not stored in checked-in YAML. Set `CURATOR_PUBLIC_BASE_URL` through the bootstrap-generated server env file instead.
 
 ### Persona Behavior
 `persona.text` now affects only the final delivery ranking step.

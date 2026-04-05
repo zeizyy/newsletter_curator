@@ -48,16 +48,16 @@ def telemetry_enabled(config: dict) -> bool:
     return open_tracking_enabled(config) or click_tracking_enabled(config)
 
 
-def resolve_tracking_base_url(config: dict) -> str:
-    tracking_cfg = config.get("tracking", {})
-    base_url = str(tracking_cfg.get("base_url", "")).strip()
-    if base_url:
-        return base_url.rstrip("/")
-
+def resolve_public_base_url() -> str:
     env_base_url = os.getenv("CURATOR_PUBLIC_BASE_URL", "").strip()
     if env_base_url:
         return env_base_url.rstrip("/")
     return ""
+
+
+def resolve_tracking_base_url(config: dict) -> str:
+    del config
+    return resolve_public_base_url()
 
 
 def build_settings_url(base_url: str) -> str:

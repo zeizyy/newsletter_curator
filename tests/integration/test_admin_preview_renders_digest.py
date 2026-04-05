@@ -20,7 +20,6 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
                 "digest_recipients": ["preview@example.com"],
                 "digest_subject": "Preview Digest",
             },
-            "tracking": {"base_url": "https://curator.example.com"},
             "additional_sources": {"enabled": True, "hours": 100000},
             "limits": {
                 "select_top_stories": 2,
@@ -29,6 +28,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
             },
         },
     )
+    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "https://curator.example.com")
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
