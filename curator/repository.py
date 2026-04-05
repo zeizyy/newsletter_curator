@@ -1702,6 +1702,15 @@ class SQLiteRepository:
             "END"
         )
 
+    def _delivery_sent_recipients_sql(self, alias: str) -> str:
+        return (
+            "COALESCE("
+            f"CAST(json_extract({alias}.metadata_json, '$.pipeline_result.sent_recipients') AS INTEGER), "
+            f"CAST(json_extract({alias}.metadata_json, '$.sent_recipients') AS INTEGER), "
+            "0"
+            ")"
+        )
+
     def list_newsletter_analytics(
         self,
         *,
@@ -1711,6 +1720,7 @@ class SQLiteRepository:
     ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
+        sent_recipients_sql = self._delivery_sent_recipients_sql("dr")
         with self.connect() as connection:
             if include_all_audiences:
                 rows = connection.execute(
@@ -1734,6 +1744,7 @@ class SQLiteRepository:
                         COALESCE(opens.unique_opens, 0) AS unique_opens,
                         COALESCE(clicks.total_clicks, 0) AS total_clicks,
                         COALESCE(clicks.unique_clicks, 0) AS unique_clicks,
+                        COALESCE(deliveries.total_stories_delivered, 0) AS total_stories_delivered,
                         (
                             SELECT tl.story_title
                             FROM daily_newsletters dn_top
@@ -1783,6 +1794,16 @@ class SQLiteRepository:
                         JOIN newsletter_click_events nce ON nce.daily_newsletter_id = dn_click.id
                         GROUP BY dn_click.newsletter_date
                     ) AS clicks ON clicks.newsletter_date = dn.newsletter_date
+                    LEFT JOIN (
+                        SELECT
+                            dn_delivery.newsletter_date,
+                            SUM(
+                                json_array_length(dn_delivery.selected_items_json) * {sent_recipients_sql}
+                            ) AS total_stories_delivered
+                        FROM daily_newsletters dn_delivery
+                        LEFT JOIN delivery_runs dr ON dr.id = dn_delivery.delivery_run_id
+                        GROUP BY dn_delivery.newsletter_date
+                    ) AS deliveries ON deliveries.newsletter_date = dn.newsletter_date
                     GROUP BY dn.newsletter_date
                     ORDER BY dn.newsletter_date DESC, MAX(dn.id) DESC
                     LIMIT ?
@@ -1803,6 +1824,7 @@ class SQLiteRepository:
                         COALESCE(opens.unique_opens, 0) AS unique_opens,
                         COALESCE(clicks.total_clicks, 0) AS total_clicks,
                         COALESCE(clicks.unique_clicks, 0) AS unique_clicks,
+                        COALESCE(deliveries.total_stories_delivered, 0) AS total_stories_delivered,
                         (
                             SELECT tl.story_title
                             FROM tracked_links tl
@@ -1847,6 +1869,14 @@ class SQLiteRepository:
                         FROM newsletter_click_events nce
                         GROUP BY nce.daily_newsletter_id
                     ) AS clicks ON clicks.daily_newsletter_id = dn.id
+                    LEFT JOIN (
+                        SELECT
+                            dn_delivery.id AS daily_newsletter_id,
+                            json_array_length(dn_delivery.selected_items_json) * {sent_recipients_sql}
+                                AS total_stories_delivered
+                        FROM daily_newsletters dn_delivery
+                        LEFT JOIN delivery_runs dr ON dr.id = dn_delivery.delivery_run_id
+                    ) AS deliveries ON deliveries.daily_newsletter_id = dn.id
                     WHERE dn.audience_key = ?
                     ORDER BY dn.newsletter_date DESC, dn.id DESC
                     LIMIT ?
@@ -1862,10 +1892,13 @@ class SQLiteRepository:
             else:
                 selected_items = json.loads(str(payload.pop("selected_items_json", "") or "[]"))
                 payload["selected_items_count"] = len(selected_items)
-            unique_opens = int(payload["unique_opens"])
+            payload["total_stories_delivered"] = int(payload.get("total_stories_delivered", 0) or 0)
+            total_stories_delivered = int(payload["total_stories_delivered"])
             unique_clicks = int(payload["unique_clicks"])
             payload["click_through_rate"] = (
-                round((unique_clicks / unique_opens) * 100, 1) if unique_opens else None
+                round((unique_clicks / total_stories_delivered) * 100, 1)
+                if total_stories_delivered
+                else None
             )
             analytics.append(payload)
         return analytics
@@ -1879,6 +1912,7 @@ class SQLiteRepository:
     ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
+        sent_recipients_sql = self._delivery_sent_recipients_sql("dr")
         today = datetime.now(UTC).date()
         windows: list[dict] = []
 
@@ -1895,7 +1929,11 @@ class SQLiteRepository:
                 row = connection.execute(
                     f"""
                     WITH scoped_newsletters AS (
-                        SELECT id, newsletter_date
+                        SELECT
+                            id,
+                            newsletter_date,
+                            delivery_run_id,
+                            json_array_length(selected_items_json) AS selected_items_count
                         FROM daily_newsletters
                         {scoped_newsletters_where}
                     ),
@@ -1916,23 +1954,36 @@ class SQLiteRepository:
                         FROM newsletter_click_events nce
                         WHERE nce.daily_newsletter_id IN (SELECT id FROM scoped_newsletters)
                         GROUP BY nce.daily_newsletter_id
+                    ),
+                    delivery_stats AS (
+                        SELECT
+                            sn.id AS daily_newsletter_id,
+                            sn.selected_items_count * {sent_recipients_sql} AS total_stories_delivered
+                        FROM scoped_newsletters sn
+                        LEFT JOIN delivery_runs dr ON dr.id = sn.delivery_run_id
                     )
                     SELECT
                         (SELECT COUNT(*) FROM scoped_newsletters) AS newsletters,
                         COALESCE((SELECT SUM(total_opens) FROM open_stats), 0) AS total_opens,
                         COALESCE((SELECT SUM(unique_opens) FROM open_stats), 0) AS unique_opens,
                         COALESCE((SELECT SUM(total_clicks) FROM click_stats), 0) AS total_clicks,
-                        COALESCE((SELECT SUM(unique_clicks) FROM click_stats), 0) AS unique_clicks
+                        COALESCE((SELECT SUM(unique_clicks) FROM click_stats), 0) AS unique_clicks,
+                        COALESCE(
+                            (SELECT SUM(total_stories_delivered) FROM delivery_stats),
+                            0
+                        ) AS total_stories_delivered
                     """,
                     params,
                 ).fetchone()
                 payload = dict(row or {})
-                unique_opens = int(payload.get("unique_opens", 0) or 0)
+                total_stories_delivered = int(payload.get("total_stories_delivered", 0) or 0)
                 unique_clicks = int(payload.get("unique_clicks", 0) or 0)
                 payload["days"] = days
                 payload["since_date"] = since_date
                 payload["click_through_rate"] = (
-                    round((unique_clicks / unique_opens) * 100, 1) if unique_opens else None
+                    round((unique_clicks / total_stories_delivered) * 100, 1)
+                    if total_stories_delivered
+                    else None
                 )
                 windows.append(payload)
         return windows

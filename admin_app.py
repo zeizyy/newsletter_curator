@@ -1699,7 +1699,7 @@ def analytics_dashboard():
     merged = load_merged_config()
     repository = load_repository(merged)
     recent_newsletters = (
-        repository.list_newsletter_analytics(limit=14, include_all_audiences=True)
+        repository.list_newsletter_analytics(limit=7, include_all_audiences=True)
         if repository
         else []
     )

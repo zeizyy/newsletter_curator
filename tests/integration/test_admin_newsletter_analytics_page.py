@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib
+from types import SimpleNamespace
 
 from curator.jobs import get_repository_from_config
 from tests.helpers import write_temp_config
@@ -26,9 +27,28 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     today = dt.datetime.now(dt.UTC).date()
     newsletter_a_date = today.isoformat()
     newsletter_b_date = (today - dt.timedelta(days=1)).isoformat()
+    delivery_run_a_id = repository.create_delivery_run(metadata={"test": True})
+    repository.complete_delivery_run(
+        delivery_run_a_id,
+        status="completed",
+        metadata={"pipeline_result": {"sent_recipients": 2}},
+    )
+    delivery_run_a_personalized_id = repository.create_delivery_run(metadata={"test": True})
+    repository.complete_delivery_run(
+        delivery_run_a_personalized_id,
+        status="completed",
+        metadata={"pipeline_result": {"sent_recipients": 3}},
+    )
+    delivery_run_b_id = repository.create_delivery_run(metadata={"test": True})
+    repository.complete_delivery_run(
+        delivery_run_b_id,
+        status="completed",
+        metadata={"pipeline_result": {"sent_recipients": 4}},
+    )
 
     newsletter_a_id = repository.upsert_daily_newsletter(
         newsletter_date=newsletter_a_date,
+        delivery_run_id=delivery_run_a_id,
         subject="Digest A",
         body="Digest A body",
         html_body="<html><body>Digest A</body></html>",
@@ -41,6 +61,7 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     newsletter_a_personalized_id = repository.upsert_daily_newsletter(
         newsletter_date=newsletter_a_date,
         audience_key="df18eaca02a227a7",
+        delivery_run_id=delivery_run_a_personalized_id,
         subject="Digest A Personalized",
         body="Digest A personalized body",
         html_body="<html><body>Digest A Personalized</body></html>",
@@ -52,6 +73,7 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     )
     newsletter_b_id = repository.upsert_daily_newsletter(
         newsletter_date=newsletter_b_date,
+        delivery_run_id=delivery_run_b_id,
         subject="Digest B",
         body="Digest B body",
         html_body="<html><body>Digest B</body></html>",
@@ -140,4 +162,45 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     assert "5 clicks" in html
     assert "6 clicks" in html
     assert "5 unique clicks" in html
-    assert "100.0%" in html
+    assert "14 story deliveries" in html
+    assert "10 story deliveries" in html
+    assert "4 story deliveries" in html
+    assert "35.7%" in html
+    assert "30.0%" in html
+    assert "25.0%" in html
+    assert "100.0%" not in html
+
+
+def test_admin_newsletter_analytics_page_caps_recent_newsletters_and_top_clicked(monkeypatch):
+    admin_app = importlib.import_module("admin_app")
+    monkeypatch.setenv("CURATOR_ADMIN_TOKEN", "ops-secret")
+
+    captured: dict[str, tuple[int, bool] | None] = {
+        "recent_newsletters": None,
+        "top_clicked_stories": None,
+    }
+
+    def list_newsletter_analytics(*, limit: int, include_all_audiences: bool):
+        captured["recent_newsletters"] = (limit, include_all_audiences)
+        return []
+
+    def list_top_clicked_stories(*, trailing_days: int, limit: int, include_all_audiences: bool):
+        assert trailing_days == 30
+        captured["top_clicked_stories"] = (limit, include_all_audiences)
+        return []
+
+    fake_repository = SimpleNamespace(
+        list_newsletter_analytics=list_newsletter_analytics,
+        get_newsletter_aggregate_stats=lambda **_: [],
+        list_top_clicked_stories=list_top_clicked_stories,
+    )
+
+    monkeypatch.setattr(admin_app, "load_merged_config", lambda: {})
+    monkeypatch.setattr(admin_app, "load_repository", lambda _merged: fake_repository)
+
+    client = admin_app.app.test_client()
+    response = client.get("/analytics", headers={"X-Admin-Token": "ops-secret"})
+
+    assert response.status_code == 200
+    assert captured["recent_newsletters"] == (7, True)
+    assert captured["top_clicked_stories"] == (10, True)

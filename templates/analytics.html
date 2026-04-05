@@ -19,7 +19,7 @@
         <div class="section-kicker">Trailing Windows</div>
         <h2>Windowed performance</h2>
       </div>
-      <div class="section-copy">CTR uses unique clicks divided by unique opens so the comparison survives duplicate loads and mail-client noise.</div>
+      <div class="section-copy">CTR uses unique clicks divided by total story deliveries across all recipients.</div>
     </div>
     <div class="stat-grid">
       {% for window in window_stats %}
@@ -29,6 +29,7 @@
         <div class="stat-sub">newsletters since {{ window.since_date }}</div>
         <div class="stat-sub">{{ window.total_opens }} opens · {{ window.unique_opens }} unique opens</div>
         <div class="stat-sub">{{ window.total_clicks }} clicks · {{ window.unique_clicks }} unique clicks</div>
+        <div class="stat-sub">{{ window.total_stories_delivered }} story deliveries</div>
         <div class="stat-sub">CTR: {{ "%.1f"|format(window.click_through_rate) if window.click_through_rate is not none else "n/a" }}%</div>
       </article>
       {% endfor %}
@@ -38,10 +39,10 @@
   <section class="surface surface-section">
     <div class="section-head">
       <div>
-        <div class="section-kicker">Issue Table</div>
-        <h2>Recent newsletters</h2>
+        <div class="section-kicker">Past Week</div>
+        <h2>Past week newsletters</h2>
       </div>
-      <div class="section-copy">{{ recent_newsletters|length }} stored newsletters with engagement rollups.</div>
+      <div class="section-copy">{{ recent_newsletters|length }} stored newsletters from the past week with engagement rollups.</div>
     </div>
     {% if recent_newsletters %}
     <div class="table-wrap">
@@ -65,7 +66,10 @@
               <div class="muted">{{ newsletter.created_at }}</div>
             </td>
             <td data-label="Subject">{{ newsletter.subject }}</td>
-            <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td data-label="Stories">
+              <span class="pill">{{ newsletter.selected_items_count }} stories</span>
+              <div class="muted">{{ newsletter.total_stories_delivered }} story deliveries</div>
+            </td>
             <td data-label="Opens">
               <div>{{ newsletter.total_opens }} opens</div>
               <div class="muted">{{ newsletter.unique_opens }} unique</div>
