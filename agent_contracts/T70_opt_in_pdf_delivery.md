@@ -8,7 +8,7 @@ Add an opt-in PDF delivery format for subscriber profiles so Kindle-oriented rea
 - Add a compatible repository migration so existing databases gain the new field without forcing a schema reset, and treat missing legacy values as `email`.
 - Expose the delivery-format choice on `/settings` and persist it in SQLite alongside `persona_text` and `preferred_sources`.
 - Generate valid PDF bytes from the canonical ranked newsletter content already used for email delivery. The PDF must preserve story order and the same summary text as the email render payload.
-- For subscribers with `delivery_format=pdf`, send a Gmail message with a short plain-text note plus one `application/pdf` attachment instead of the full HTML digest body.
+- For subscribers with `delivery_format=pdf`, keep the normal digest email body and HTML delivery, and add one `application/pdf` attachment to that same message.
 - Keep ranking, summarization, newsletter selection, preview behavior, and standard email delivery unchanged for non-PDF subscribers in this sprint.
 
 ## Acceptance Criteria
@@ -22,7 +22,7 @@ Add an opt-in PDF delivery format for subscriber profiles so Kindle-oriented rea
 - Add `tests/integration/test_subscriber_pdf_delivery_opt_in.py`.
 - Cover settings persistence so a logged-in subscriber can save `delivery_format=pdf` and reload it.
 - Cover repository migration or legacy-row fallback so profiles missing `delivery_format` still read back as `email`.
-- Cover mixed delivery routing so a PDF subscriber gets a message with a PDF attachment and no HTML digest body, while an email subscriber still gets the existing body and HTML output.
+- Cover mixed delivery routing so a PDF subscriber gets the existing body and HTML output plus a PDF attachment, while an email subscriber still gets the existing body and HTML output without the attachment.
 - Extract the generated PDF in test code to verify it contains the canonical ranked story titles in order.
 
 ## Test Command

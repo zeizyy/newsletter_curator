@@ -245,19 +245,6 @@ def finalize_delivery_newsletter(body: str, html_body: str) -> tuple[str, str]:
     return str(body or "").strip(), str(html_body or "").strip()
 
 
-def build_pdf_delivery_note(newsletter_date: str) -> str:
-    normalized_date = str(newsletter_date or "").strip()
-    if normalized_date:
-        return (
-            f"Attached is your {normalized_date} Newsletter Curator PDF digest.\n\n"
-            "You can forward the attachment to your Kindle email address or open it in any PDF reader."
-        )
-    return (
-        "Attached is your Newsletter Curator PDF digest.\n\n"
-        "You can forward the attachment to your Kindle email address or open it in any PDF reader."
-    )
-
-
 def resolve_delivery_subscribers(
     config: dict,
     *,
@@ -1522,10 +1509,13 @@ def run_delivery_job(
         send_body = body
         send_html = html_body
         attachments: list[dict] | None = None
-        telemetry_enabled = delivery_format == DEFAULT_SUBSCRIBER_DELIVERY_FORMAT
+        if daily_newsletter_id is not None:
+            send_html, tracked_link_count = build_tracked_send_html(
+                daily_newsletter_id,
+                html_body=html_body,
+                selected_items=selected_items,
+            )
         if delivery_format == "pdf":
-            send_body = build_pdf_delivery_note(newsletter_date)
-            send_html = None
             attachments = [
                 {
                     "filename": f"newsletter-curator-{newsletter_date}.pdf",
@@ -1538,12 +1528,6 @@ def run_delivery_job(
                     ),
                 }
             ]
-        elif daily_newsletter_id is not None:
-            send_html, tracked_link_count = build_tracked_send_html(
-                daily_newsletter_id,
-                html_body=html_body,
-                selected_items=selected_items,
-            )
         emit_event(
             "delivery_send_started",
             audience_key=audience_key,
@@ -1552,15 +1536,10 @@ def run_delivery_job(
             recipient_count=len(resolved_recipients),
             selected_item_count=len(selected_items),
             tracked_link_count=tracked_link_count,
-            telemetry_enabled=telemetry_enabled
-            and (open_tracking_enabled or click_tracking_enabled)
+            telemetry_enabled=(open_tracking_enabled or click_tracking_enabled)
             and daily_newsletter_id is not None,
-            open_tracking_enabled=telemetry_enabled
-            and open_tracking_enabled
-            and daily_newsletter_id is not None,
-            click_tracking_enabled=telemetry_enabled
-            and click_tracking_enabled
-            and daily_newsletter_id is not None,
+            open_tracking_enabled=open_tracking_enabled and daily_newsletter_id is not None,
+            click_tracking_enabled=click_tracking_enabled and daily_newsletter_id is not None,
             attachment_count=len(attachments or []),
             subject=subject,
         )

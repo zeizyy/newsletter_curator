@@ -260,8 +260,9 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
     assert email_message["html_body"] != ""
     assert email_message["attachments"] == []
 
-    assert "Kindle email address" in pdf_message["body"]
-    assert pdf_message["html_body"] == ""
+    assert "Rates reset changes software valuations" in pdf_message["body"]
+    assert "Model pricing shifted inference budgets" in pdf_message["body"]
+    assert pdf_message["html_body"] != ""
     assert len(pdf_message["attachments"]) == 1
     pdf_attachment = pdf_message["attachments"][0]
     assert pdf_attachment["mime_type"] == "application/pdf"
