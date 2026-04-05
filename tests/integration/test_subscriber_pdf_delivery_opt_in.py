@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from io import BytesIO
 import importlib
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 
 from pypdf import PdfReader
 
@@ -141,7 +142,7 @@ def test_subscriber_settings_page_can_persist_pdf_delivery_format(monkeypatch, t
     assert profile["delivery_format"] == "pdf"
 
 
-def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
+def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, capsys):
     main = importlib.import_module("main")
 
     config_path = write_temp_config(
@@ -157,6 +158,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
                 ],
                 "digest_subject": "Portable Digest",
             },
+            "tracking": {"enabled": True, "base_url": "https://curator.example.com"},
             "additional_sources": {"enabled": True, "hours": 48},
             "limits": {
                 "select_top_stories": 2,
@@ -230,6 +232,8 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
     result = main.run_job(config, FakeGmailService(messages=[]))
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
 
     assert result["status"] == "completed"
     assert result["personalized_delivery"] is True
@@ -260,11 +264,15 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
     assert "Model pricing shifted inference budgets" in email_message["body"]
     assert email_message["html_body"] != ""
     assert email_message["attachments"] == []
+    assert "/track/click/" in email_message["html_body"]
+    assert "/track/open/" in email_message["html_body"]
 
     assert "Rates reset changes software valuations" in pdf_message["body"]
     assert "Model pricing shifted inference budgets" in pdf_message["body"]
     assert pdf_message["html_body"] != ""
     assert len(pdf_message["attachments"]) == 1
+    assert "/track/click/" in pdf_message["html_body"]
+    assert "/track/open/" in pdf_message["html_body"]
     pdf_attachment = pdf_message["attachments"][0]
     assert pdf_attachment["mime_type"] == "application/pdf"
     assert pdf_attachment["filename"].endswith(".pdf")
@@ -277,3 +285,20 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path):
     assert first_title in pdf_text
     assert second_title in pdf_text
     assert pdf_text.index(first_title) < pdf_text.index(second_title)
+
+    pdf_delivery_started = next(
+        entry
+        for entry in events
+        if entry["event"] == "delivery_started" and entry["delivery_format"] == "pdf"
+    )
+    assert pdf_delivery_started["telemetry_enabled"] is True
+    assert pdf_delivery_started["open_tracking_enabled"] is True
+    assert pdf_delivery_started["click_tracking_enabled"] is True
+
+    pdf_tracking_prepared = next(
+        entry
+        for entry in events
+        if entry["event"] == "delivery_tracking_prepared" and entry["audience_key"] == pdf_delivery_started["audience_key"]
+    )
+    assert pdf_tracking_prepared["tracked_link_count"] == 2
+    assert pdf_tracking_prepared["click_tracking_enabled"] is True
