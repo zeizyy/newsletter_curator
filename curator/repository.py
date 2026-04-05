@@ -1707,81 +1707,163 @@ class SQLiteRepository:
         *,
         limit: int = 14,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        include_all_audiences: bool = False,
     ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
         with self.connect() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT
-                    dn.id,
-                    dn.newsletter_date,
-                    dn.audience_key,
-                    dn.subject,
-                    dn.created_at,
-                    dn.selected_items_json,
-                    COALESCE(opens.total_opens, 0) AS total_opens,
-                    COALESCE(opens.unique_opens, 0) AS unique_opens,
-                    COALESCE(clicks.total_clicks, 0) AS total_clicks,
-                    COALESCE(clicks.unique_clicks, 0) AS unique_clicks,
-                    (
-                        SELECT tl.story_title
-                        FROM tracked_links tl
-                        JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
-                        WHERE tl.daily_newsletter_id = dn.id
-                        GROUP BY tl.id, tl.story_title
-                        ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
-                        LIMIT 1
-                    ) AS top_story_title,
-                    (
-                        SELECT tl.target_url
-                        FROM tracked_links tl
-                        JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
-                        WHERE tl.daily_newsletter_id = dn.id
-                        GROUP BY tl.id, tl.target_url
-                        ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
-                        LIMIT 1
-                    ) AS top_story_url,
-                    (
-                        SELECT COUNT(nce_top.id)
-                        FROM tracked_links tl
-                        JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
-                        WHERE tl.daily_newsletter_id = dn.id
-                        GROUP BY tl.id
-                        ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
-                        LIMIT 1
-                    ) AS top_story_clicks
-                FROM daily_newsletters dn
-                LEFT JOIN (
+            if include_all_audiences:
+                rows = connection.execute(
+                    f"""
                     SELECT
-                        noe.daily_newsletter_id,
-                        COUNT(*) AS total_opens,
-                        COUNT(DISTINCT {open_visitor_key}) AS unique_opens
-                    FROM newsletter_open_events noe
-                    GROUP BY noe.daily_newsletter_id
-                ) AS opens ON opens.daily_newsletter_id = dn.id
-                LEFT JOIN (
+                        MAX(dn.id) AS id,
+                        dn.newsletter_date,
+                        'all' AS audience_key,
+                        COALESCE(
+                            MAX(CASE WHEN dn.audience_key = ? THEN dn.subject END),
+                            MAX(dn.subject),
+                            ''
+                        ) AS subject,
+                        MAX(dn.created_at) AS created_at,
+                        COALESCE(
+                            MAX(CASE WHEN dn.audience_key = ? THEN json_array_length(dn.selected_items_json) END),
+                            MAX(json_array_length(dn.selected_items_json)),
+                            0
+                        ) AS selected_items_count,
+                        COALESCE(opens.total_opens, 0) AS total_opens,
+                        COALESCE(opens.unique_opens, 0) AS unique_opens,
+                        COALESCE(clicks.total_clicks, 0) AS total_clicks,
+                        COALESCE(clicks.unique_clicks, 0) AS unique_clicks,
+                        (
+                            SELECT tl.story_title
+                            FROM daily_newsletters dn_top
+                            JOIN tracked_links tl ON tl.daily_newsletter_id = dn_top.id
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE dn_top.newsletter_date = dn.newsletter_date
+                            GROUP BY tl.story_title, tl.target_url
+                            ORDER BY COUNT(nce_top.id) DESC, MIN(tl.id) ASC
+                            LIMIT 1
+                        ) AS top_story_title,
+                        (
+                            SELECT tl.target_url
+                            FROM daily_newsletters dn_top
+                            JOIN tracked_links tl ON tl.daily_newsletter_id = dn_top.id
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE dn_top.newsletter_date = dn.newsletter_date
+                            GROUP BY tl.story_title, tl.target_url
+                            ORDER BY COUNT(nce_top.id) DESC, MIN(tl.id) ASC
+                            LIMIT 1
+                        ) AS top_story_url,
+                        (
+                            SELECT COUNT(nce_top.id)
+                            FROM daily_newsletters dn_top
+                            JOIN tracked_links tl ON tl.daily_newsletter_id = dn_top.id
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE dn_top.newsletter_date = dn.newsletter_date
+                            GROUP BY tl.story_title, tl.target_url
+                            ORDER BY COUNT(nce_top.id) DESC, MIN(tl.id) ASC
+                            LIMIT 1
+                        ) AS top_story_clicks
+                    FROM daily_newsletters dn
+                    LEFT JOIN (
+                        SELECT
+                            dn_open.newsletter_date,
+                            COUNT(*) AS total_opens,
+                            COUNT(DISTINCT {open_visitor_key}) AS unique_opens
+                        FROM daily_newsletters dn_open
+                        JOIN newsletter_open_events noe ON noe.daily_newsletter_id = dn_open.id
+                        GROUP BY dn_open.newsletter_date
+                    ) AS opens ON opens.newsletter_date = dn.newsletter_date
+                    LEFT JOIN (
+                        SELECT
+                            dn_click.newsletter_date,
+                            COUNT(*) AS total_clicks,
+                            COUNT(DISTINCT {click_visitor_key}) AS unique_clicks
+                        FROM daily_newsletters dn_click
+                        JOIN newsletter_click_events nce ON nce.daily_newsletter_id = dn_click.id
+                        GROUP BY dn_click.newsletter_date
+                    ) AS clicks ON clicks.newsletter_date = dn.newsletter_date
+                    GROUP BY dn.newsletter_date
+                    ORDER BY dn.newsletter_date DESC, MAX(dn.id) DESC
+                    LIMIT ?
+                    """,
+                    (audience_key, audience_key, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    f"""
                     SELECT
-                        nce.daily_newsletter_id,
-                        COUNT(*) AS total_clicks,
-                        COUNT(DISTINCT {click_visitor_key}) AS unique_clicks
-                    FROM newsletter_click_events nce
-                    GROUP BY nce.daily_newsletter_id
-                ) AS clicks ON clicks.daily_newsletter_id = dn.id
-                WHERE dn.audience_key = ?
-                ORDER BY dn.newsletter_date DESC, dn.id DESC
-                LIMIT ?
-                """,
-                (audience_key, limit),
-            ).fetchall()
+                        dn.id,
+                        dn.newsletter_date,
+                        dn.audience_key,
+                        dn.subject,
+                        dn.created_at,
+                        dn.selected_items_json,
+                        COALESCE(opens.total_opens, 0) AS total_opens,
+                        COALESCE(opens.unique_opens, 0) AS unique_opens,
+                        COALESCE(clicks.total_clicks, 0) AS total_clicks,
+                        COALESCE(clicks.unique_clicks, 0) AS unique_clicks,
+                        (
+                            SELECT tl.story_title
+                            FROM tracked_links tl
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE tl.daily_newsletter_id = dn.id
+                            GROUP BY tl.id, tl.story_title
+                            ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
+                            LIMIT 1
+                        ) AS top_story_title,
+                        (
+                            SELECT tl.target_url
+                            FROM tracked_links tl
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE tl.daily_newsletter_id = dn.id
+                            GROUP BY tl.id, tl.target_url
+                            ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
+                            LIMIT 1
+                        ) AS top_story_url,
+                        (
+                            SELECT COUNT(nce_top.id)
+                            FROM tracked_links tl
+                            JOIN newsletter_click_events nce_top ON nce_top.tracked_link_id = tl.id
+                            WHERE tl.daily_newsletter_id = dn.id
+                            GROUP BY tl.id
+                            ORDER BY COUNT(nce_top.id) DESC, tl.id ASC
+                            LIMIT 1
+                        ) AS top_story_clicks
+                    FROM daily_newsletters dn
+                    LEFT JOIN (
+                        SELECT
+                            noe.daily_newsletter_id,
+                            COUNT(*) AS total_opens,
+                            COUNT(DISTINCT {open_visitor_key}) AS unique_opens
+                        FROM newsletter_open_events noe
+                        GROUP BY noe.daily_newsletter_id
+                    ) AS opens ON opens.daily_newsletter_id = dn.id
+                    LEFT JOIN (
+                        SELECT
+                            nce.daily_newsletter_id,
+                            COUNT(*) AS total_clicks,
+                            COUNT(DISTINCT {click_visitor_key}) AS unique_clicks
+                        FROM newsletter_click_events nce
+                        GROUP BY nce.daily_newsletter_id
+                    ) AS clicks ON clicks.daily_newsletter_id = dn.id
+                    WHERE dn.audience_key = ?
+                    ORDER BY dn.newsletter_date DESC, dn.id DESC
+                    LIMIT ?
+                    """,
+                    (audience_key, limit),
+                ).fetchall()
 
         analytics: list[dict] = []
         for row in rows:
             payload = dict(row)
-            selected_items = json.loads(str(payload.pop("selected_items_json", "") or "[]"))
+            if "selected_items_count" in payload:
+                payload["selected_items_count"] = int(payload.get("selected_items_count", 0) or 0)
+            else:
+                selected_items = json.loads(str(payload.pop("selected_items_json", "") or "[]"))
+                payload["selected_items_count"] = len(selected_items)
             unique_opens = int(payload["unique_opens"])
             unique_clicks = int(payload["unique_clicks"])
-            payload["selected_items_count"] = len(selected_items)
             payload["click_through_rate"] = (
                 round((unique_clicks / unique_opens) * 100, 1) if unique_opens else None
             )
@@ -1793,6 +1875,7 @@ class SQLiteRepository:
         *,
         trailing_days: tuple[int, ...] = (7, 30),
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        include_all_audiences: bool = False,
     ) -> list[dict]:
         open_visitor_key = self._event_visitor_key_sql("noe")
         click_visitor_key = self._event_visitor_key_sql("nce")
@@ -1802,13 +1885,19 @@ class SQLiteRepository:
         with self.connect() as connection:
             for days in trailing_days:
                 since_date = (today - timedelta(days=max(days - 1, 0))).isoformat()
+                scoped_newsletters_where = (
+                    "WHERE newsletter_date >= ?"
+                    if include_all_audiences
+                    else "WHERE newsletter_date >= ? AND audience_key = ?"
+                )
+                params: tuple[str] | tuple[str, str]
+                params = (since_date,) if include_all_audiences else (since_date, audience_key)
                 row = connection.execute(
                     f"""
                     WITH scoped_newsletters AS (
                         SELECT id, newsletter_date
                         FROM daily_newsletters
-                        WHERE newsletter_date >= ?
-                          AND audience_key = ?
+                        {scoped_newsletters_where}
                     ),
                     open_stats AS (
                         SELECT
@@ -1835,7 +1924,7 @@ class SQLiteRepository:
                         COALESCE((SELECT SUM(total_clicks) FROM click_stats), 0) AS total_clicks,
                         COALESCE((SELECT SUM(unique_clicks) FROM click_stats), 0) AS unique_clicks
                     """,
-                    (since_date, audience_key),
+                    params,
                 ).fetchone()
                 payload = dict(row or {})
                 unique_opens = int(payload.get("unique_opens", 0) or 0)
@@ -1854,9 +1943,13 @@ class SQLiteRepository:
         trailing_days: int = 30,
         limit: int = 10,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        include_all_audiences: bool = False,
     ) -> list[dict]:
         click_visitor_key = self._event_visitor_key_sql("nce")
         since_date = (datetime.now(UTC).date() - timedelta(days=max(trailing_days - 1, 0))).isoformat()
+        audience_filter = "" if include_all_audiences else "AND dn.audience_key = ?"
+        params: tuple[str, int] | tuple[str, str, int]
+        params = (since_date, limit) if include_all_audiences else (since_date, audience_key, limit)
         with self.connect() as connection:
             rows = connection.execute(
                 f"""
@@ -1871,12 +1964,12 @@ class SQLiteRepository:
                 JOIN tracked_links tl ON tl.id = nce.tracked_link_id
                 JOIN daily_newsletters dn ON dn.id = nce.daily_newsletter_id
                 WHERE dn.newsletter_date >= ?
-                  AND dn.audience_key = ?
+                  {audience_filter}
                 GROUP BY tl.story_title, tl.target_url
                 ORDER BY total_clicks DESC, unique_clicks DESC, last_newsletter_date DESC
                 LIMIT ?
                 """,
-                (since_date, audience_key, limit),
+                params,
             ).fetchall()
         return [dict(row) for row in rows]
 

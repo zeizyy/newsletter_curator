@@ -1698,10 +1698,24 @@ def analytics_dashboard():
         return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
-    recent_newsletters = repository.list_newsletter_analytics(limit=14) if repository else []
-    window_stats = repository.get_newsletter_aggregate_stats() if repository else []
+    recent_newsletters = (
+        repository.list_newsletter_analytics(limit=14, include_all_audiences=True)
+        if repository
+        else []
+    )
+    window_stats = (
+        repository.get_newsletter_aggregate_stats(include_all_audiences=True)
+        if repository
+        else []
+    )
     top_clicked_stories = (
-        repository.list_top_clicked_stories(trailing_days=30, limit=10) if repository else []
+        repository.list_top_clicked_stories(
+            trailing_days=30,
+            limit=10,
+            include_all_audiences=True,
+        )
+        if repository
+        else []
     )
     response = make_response(
         render_admin_template(
