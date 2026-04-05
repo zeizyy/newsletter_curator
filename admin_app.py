@@ -441,7 +441,7 @@ def build_delivery_freshness_check(repository) -> dict:
     }
 
 
-def build_delivery_status_rows(repository, *, limit: int = 14) -> list[dict]:
+def build_delivery_status_rows(repository, *, limit: int = 10) -> list[dict]:
     rows: list[dict] = []
     for run in repository.list_recent_delivery_runs(limit=limit) if repository else []:
         metadata = run.get("metadata", {}) or {}
@@ -1725,7 +1725,7 @@ def operations_dashboard():
         build_ingest_freshness_check(merged, repository),
         build_delivery_freshness_check(repository),
     ]
-    recent_delivery_rows = build_delivery_status_rows(repository, limit=14)
+    recent_delivery_rows = build_delivery_status_rows(repository, limit=10)
     response = make_response(
         render_admin_template(
             "health_dashboard.html",

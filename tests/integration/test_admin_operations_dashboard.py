@@ -39,6 +39,25 @@ def test_admin_operations_dashboard(monkeypatch, tmp_path):
         run_id = repository.create_ingestion_run(source_type, metadata={"job": f"fetch_{source_type}"})
         repository.complete_ingestion_run(run_id, status="completed", metadata={"job": f"fetch_{source_type}"})
 
+    older_delivery_run_ids: list[int] = []
+    for offset in range(10, 0, -1):
+        run_id = repository.create_delivery_run(metadata={"job": "deliver_digest"})
+        older_delivery_run_ids.append(run_id)
+        repository.complete_delivery_run(
+            run_id,
+            status="completed",
+            metadata={
+                "job": "deliver_digest",
+                "newsletter_date": (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=offset + 2)).isoformat(),
+                "pipeline_result": {
+                    "sent_recipients": offset,
+                    "failed_recipient_count": 0,
+                    "recipient_source": "buttondown",
+                    "audience_key": "default",
+                },
+            },
+        )
+
     completed_delivery_run_id = repository.create_delivery_run(metadata={"job": "deliver_digest"})
     repository.complete_delivery_run(
         completed_delivery_run_id,
@@ -92,3 +111,9 @@ def test_admin_operations_dashboard(monkeypatch, tmp_path):
     assert "3 failed" in html
     assert "completed" in html
     assert "failed" in html
+    assert html.index("Recent delivery runs") < html.index("Runtime health")
+    assert html.count('<div class="muted">run #') == 10
+    assert f'<div class="muted">run #{older_delivery_run_ids[0]}</div>' not in html
+    assert f'<div class="muted">run #{older_delivery_run_ids[1]}</div>' not in html
+    assert f'<div class="muted">run #{completed_delivery_run_id}</div>' in html
+    assert f'<div class="muted">run #{failed_delivery_run_id}</div>' in html
