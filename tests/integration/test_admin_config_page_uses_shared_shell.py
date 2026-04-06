@@ -51,6 +51,8 @@ def test_admin_config_page_uses_shared_shell(monkeypatch, tmp_path):
     assert "Operational Snapshot" in page
     assert "Command Rail" in page
     assert "Fallback Recipients" in page
+    assert 'rel="icon"' in page
+    assert '/static/favicon.svg' in page
     assert "active Buttondown subscribers override `email.digest_recipients` during delivery" in page
     assert "stored summaries stay persona-neutral" in page
     assert "Repository source selection" in page
