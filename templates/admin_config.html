@@ -10,10 +10,7 @@
     <span style="margin-left:8px;">Admin session is active.</span>
   {% endif %}
 {% endblock %}
-{% block page_actions %}
-  <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Review Today&apos;s Digest</a>
-  <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
-{% endblock %}
+{% block page_actions %}{% endblock %}
 
 {% block alerts %}
   {% if message %}
