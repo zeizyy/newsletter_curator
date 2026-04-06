@@ -111,15 +111,14 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
 
     confirm_response = client.get(confirm_path)
     assert confirm_response.status_code == 302
-    assert confirm_response.headers["Location"].endswith("/account")
+    assert confirm_response.headers["Location"].endswith("/settings")
     assert "curator_subscriber_session=" in confirm_response.headers.get("Set-Cookie", "")
 
-    account_response = client.get("/account")
-    account_page = account_response.get_data(as_text=True)
-    assert account_response.status_code == 200
-    assert "subscriber@example.com" in account_page
-    assert "Session active" in account_page
-    assert "Subscriber ID" not in account_page
+    settings_response = client.get("/settings")
+    settings_page = settings_response.get_data(as_text=True)
+    assert settings_response.status_code == 200
+    assert "Your digest settings" in settings_page
+    assert "name=\"persona_text\"" in settings_page
 
     admin_response = client.get("/")
     assert admin_response.status_code == 302
@@ -132,7 +131,7 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
 
     redirect_response = client.get("/account")
     assert redirect_response.status_code == 302
-    assert redirect_response.headers["Location"].endswith("/login")
+    assert redirect_response.headers["Location"].endswith("/settings")
 
     reused_response = client.get(confirm_path)
     reused_page = reused_response.get_data(as_text=True)

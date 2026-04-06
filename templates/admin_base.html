@@ -81,6 +81,10 @@
       gap: 18px;
     }
 
+    .masthead-title-wrap {
+      min-width: 0;
+    }
+
     .eyebrow,
     .section-kicker,
     .stat-label,
@@ -710,12 +714,16 @@
         <div>
           <div class="eyebrow">{% block eyebrow %}Control Room{% endblock %}</div>
           <div class="masthead-heading-row">
-            <h1>{% block page_title %}Newsletter Curator{% endblock %}</h1>
-            {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
-              <form method="post" action="{{ url_for('admin_logout') }}">
-                <button type="submit" class="signout-button">Admin Sign Out</button>
-              </form>
-            {% endif %}
+            <div class="masthead-title-wrap">
+              <h1>{% block page_title %}Newsletter Curator{% endblock %}</h1>
+            </div>
+            {% block title_actions %}
+              {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
+                <form method="post" action="{{ url_for('admin_logout') }}">
+                  <button type="submit" class="signout-button">Admin Sign Out</button>
+                </form>
+              {% endif %}
+            {% endblock %}
           </div>
           <p class="page-lead">{% block page_lead %}{% endblock %}</p>
           <div class="page-meta">{% block page_meta %}{% endblock %}</div>
