@@ -73,14 +73,11 @@
     .masthead-top {
       display: flex;
       justify-content: flex-end;
-      margin-bottom: 18px;
+      margin-bottom: 8px;
     }
 
     .masthead-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
-      gap: 22px;
-      align-items: start;
+      display: block;
     }
 
     .eyebrow,
@@ -117,40 +114,18 @@
       letter-spacing: -0.03em;
     }
 
-    .page-lead {
-      margin: 14px 0 0;
-      max-width: 46rem;
-      font-size: 17px;
-      line-height: 1.65;
-      color: var(--muted);
-    }
-
+    .page-lead,
     .page-meta {
-      margin-top: 14px;
-      font-size: 13px;
-      line-height: 1.6;
-      color: var(--muted);
+      display: none;
     }
 
-    .page-meta code {
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: rgba(12, 122, 91, 0.08);
-      font-size: 12px;
-    }
-
-    .utility-panel {
-      padding: 18px;
-      border-radius: 22px;
-      background: rgba(255, 255, 255, 0.58);
-      border: 1px solid rgba(19, 91, 72, 0.12);
-    }
-
-    .utility-copy {
-      margin: 0 0 14px;
-      font-size: 14px;
-      line-height: 1.55;
-      color: var(--muted);
+    .command-rail {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 16px 20px;
+      margin-bottom: 18px;
     }
 
     .nav-pills,
@@ -197,6 +172,13 @@
     .button-link.ghost,
     .nav-pill {
       background: rgba(221, 243, 235, 0.64);
+    }
+
+    .signout-button {
+      background: transparent;
+      border-color: rgba(19, 91, 72, 0.22);
+      color: var(--ink);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
 
     .nav-pill:hover,
@@ -340,8 +322,7 @@
     }
 
     .section-copy {
-      max-width: 42rem;
-      font-size: 15px;
+      display: none;
     }
 
     .stat-grid {
@@ -526,7 +507,6 @@
     }
 
     @media (max-width: 920px) {
-      .masthead-grid { grid-template-columns: 1fr; }
       .field-grid { grid-template-columns: 1fr; }
       .page-shell { width: min(100%, calc(100% - 20px)); margin: 10px auto 24px; }
       .masthead,
@@ -537,6 +517,10 @@
       .button-row > *,
       .action-row > * {
         flex: 1 1 220px;
+      }
+      .command-rail {
+        flex-direction: column;
+        align-items: stretch;
       }
     }
 
@@ -605,7 +589,6 @@
         width: 100%;
       }
 
-      .utility-panel,
       .state-shell {
         padding: 16px;
       }
@@ -650,7 +633,6 @@
           linear-gradient(180deg, var(--page-bg), var(--page-bg-deep));
       }
 
-      .utility-panel,
       .stat-card,
       .table-wrap,
       .toggle-card,
@@ -661,6 +643,12 @@
       .nav-pill,
       .button-link {
         background: rgba(255, 255, 255, 0.04);
+      }
+
+      .signout-button {
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(103, 211, 172, 0.2);
+        color: var(--ink);
       }
 
       .nav-pill.is-active,
@@ -704,7 +692,7 @@
       {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
         <div class="masthead-top">
           <form method="post" action="{{ url_for('admin_logout') }}">
-            <button type="submit">Admin Sign Out</button>
+            <button type="submit" class="signout-button">Admin Sign Out</button>
           </form>
         </div>
       {% endif %}
@@ -715,21 +703,21 @@
           <p class="page-lead">{% block page_lead %}{% endblock %}</p>
           <div class="page-meta">{% block page_meta %}{% endblock %}</div>
         </div>
-        <aside class="utility-panel">
-          <div class="utility-label">{% block utility_label %}Command Rail{% endblock %}</div>
-          <p class="utility-copy">{% block utility_copy %}Move between operations, stored newsletters, analytics, and signal inventory without dropping context.{% endblock %}</p>
-          <nav class="nav-pills">
-            {% block utility_nav %}
-            <a class="nav-pill {% if request.endpoint == 'config_editor' %}is-active{% endif %}" href="{{ url_for('config_editor') }}">Control Room</a>
-            <a class="nav-pill {% if request.endpoint == 'operations_dashboard' %}is-active{% endif %}" href="{{ url_for('operations_dashboard') }}">Dashboard</a>
-            <a class="nav-pill {% if request.endpoint == 'analytics_dashboard' %}is-active{% endif %}" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
-            <a class="nav-pill {% if request.endpoint in ['newsletter_history', 'newsletter_history_detail', 'story_explorer'] %}is-active{% endif %}" href="{{ url_for('newsletter_history') }}">Archive</a>
-            {% endblock %}
-          </nav>
-        </aside>
       </div>
       <div class="action-row">{% block page_actions %}{% endblock %}</div>
     </header>
+
+    <section class="command-rail surface">
+      <div class="utility-label">{% block utility_label %}Command Rail{% endblock %}</div>
+      <nav class="nav-pills">
+        {% block utility_nav %}
+        <a class="nav-pill {% if request.endpoint == 'config_editor' %}is-active{% endif %}" href="{{ url_for('config_editor') }}">Control Room</a>
+        <a class="nav-pill {% if request.endpoint == 'operations_dashboard' %}is-active{% endif %}" href="{{ url_for('operations_dashboard') }}">Dashboard</a>
+        <a class="nav-pill {% if request.endpoint == 'analytics_dashboard' %}is-active{% endif %}" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
+        <a class="nav-pill {% if request.endpoint in ['newsletter_history', 'newsletter_history_detail', 'story_explorer'] %}is-active{% endif %}" href="{{ url_for('newsletter_history') }}">Archive</a>
+        {% endblock %}
+      </nav>
+    </section>
 
     {% block alerts %}{% endblock %}
 
