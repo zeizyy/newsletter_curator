@@ -70,14 +70,15 @@
       margin-bottom: 18px;
     }
 
-    .masthead-top {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 8px;
-    }
-
     .masthead-grid {
       display: block;
+    }
+
+    .masthead-heading-row {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 18px;
     }
 
     .eyebrow,
@@ -175,10 +176,17 @@
     }
 
     .signout-button {
-      background: transparent;
-      border-color: rgba(19, 91, 72, 0.22);
+      background: rgba(255, 255, 255, 0.34);
+      border-color: rgba(24, 37, 58, 0.16);
       color: var(--ink);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      box-shadow: none;
+      min-height: 40px;
+      padding: 0 14px;
+    }
+
+    .signout-button:hover {
+      background: rgba(255, 255, 255, 0.5);
+      border-color: rgba(24, 37, 58, 0.24);
     }
 
     .nav-pill:hover,
@@ -518,6 +526,10 @@
       .action-row > * {
         flex: 1 1 220px;
       }
+      .masthead-heading-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
       .command-rail {
         flex-direction: column;
         align-items: stretch;
@@ -646,9 +658,14 @@
       }
 
       .signout-button {
-        background: rgba(255, 255, 255, 0.02);
-        border-color: rgba(103, 211, 172, 0.2);
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.14);
         color: var(--ink);
+      }
+
+      .signout-button:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.2);
       }
 
       .nav-pill.is-active,
@@ -689,17 +706,17 @@
 <body>
   <div class="page-shell">
     <header class="masthead surface">
-      {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
-        <div class="masthead-top">
-          <form method="post" action="{{ url_for('admin_logout') }}">
-            <button type="submit" class="signout-button">Admin Sign Out</button>
-          </form>
-        </div>
-      {% endif %}
       <div class="masthead-grid">
         <div>
           <div class="eyebrow">{% block eyebrow %}Control Room{% endblock %}</div>
-          <h1>{% block page_title %}Newsletter Curator{% endblock %}</h1>
+          <div class="masthead-heading-row">
+            <h1>{% block page_title %}Newsletter Curator{% endblock %}</h1>
+            {% if admin_auth_active and request.endpoint not in ['admin_login'] %}
+              <form method="post" action="{{ url_for('admin_logout') }}">
+                <button type="submit" class="signout-button">Admin Sign Out</button>
+              </form>
+            {% endif %}
+          </div>
           <p class="page-lead">{% block page_lead %}{% endblock %}</p>
           <div class="page-meta">{% block page_meta %}{% endblock %}</div>
         </div>
