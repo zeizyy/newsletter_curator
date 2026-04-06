@@ -4,11 +4,7 @@
 {% block eyebrow %}Subscriber Access{% endblock %}
 {% block page_title %}Your digest settings{% endblock %}
 {% block page_lead %}Save the profile that shapes your personalized AI Signal Daily edition and optional PDF delivery in the database.{% endblock %}
-{% block utility_label %}Subscriber Rail{% endblock %}
-{% block utility_copy %}Adjust your reader profile without touching operator controls. Disabled sources stay visible so your preferences do not disappear when the catalog changes.{% endblock %}
-{% block utility_nav %}
-  <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
-{% endblock %}
+{% block command_rail %}{% endblock %}
 {% block title_actions %}
   <form method="post" action="{{ url_for('subscriber_logout') }}">
     <button type="submit" class="signout-button">Sign out</button>

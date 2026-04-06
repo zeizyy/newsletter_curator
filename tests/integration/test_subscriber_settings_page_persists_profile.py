@@ -45,6 +45,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Existing persona" in page
     assert "Add a PDF copy" in page
     assert "Add PDF attachment" in page
+    assert "Subscriber Rail" not in page
     assert "Macro Wire" in page
     assert "AI Wire" in page
     assert "Unavailable" in page
