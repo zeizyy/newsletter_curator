@@ -7,12 +7,11 @@
 {% block utility_label %}Subscriber Rail{% endblock %}
 {% block utility_copy %}Adjust your reader profile without touching operator controls. Disabled sources stay visible so your preferences do not disappear when the catalog changes.{% endblock %}
 {% block utility_nav %}
-  <a class="nav-pill {% if request.endpoint == 'subscriber_account' %}is-active{% endif %}" href="{{ url_for('subscriber_account') }}">Account</a>
   <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
 {% endblock %}
-{% block page_actions %}
+{% block title_actions %}
   <form method="post" action="{{ url_for('subscriber_logout') }}">
-    <button type="submit" class="primary-button">Sign out</button>
+    <button type="submit" class="signout-button">Sign out</button>
   </form>
 {% endblock %}
 
@@ -107,7 +106,6 @@
     <section class="surface surface-section">
       <div class="button-row">
         <button type="submit">Save settings</button>
-        <a class="button-link ghost" href="{{ url_for('subscriber_account') }}">Back to account</a>
       </div>
     </section>
   </form>

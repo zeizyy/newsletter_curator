@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your AI Signal Daily sign-in link</title>
+</head>
+<body style="margin:0;padding:0;background:#eef4f3;color:#16222f;font-family:'Trebuchet MS','Segoe UI',Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#eef4f3;border-collapse:collapse;">
+    <tr>
+      <td align="center" style="padding:16px 12px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #d5dde8;border-collapse:collapse;">
+          <tr>
+            <td style="padding:18px 18px 16px 18px;border-bottom:1px solid #dfe6ef;background:linear-gradient(135deg,#0e3f35,#0f8661 72%,#18a57b);">
+              <div style="margin:0;font-size:38px;line-height:0.96;font-weight:700;color:#f3fffb;font-family:Georgia,'Times New Roman',Times,serif;">
+                AI Signal Daily
+              </div>
+              <div style="margin:12px 0 0 0;font-size:15px;line-height:1.6;color:rgba(243,255,251,0.82);">
+                Your highest-signal daily briefing.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 28px 30px 28px;background:#f8fbff;">
+              <div style="margin:0 0 12px 0;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#0f8661;">
+                Subscriber Access
+              </div>
+              <h1 style="margin:0 0 16px 0;font-family:Georgia,'Times New Roman',Times,serif;font-size:46px;line-height:0.94;letter-spacing:-0.04em;color:#16222f;">
+                Sign in to your digest settings
+              </h1>
+              <p style="margin:0 0 22px 0;font-size:18px;line-height:1.7;color:#30424d;">
+                Use the secure link below to access your AI Signal Daily subscriber settings. No password required.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 24px 0;">
+                <tr>
+                  <td align="center" bgcolor="#0f8661" style="border-radius:999px;">
+                    <a href="{{ confirm_url }}" style="display:inline-block;padding:15px 26px;font-size:16px;font-weight:700;line-height:1;color:#f6fffb;text-decoration:none;">
+                      Open Subscriber Settings
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 10px 0;font-size:15px;line-height:1.7;color:#30424d;">
+                This link expires in {{ ttl_minutes }} minutes.
+              </p>
+              <p style="margin:0;font-size:14px;line-height:1.7;color:#61737d;">
+                If you did not request this email, you can ignore it.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

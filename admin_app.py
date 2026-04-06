@@ -704,13 +704,10 @@ def send_subscriber_login_email(config: dict, to_address: str, confirm_url: str)
         f"This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
         "If you did not request it, you can ignore this email."
     )
-    html_body = (
-        "<html><body>"
-        "<p>Use this secure sign-in link to access your AI Signal Daily settings in Newsletter Curator:</p>"
-        f'<p><a href="{confirm_url}">{confirm_url}</a></p>'
-        f"<p>This link expires in {SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES} minutes. "
-        "If you did not request it, you can ignore this email.</p>"
-        "</body></html>"
+    html_body = render_template(
+        "subscriber_login_email.html",
+        confirm_url=confirm_url,
+        ttl_minutes=SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES,
     )
     try:
         service = get_gmail_service(
@@ -1287,7 +1284,7 @@ def subscriber_login():
     repository = load_repository(merged)
     current_subscriber = get_current_subscriber(repository)
     if current_subscriber is not None and request.method == "GET":
-        return redirect(url_for("subscriber_account"))
+        return redirect(url_for("subscriber_settings"))
 
     message = ""
     errors: list[str] = []
@@ -1361,24 +1358,14 @@ def confirm_subscriber_login():
         ip_address=_request_ip(),
         user_agent=request.headers.get("User-Agent", ""),
     )
-    response = redirect(url_for("subscriber_account"))
+    response = redirect(url_for("subscriber_settings"))
     set_subscriber_session_cookie(response, session_payload["token"])
     return response
 
 
 @app.route("/account", methods=["GET"])
 def subscriber_account():
-    merged = load_merged_config()
-    repository = load_repository(merged)
-    subscriber, redirect_response = require_subscriber_session(repository)
-    if redirect_response is not None:
-        return redirect_response
-    return make_response(
-        render_template(
-            "subscriber_account.html",
-            subscriber=subscriber,
-        )
-    )
+    return redirect(url_for("subscriber_settings"))
 
 
 @app.route("/settings", methods=["GET", "POST"])
