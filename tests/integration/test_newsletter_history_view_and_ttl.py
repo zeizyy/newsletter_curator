@@ -4,7 +4,7 @@ import importlib
 from datetime import UTC, datetime
 
 from curator.jobs import get_repository_from_config, run_newsletter_ttl_cleanup
-from tests.helpers import write_temp_config
+from tests.helpers import create_completed_ingestion_run, write_temp_config
 
 
 class FixedDateTime(datetime):
@@ -34,6 +34,7 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
 
     config = main.load_config()
     repository = get_repository_from_config(config)
+    ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
 
     old_newsletter_id = repository.upsert_daily_newsletter(
         newsletter_date="2026-03-20",
@@ -55,6 +56,23 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
         body="Today digest body",
         html_body="<div>Today digest body</div>",
         selected_items=[{"title": "Today Story", "url": "https://example.com/today"}],
+    )
+    story_id = repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Macro Wire",
+            "subject": "[markets] Rates reset",
+            "url": "https://example.com/markets/rates-reset",
+            "anchor_text": "Rates reset changes software valuations",
+            "context": "Repository context for rates reset",
+            "category": "Markets / stocks / macro / economy",
+            "published_at": "2026-03-21T07:30:00+00:00",
+        },
+        ingestion_run_id=ingestion_run_id,
+    )
+    repository.upsert_article_snapshot(
+        story_id,
+        "Rates reset changes software valuations and reprices growth.",
     )
 
     open_token = repository.ensure_newsletter_open_token(old_newsletter_id)
@@ -95,12 +113,14 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     history_response = client.get("/newsletters")
     assert history_response.status_code == 200
     history_page = history_response.get_data(as_text=True)
-    assert "Archive Ledger" in history_page
+    assert "Archive" in history_page
     assert "Command Rail" in history_page
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
     assert "Old Digest" not in history_page
     assert 'data-label="Subject"' in history_page
+    assert "Active Stories" in history_page
+    assert "Rates reset changes software valuations" in history_page
 
     detail_response = client.get("/newsletters/2026-03-21")
     assert detail_response.status_code == 200
@@ -108,7 +128,7 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Recent Digest" in detail_page
     assert "Recent digest body" in detail_page
     assert "Back To History" in detail_page
-    assert "Stored Newsletter" in detail_page
+    assert "Archive" in detail_page
 
 
 def test_newsletter_history_empty_state_uses_editorial_shell(monkeypatch, tmp_path):
@@ -128,5 +148,5 @@ def test_newsletter_history_empty_state_uses_editorial_shell(monkeypatch, tmp_pa
 
     assert response.status_code == 200
     assert "No stored newsletters yet" in html
-    assert "Preview Today" in html
+    assert "No active stories yet" in html
     assert "Open Control Room" in html

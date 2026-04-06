@@ -1,13 +1,10 @@
 {% extends "admin_base.html" %}
 
-{% block title %}Archive Ledger{% endblock %}
-{% block eyebrow %}Newsletter Archive{% endblock %}
-{% block page_title %}Archive Ledger{% endblock %}
-{% block page_lead %}Browse the stored daily briefings as a coherent record of what the system actually published, not just what today&apos;s config says it might do.{% endblock %}
-{% block page_meta %}Browsing stored daily newsletters in <code>{{ config_path }}</code>{% endblock %}
-{% block page_actions %}
-  <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
-{% endblock %}
+{% block title %}Archive{% endblock %}
+{% block eyebrow %}Archive{% endblock %}
+{% block page_title %}Archive{% endblock %}
+{% block page_lead %}{% endblock %}
+{% block page_meta %}{% endblock %}
 
 {% block content %}
   <section class="surface surface-section">
@@ -54,12 +51,71 @@
       <div class="state-head">
         <div>
           <h2 class="state-title">No stored newsletters yet</h2>
-          <p class="state-copy">The archive fills in only after a digest has been generated and persisted. Preview today&apos;s issue or let the scheduled run publish the first stored briefing.</p>
+          <p class="state-copy">The archive fills in only after a digest has been generated and persisted.</p>
         </div>
       </div>
       <div class="state-actions">
-        <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
         <a class="button-link ghost" href="{{ url_for('config_editor') }}">Open Control Room</a>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="surface surface-section">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Active Stories</div>
+        <h2>Current repository inventory</h2>
+      </div>
+      <div class="section-copy">{{ active_stories|length }} recent stories available for review.</div>
+    </div>
+    {% if active_stories %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Story</th>
+            <th>Source</th>
+            <th>Category</th>
+            <th>Published</th>
+            <th>Snapshot</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for story in active_stories %}
+          <tr>
+            <td data-label="Story">
+              <div style="font-weight:700; color:inherit;">
+                <a class="title-link" href="{{ story.url }}" target="_blank" rel="noreferrer">{{ story.anchor_text or story.subject or story.url }}</a>
+              </div>
+              <div class="muted" style="margin-top:4px;">{{ story.context }}</div>
+            </td>
+            <td data-label="Source">
+              <div>{{ story.source_name }}</div>
+              <div class="muted">{{ story.source_type }}</div>
+            </td>
+            <td data-label="Category">{{ story.category or "Uncategorized" }}</td>
+            <td data-label="Published">{{ story.published_at or story.first_seen_at }}</td>
+            <td data-label="Snapshot">
+              {% if story.article_text %}
+                <span class="pill">snapshot stored</span>
+              {% else %}
+                <span class="pill muted-pill">metadata only</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="state-shell is-empty">
+      <div class="section-kicker">Active Stories Empty</div>
+      <div class="state-head">
+        <div>
+          <h2 class="state-title">No active stories yet</h2>
+          <p class="state-copy">Run another ingest pass to repopulate the current story inventory.</p>
+        </div>
       </div>
     </div>
     {% endif %}

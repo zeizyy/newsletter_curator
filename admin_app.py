@@ -1707,11 +1707,17 @@ def newsletter_history():
     merged = load_merged_config()
     repository = load_repository(merged)
     newsletters = repository.list_daily_newsletters(limit=30) if repository else []
+    active_stories = repository.list_stories()[:12] if repository else []
+    active_stories = [
+        normalize_story_source_name(story)
+        for story in active_stories
+    ]
     response = make_response(
         render_admin_template(
             "newsletter_history.html",
             config_path=CONFIG_PATH,
             newsletters=newsletters,
+            active_stories=active_stories,
         )
     )
     return response

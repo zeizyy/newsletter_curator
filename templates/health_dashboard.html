@@ -6,12 +6,6 @@
 {% block page_lead %}Check whether the delivery stack is healthy before a stale ingest, broken SQLite path, or bad public host turns into a missed issue.{% endblock %}
 {% block page_meta %}Internal checks rendered from <code>{{ config_path }}</code> and recent SQLite run metadata.{% endblock %}
 
-{% block alerts %}
-  <div class="{% if overall_tone == 'success' %}banner-ok{% elif overall_tone == 'info' %}banner-info{% else %}banner-err{% endif %}">
-    This page is operational telemetry for the admin app itself. It checks repository reachability, config shape, Gmail auth file presence, public-host alignment, and recent run freshness.
-  </div>
-{% endblock %}
-
 {% block content %}
   <section class="surface surface-section">
     <div class="section-head">

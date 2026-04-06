@@ -6,12 +6,6 @@
 {% block page_lead %}Review what readers actually opened and clicked so the newsletter evolves from evidence instead of anecdotes.{% endblock %}
 {% block page_meta %}Telemetry aggregated from persisted newsletters in <code>{{ config_path }}</code>{% endblock %}
 
-{% block alerts %}
-  <div class="banner-info warning-panel">
-    Tracked opens are approximate. Image proxying, privacy protection, and client-side prefetching can inflate or suppress open counts. Clicks are the more reliable signal.
-  </div>
-{% endblock %}
-
 {% block content %}
   <section class="surface surface-section">
     <div class="section-head">
@@ -102,7 +96,6 @@
         </div>
       </div>
       <div class="state-actions">
-        <a class="button-link primary" href="{{ url_for('preview_newsletter') }}">Preview Today</a>
         <a class="button-link ghost" href="{{ url_for('newsletter_history') }}">Open Archive</a>
       </div>
     </div>

@@ -149,7 +149,7 @@ def test_admin_newsletter_analytics_page(monkeypatch, tmp_path):
     assert "Insight Ledger" in html
     assert "Telemetry Review" in html
     assert "Command Rail" in html
-    assert "Tracked opens are approximate" in html
+    assert "Tracked opens are approximate" not in html
     assert "Digest A" in html
     assert "Digest A Personalized" not in html
     assert "Digest B" in html
