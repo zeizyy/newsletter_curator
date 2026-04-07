@@ -1,69 +1,75 @@
 # Newsletter Curator
 
-Newsletter Curator is the self-hosted app and operator console for the reader-facing digest `AI Signal Daily`. Gmail newsletters and publisher feeds are ingested into a local SQLite repository, then a daily orchestrator ranks, summarizes, and emails the digest from stored snapshots.
+Newsletter Curator powers `AI Signal Daily`, a self-hosted production workflow for publishing a daily AI news briefing. It is designed for operators who want a dependable digest pipeline, a clean review surface, and a subscriber-facing product that feels polished in production.
 
-Subscribe to the live newsletter: <https://buttondown.com/zeizyynewsletter> to get something like this everyday:
+Subscribe to `AI Signal Daily`: <https://buttondown.com/zeizyynewsletter>.
 
-![Example newsletter render](docs/readme-assets/newsletter-example.png)
+## Newsletter Example
 
-## Features
-- Separate debug-friendly ingest jobs for Gmail newsletters and additional publisher feeds
-- Single daily orchestrator for production cron scheduling
-- Local SQLite repository for normalized stories, article snapshots, and run history
-- Admin UI for source selection plus subscriber login and settings for `AI Signal Daily`
-- Repo-only delivery job with no live Gmail reads or live article fetches at send time
-- Two-stage LLM flow: persona-neutral ingest scoring and summaries, followed by persona-aware final ranking
-- Final selection quotas by source type (default: `gmail=10`, `additional_source=5`)
-- Delivery readiness checks against ingest run history and stored fresh stories
-- Deterministic canned-data mode for local development and integration testing
-- Optional token-gated debug log endpoint for sharing bounded production log tails with Codex
+![Current AI Signal Daily email example](docs/readme-assets/newsletter-example.png)
 
-## Pipeline Design
-1) `daily_pipeline.py` is the production entrypoint. It runs Gmail ingest, source ingest, then digest delivery in sequence.
-2) `fetch_gmail.py` and `fetch_sources.py` remain available as manual debug or backfill entrypoints.
-3) `deliver_digest.py` remains available as a manual send or cache-regeneration entrypoint.
-4) Delivery reads only repository-backed stories within the configured freshness windows.
-5) Delivery merges Gmail + additional-source candidates, dedupes by URL, ranks with `openai.reasoning_model`, applies source quotas, summarizes stored article text with `openai.summary_model`, and emails the digest.
-6) Delivery records run metadata and warns when one source type is stale or has a failed latest ingest, but can still proceed if another source type has fresh repository data.
+## Production Overview
+
+- Daily briefing workflow built for scheduled production delivery
+- Admin UI for previews, history, analytics, and subscriber management
+- Repository-backed delivery flow with dry-run support for operational confidence
+- Personalized digest ranking and subscriber settings for a more tailored reader experience
+
+## Operating Model
+
+1. Collect relevant coverage from configured sources.
+2. Review and shape the daily briefing.
+3. Deliver the finished issue to subscribers on a recurring schedule.
+4. Monitor output quality, history, and delivery status from the operator console.
 
 Runtime output includes:
+
 - repository readiness by source type
-- links retrieved from repository by source type
-- ranked/final counts sliced by source type and source name
-- summary completion/backfill/skip counts
+- repository candidate counts by source type and source name
+- final ranking and quota allocation details
+- summary completion, backfill, and skip counts
 - per-model token usage
 - JSON output from each standalone job entrypoint
 
 ## Requirements
+
 - Python 3.13+
 - `uv` (recommended)
-- Google OAuth credentials for Gmail API
+- Google OAuth credentials for the Gmail API
 - OpenAI API key
 
-## Setup
-1) Place Gmail OAuth credentials at `secrets/credentials.json`.
-2) Install dependencies:
+## Quick Start
+
+1. Place Gmail OAuth credentials at `secrets/credentials.json`.
+2. Install dependencies:
+
 ```bash
 uv sync
 ```
-3) Set your OpenAI key:
+
+3. Export your OpenAI API key:
+
 ```bash
 export OPENAI_API_KEY="your_key_here"
 ```
-4) Optional: if you want delivery recipients to come from Buttondown first, set:
+
+4. Optional: export `BUTTONDOWN_API_KEY` if delivery recipients should be resolved from Buttondown before falling back to `email.digest_recipients`.
+
 ```bash
 export BUTTONDOWN_API_KEY="your_buttondown_api_key_here"
 ```
-5) Review and edit `config.yaml`.
 
-## Run
-Production default:
+5. Review and edit `config.yaml`.
+
+## Common Commands
+
+Production run:
 
 ```bash
 uv run python daily_pipeline.py
 ```
 
-One-off full-pipeline dry run to a single inbox:
+Full-pipeline dry run to a single inbox:
 
 ```bash
 uv run python daily_pipeline.py --dry-run-recipient you@example.com
@@ -530,23 +536,6 @@ Rollback:
 - no rollback is required for Buttondown metadata because delivery no longer reads personalization from Buttondown at all
 
 You can override the config file path with `NEWSLETTER_CONFIG`.
-
-## Model Pricing
-As of March 21, 2026, the repo default is `gpt-5-mini` for both reasoning and summary work. This switch replaces the older `gpt-4o-mini` reasoning default with the latest low-cost GPT-5 mini tier while keeping the summary model unchanged.
-
-Per 1M text tokens:
-
-| Use | Before model | Before input | Before output | After model | After input | After output |
-| --- | --- | --- | --- | --- | --- | --- |
-| Reasoning / ranking | `gpt-4o-mini` | $0.15 | $0.60 | `gpt-5-mini` | $0.25 | $2.00 |
-| Summary | `gpt-5-mini` | $0.25 | $2.00 | `gpt-5-mini` | $0.25 | $2.00 |
-
-Notes:
-- The pricing change only affects the reasoning path because the summary path was already on `gpt-5-mini`.
-- Legacy configs that still pin `gpt-4o-mini` for `openai.reasoning_model` are upgraded to `gpt-5-mini` at load time unless you explicitly choose a different non-legacy model.
-- Pricing sources:
-  - OpenAI API pricing: https://openai.com/api/pricing/
-  - GPT-5 model docs: https://platform.openai.com/docs/models/gpt-5/
 
 ## Notes
 - Article fetching requires outbound network access during ingest jobs, not during delivery.
