@@ -46,3 +46,21 @@ def test_fetch_article_details_caps_response_bytes(monkeypatch):
     assert details["document_title"] == "Large page"
     assert "Critical context appears early" in details["article_text"]
     assert "LATE_TAIL_SHOULD_NOT_BE_PRESENT" not in details["article_text"]
+
+
+def test_fetch_article_details_extracts_published_at_in_utc(monkeypatch):
+    html = """
+    <html>
+      <head>
+        <title>Timestamped page</title>
+        <meta property="article:published_time" content="2026-03-21T08:15:00-04:00" />
+      </head>
+      <body><article>Article body.</article></body>
+    </html>
+    """
+
+    monkeypatch.setattr("curator.content.requests.Session", lambda: _FakeSession(html))
+
+    details = fetch_article_details("https://example.com/timestamped", max_article_chars=1000)
+
+    assert details["published_at"] == "2026-03-21T12:15:00+00:00"

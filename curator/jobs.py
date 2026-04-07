@@ -521,6 +521,7 @@ def _prepare_ingest_snapshot_candidates(
             "article_text": article_text,
             "document_title": str(story_record.get("anchor_text", "") or "").strip(),
             "document_excerpt": str(story_record.get("context", "") or "").strip(),
+            "published_at": str(story_record.get("published_at", "") or "").strip(),
         }
         if not article_text:
             _log_ingest_progress(
@@ -543,6 +544,10 @@ def _prepare_ingest_snapshot_candidates(
                     "article_text": str(fetched.get("article_text", "") or "").strip(),
                     "document_title": str(fetched.get("document_title", "") or "").strip(),
                     "document_excerpt": str(fetched.get("document_excerpt", "") or "").strip(),
+                    "published_at": str(fetched.get("published_at", "") or "").strip(),
+                    "access_blocked": fetched.get("access_blocked"),
+                    "access_reason": str(fetched.get("access_reason", "") or "").strip(),
+                    "access_signals": fetched.get("access_signals", {}) or {},
                 }
             else:
                 article_details["article_text"] = str(fetched or "").strip()
