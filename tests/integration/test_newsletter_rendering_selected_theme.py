@@ -17,6 +17,7 @@ class FixedDateTime(datetime):
 def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     jobs = importlib.import_module("curator.jobs")
+    rendering = importlib.import_module("curator.rendering")
     sources = importlib.import_module("curator.sources")
 
     config_path = write_temp_config(
@@ -37,6 +38,7 @@ def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkey
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+    monkeypatch.setattr(rendering, "datetime", FixedDateTime)
     monkeypatch.setattr(sources, "datetime", FixedDateTime)
     config = main.load_config()
 
@@ -97,6 +99,7 @@ def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkey
     assert result["status"] == "completed"
     assert result["preview"] is not None
     html = result["preview"]["html_body"]
+    assert "March 24, 2026" in html
     assert "AI Signal Daily" in html
     assert "Your highest-signal daily briefing." in html
     assert "Operator Edition" not in html
