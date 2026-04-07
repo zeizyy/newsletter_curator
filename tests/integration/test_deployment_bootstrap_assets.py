@@ -177,6 +177,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
 
     admin_script_text = admin_script.read_text(encoding="utf-8")
+    assert admin_script_text.startswith("#!/bin/bash\n")
     assert "gunicorn" in admin_script_text
     assert 'admin_app:app' in admin_script_text
     assert '--worker-class "${CURATOR_GUNICORN_WORKER_CLASS:-gthread}"' in admin_script_text
@@ -187,6 +188,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert oct(admin_script.stat().st_mode & 0o777) == "0o700"
 
     deliver_script_text = deliver_script.read_text(encoding="utf-8")
+    assert deliver_script_text.startswith("#!/bin/bash\n")
     assert "deliver_digest.py" in deliver_script_text
     assert 'error: OPENAI_API_KEY is empty after loading' in deliver_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in deliver_script_text
@@ -202,6 +204,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "create 0600" in logrotate_text
 
     daily_script_text = daily_script.read_text(encoding="utf-8")
+    assert daily_script_text.startswith("#!/bin/bash\n")
     assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
@@ -285,6 +288,33 @@ def test_bootstrap_reuses_existing_api_keys_when_flags_are_omitted(tmp_path, rep
     assert "OPENAI_API_KEY=test-openai-key" in env_text
     assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "Generated deployment assets:" in result.stdout
+
+
+def test_bootstrap_deduplicates_managed_path_entries(tmp_path, repo_root):
+    duplicate_path = ":".join(
+        [
+            "/root/newsletter_curator/.venv/bin",
+            "/root/newsletter_curator/.venv/bin",
+            "/root/.local/bin",
+            "",
+            "/usr/local/bin",
+            "/root/.local/bin",
+            "/usr/bin",
+        ]
+    )
+
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": duplicate_path},
+    )
+
+    expected_path = "PATH=/root/newsletter_curator/.venv/bin:/root/.local/bin:/usr/local/bin:/usr/bin"
+    env_text = paths["env_file"].read_text(encoding="utf-8")
+    cron_text = paths["cron_file"].read_text(encoding="utf-8")
+
+    assert expected_path in env_text
+    assert expected_path in cron_text
 
 
 def test_bootstrap_adds_admin_port_to_direct_access_public_base_url(tmp_path, repo_root):
