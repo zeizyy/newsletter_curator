@@ -116,3 +116,21 @@ def test_fetch_article_details_times_out_total_response_read(monkeypatch):
     }
     assert response.closed is True
     assert session.closed is True
+
+
+def test_fetch_article_details_extracts_published_at_in_utc(monkeypatch):
+    html = """
+    <html>
+      <head>
+        <title>Timestamped page</title>
+        <meta property="article:published_time" content="2026-03-21T08:15:00-04:00" />
+      </head>
+      <body><article>Article body.</article></body>
+    </html>
+    """
+
+    monkeypatch.setattr("curator.content.requests.Session", lambda: _FakeSession(html))
+
+    details = fetch_article_details("https://example.com/timestamped", max_article_chars=1000)
+
+    assert details["published_at"] == "2026-03-21T12:15:00+00:00"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import email.utils
+from datetime import UTC, datetime
 import json
 import re
 import time
@@ -266,6 +268,86 @@ def extract_links_from_html(html: str) -> list[dict]:
     return links
 
 
+def normalize_timestamp_to_utc(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    try:
+        parsed = email.utils.parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        parsed = None
+    if parsed:
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat()
+
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat()
+
+
+def _extract_json_ld_timestamp(raw_html: str) -> str:
+    timestamp_keys = ("datePublished", "dateCreated", "uploadDate", "dateModified")
+    for obj in _parse_json_ld_objects(raw_html):
+        for key in timestamp_keys:
+            normalized = normalize_timestamp_to_utc(str(obj.get(key, "") or ""))
+            if normalized:
+                return normalized
+    return ""
+
+
+def extract_article_published_at(
+    *,
+    payload: dict[str, object],
+    soup: BeautifulSoup,
+    raw_html: str,
+) -> str:
+    meta_selectors = [
+        'meta[property="article:published_time"]',
+        'meta[property="og:published_time"]',
+        'meta[property="article:modified_time"]',
+        'meta[name="article:published_time"]',
+        'meta[name="parsely-pub-date"]',
+        'meta[name="publish-date"]',
+        'meta[name="pubdate"]',
+        'meta[name="date"]',
+        'meta[itemprop="datePublished"]',
+        'meta[itemprop="dateCreated"]',
+        'meta[itemprop="dateModified"]',
+    ]
+    for selector in meta_selectors:
+        node = soup.select_one(selector)
+        if node is None:
+            continue
+        normalized = normalize_timestamp_to_utc(str(node.get("content", "") or ""))
+        if normalized:
+            return normalized
+
+    for node in soup.find_all("time"):
+        normalized = normalize_timestamp_to_utc(
+            str(node.get("datetime", "") or node.get_text(" ", strip=True) or "")
+        )
+        if normalized:
+            return normalized
+
+    json_ld_timestamp = _extract_json_ld_timestamp(raw_html)
+    if json_ld_timestamp:
+        return json_ld_timestamp
+
+    for key in ("date", "published_at", "published", "datePublished", "dateModified"):
+        normalized = normalize_timestamp_to_utc(str(payload.get(key, "") or ""))
+        if normalized:
+            return normalized
+
+    return ""
+
+
 def extract_article_details_from_html(
     html: str,
     *,
@@ -331,6 +413,7 @@ def extract_article_details_from_html(
         "article_text": article_text[:max_article_chars],
         "document_title": title,
         "document_excerpt": excerpt,
+        "published_at": extract_article_published_at(payload=payload, soup=soup, raw_html=html),
         "access_blocked": access["blocked"],
         "access_reason": access["reason"],
         "access_signals": access["signals"],
@@ -643,6 +726,7 @@ def enrich_story_with_article_metadata(story: dict, article_details: dict[str, s
     enriched = dict(story)
     document_title = normalize_whitespace(str(article_details.get("document_title", "") or ""))
     document_excerpt = normalize_whitespace(str(article_details.get("document_excerpt", "") or ""))
+    published_at = normalize_timestamp_to_utc(str(article_details.get("published_at", "") or ""))
     anchor_text = normalize_whitespace(str(enriched.get("anchor_text", "") or ""))
 
     if document_title and (not anchor_text or is_generic_title(anchor_text)):
@@ -651,4 +735,6 @@ def enrich_story_with_article_metadata(story: dict, article_details: dict[str, s
         not str(enriched.get("context", "")).strip() or is_generic_title(anchor_text)
     ):
         enriched["context"] = trim_context(document_excerpt)
+    if published_at:
+        enriched["published_at"] = published_at
     return enriched
