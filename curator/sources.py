@@ -8,6 +8,7 @@ import subprocess
 
 from .config import BASE_DIR
 from .content import trim_context
+from .observability import emit_event
 from .repository import SQLiteRepository
 
 
@@ -26,17 +27,21 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
         print(f"Additional sources script not found: {script_path}")
         return []
 
+    hours = int(source_cfg.get("hours", 24))
+    top_per_category = int(source_cfg.get("top_per_category", 5))
+    max_total = int(source_cfg.get("max_total", 20))
+    timeout_seconds = max(int(source_cfg.get("command_timeout_seconds", 300) or 300), 1)
     command = [
         "python3",
         script_path,
         "--output",
         "json",
         "--hours",
-        str(source_cfg.get("hours", 24)),
+        str(hours),
         "--top-per-category",
-        str(source_cfg.get("top_per_category", 5)),
+        str(top_per_category),
         "--max-total",
-        str(source_cfg.get("max_total", 20)),
+        str(max_total),
     ]
 
     feeds_file = source_cfg.get("feeds_file", "")
@@ -45,24 +50,75 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
             feeds_file = str(root_dir / feeds_file)
         command.extend(["--feeds-file", feeds_file])
 
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    emit_event(
+        "additional_source_script_started",
+        script_path=script_path,
+        timeout_seconds=timeout_seconds,
+        hours=hours,
+        top_per_category=top_per_category,
+        max_total=max_total,
+        custom_feeds=bool(feeds_file),
+    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stderr = str(exc.stderr or "").strip()
+        emit_event(
+            "additional_source_script_timed_out",
+            script_path=script_path,
+            timeout_seconds=timeout_seconds,
+            stderr=stderr,
+        )
+        print(f"Additional source ingestion timed out after {timeout_seconds} seconds.")
+        if stderr:
+            print(stderr)
+        return []
     if result.returncode != 0:
+        stderr = result.stderr.strip()
+        emit_event(
+            "additional_source_script_failed",
+            script_path=script_path,
+            returncode=result.returncode,
+            stderr=stderr,
+        )
         print("Additional source ingestion failed.")
-        if result.stderr.strip():
-            print(result.stderr.strip())
+        if stderr:
+            print(stderr)
         return []
 
     output = result.stdout.strip()
     if not output:
+        emit_event(
+            "additional_source_script_completed",
+            script_path=script_path,
+            story_count=0,
+            link_count=0,
+        )
         return []
 
     try:
         stories = json.loads(output)
     except json.JSONDecodeError:
+        emit_event(
+            "additional_source_script_invalid_output",
+            script_path=script_path,
+            output_chars=len(output),
+        )
         print("Additional source ingestion returned non-JSON output.")
         return []
 
     if not isinstance(stories, list):
+        emit_event(
+            "additional_source_script_invalid_output",
+            script_path=script_path,
+            output_type=type(stories).__name__,
+        )
         print("Additional source ingestion output was not a list.")
         return []
 
@@ -92,6 +148,12 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
                 "context": context,
             }
         )
+    emit_event(
+        "additional_source_script_completed",
+        script_path=script_path,
+        story_count=len(stories),
+        link_count=len(links),
+    )
     return links
 
 

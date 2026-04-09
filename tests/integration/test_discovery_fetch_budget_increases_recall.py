@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 from curator.config import DEFAULT_CONFIG, load_config
@@ -68,11 +69,19 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
 
 def test_additional_source_discovery_requests_thirty_candidates_by_default(monkeypatch, tmp_path):
     captured_commands: list[list[str]] = []
+    captured_timeouts: list[int] = []
     script_path = tmp_path / "fake_digest.py"
     script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-    def fake_run(command: list[str], capture_output: bool, text: bool, check: bool):
+    def fake_run(
+        command: list[str],
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        timeout: int,
+    ):
         captured_commands.append(list(command))
+        captured_timeouts.append(timeout)
         return SimpleNamespace(returncode=0, stdout=json.dumps([]), stderr="")
 
     monkeypatch.setattr("curator.sources.subprocess.run", fake_run)
@@ -107,5 +116,64 @@ def test_additional_source_discovery_requests_thirty_candidates_by_default(monke
             "30",
         ]
     ]
+    assert captured_timeouts == [300]
     assert config["limits"]["final_top_stories"] == 15
     assert config["limits"]["source_quotas"] == {"gmail": 10, "additional_source": 5}
+
+
+def test_additional_source_timeout_returns_no_links_and_emits_debug_event(monkeypatch, tmp_path):
+    emitted_events: list[tuple[str, dict]] = []
+    script_path = tmp_path / "fake_digest.py"
+    script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    def fake_run(
+        command: list[str],
+        capture_output: bool,
+        text: bool,
+        check: bool,
+        timeout: int,
+    ):
+        raise subprocess.TimeoutExpired(cmd=command, timeout=timeout, stderr="feed stalled")
+
+    monkeypatch.setattr("curator.sources.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "curator.sources.emit_event",
+        lambda event, /, **payload: emitted_events.append((event, payload)),
+    )
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "additional_sources": {
+                "enabled": True,
+                "script_path": str(script_path),
+                "command_timeout_seconds": 42,
+            }
+        },
+    )
+    config = load_config(str(config_path))
+
+    links = collect_additional_source_links(config, base_dir=Path(tmp_path))
+
+    assert links == []
+    assert emitted_events == [
+        (
+            "additional_source_script_started",
+            {
+                "script_path": str(script_path),
+                "timeout_seconds": 42,
+                "hours": 24,
+                "top_per_category": 5,
+                "max_total": 30,
+                "custom_feeds": False,
+            },
+        ),
+        (
+            "additional_source_script_timed_out",
+            {
+                "script_path": str(script_path),
+                "timeout_seconds": 42,
+                "stderr": "feed stalled",
+            },
+        ),
+    ]

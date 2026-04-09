@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
         "hours": 24,
         "top_per_category": 5,
         "max_total": 30,
+        "command_timeout_seconds": 300,
     },
     "openai": {"reasoning_model": "gpt-5-mini", "summary_model": "gpt-5-mini"},
     "limits": {
