@@ -520,9 +520,17 @@ Resolved recipients are automatically upserted into the `subscribers` table duri
 
 The subscriber-facing rollout is:
 1. Keep Buttondown or `email.digest_recipients` configured so recipient discovery still works.
-2. Let each subscriber visit `/login`, then `/settings`, to save their persona text and preferred sources into SQLite.
+2. Let each existing newsletter recipient visit `/login`, then `/settings`, to save their persona text and preferred sources into SQLite.
 3. Run a dry-run send and verify the expected recipients now exist in `subscribers`; users who saved settings will also have a `subscriber_profiles` row.
 4. If a user has not created a profile yet, delivery still succeeds and sends the default digest variant for that recipient.
+
+The login page now gates access on newsletter membership using the same recipient resolution order as delivery. If an email address is not currently eligible for delivery, `/login` redirects that reader to the Buttondown signup page instead of creating a local subscriber account.
+
+Optional login abuse gate:
+- Set `CURATOR_TURNSTILE_SITE_KEY` and `CURATOR_TURNSTILE_SECRET_KEY` to enable Cloudflare Turnstile on the subscriber login form after repeated attempts.
+- `CURATOR_LOGIN_CAPTCHA_THRESHOLD` controls how many recent login POSTs per IP or email are allowed before Turnstile is required. Default: `5`.
+- `CURATOR_LOGIN_CAPTCHA_WINDOW_SECONDS` controls the sliding window for that threshold. Default: `600`.
+- If the Turnstile env vars are unset, the CAPTCHA gate stays disabled and `/login` behaves normally.
 
 Current operator caveats:
 - preview still uses the default audience rather than generating one preview per personalized profile

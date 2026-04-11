@@ -9,6 +9,11 @@
 {% block utility_nav %}
   <a class="nav-pill {% if request.endpoint == 'subscriber_login' %}is-active{% endif %}" href="{{ url_for('subscriber_login') }}">Sign In</a>
 {% endblock %}
+{% block head_extra %}
+  {% if captcha_required and turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+{% endblock %}
 
 {% block content %}
   {% if message %}
@@ -36,6 +41,13 @@
         <label class="field-label" for="email_address">Email address</label>
         <input id="email_address" name="email_address" type="email" autocomplete="email" required value="{{ email_address }}" />
       </div>
+      {% if captcha_required and turnstile_site_key %}
+        <div class="field">
+          <label class="field-label">Verification</label>
+          <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}"></div>
+          <div class="field-note">Too many recent login attempts triggered an extra verification check.</div>
+        </div>
+      {% endif %}
       <div class="button-row">
         <button type="submit">Send sign-in link</button>
       </div>
