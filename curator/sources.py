@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import importlib.util
@@ -12,6 +13,14 @@ from .config import BASE_DIR
 from .content import trim_context
 from .observability import emit_event
 from .repository import SQLiteRepository
+
+
+def _coerce_additional_source_story(story: object) -> dict[str, object]:
+    if isinstance(story, dict):
+        return dict(story)
+    if is_dataclass(story):
+        return asdict(story)
+    return {}
 
 
 def _load_additional_source_builder(script_path: str):
@@ -106,16 +115,21 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
 
     links = []
     for story in stories:
-        if not isinstance(story, dict):
+        story_data = _coerce_additional_source_story(story)
+        if not story_data:
             continue
-        url = str(story.get("url", "")).strip()
+        url = str(story_data.get("url", "")).strip()
         if not url:
             continue
-        title = str(story.get("title", "")).strip()
-        source = str(story.get("source", "")).strip() or "Additional Source"
-        category = str(story.get("category", "")).strip()
-        published_at = str(story.get("published_at", "")).strip()
-        summary = str(story.get("summary", "")).strip()
+        title = str(story_data.get("title", "")).strip()
+        source = str(story_data.get("source", "")).strip() or "Additional Source"
+        category = str(story_data.get("category", "")).strip()
+        published_raw = story_data.get("published_at", "")
+        if isinstance(published_raw, datetime):
+            published_at = published_raw.isoformat()
+        else:
+            published_at = str(published_raw).strip()
+        summary = str(story_data.get("summary", "")).strip()
         context = trim_context(summary or title or url)
         links.append(
             {
