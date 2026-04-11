@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import importlib.util
 import json
 import sys
@@ -33,7 +34,8 @@ def test_build_daily_digest_emits_feed_progress_events(repo_root, tmp_path):
         encoding="utf-8",
     )
 
-    rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+    recent_pub_date = datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    rss = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>Example Feed</title>
@@ -41,11 +43,11 @@ def test_build_daily_digest_emits_feed_progress_events(repo_root, tmp_path):
       <title>Story One</title>
       <link>https://example.com/story-one?utm_source=test</link>
       <description>Important context for the story.</description>
-      <pubDate>Tue, 08 Apr 2026 12:00:00 +0000</pubDate>
+      <pubDate>{recent_pub_date}</pubDate>
     </item>
   </channel>
 </rss>
-"""
+""".encode("utf-8")
     captured_events: list[tuple[str, dict]] = []
 
     result = module.build_daily_digest_payload(
