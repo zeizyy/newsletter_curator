@@ -393,6 +393,19 @@
       color: var(--muted);
     }
 
+    .search-field-row {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .search-field-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
     input,
     textarea,
     select {
@@ -463,6 +476,79 @@
     .pill.muted-pill {
       background: rgba(19, 91, 72, 0.1);
       color: var(--muted);
+    }
+
+    .source-list-shell {
+      display: grid;
+      gap: 16px;
+    }
+
+    .autocomplete-shell {
+      position: relative;
+      display: grid;
+      gap: 12px;
+    }
+
+    .source-list-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .source-list-heading {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--soft);
+    }
+
+    .source-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .source-list-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: start;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(19, 91, 72, 0.12);
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .source-list-copy {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .source-list-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .source-list-empty {
+      display: none;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px dashed rgba(19, 91, 72, 0.22);
+      background: rgba(255, 255, 255, 0.52);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .source-list-empty.is-visible {
+      display: block;
+    }
+
+    .source-list-section[hidden],
+    .source-list-item[hidden] {
+      display: none !important;
     }
 
     .table-wrap {
@@ -613,6 +699,10 @@
       .state-head {
         flex-direction: column;
       }
+
+      .source-list-item {
+        flex-direction: column;
+      }
     }
 
     @media (prefers-color-scheme: dark) {
@@ -653,6 +743,7 @@
       .stat-card,
       .table-wrap,
       .toggle-card,
+      .source-list-item,
       .checkbox-row,
       input,
       textarea,

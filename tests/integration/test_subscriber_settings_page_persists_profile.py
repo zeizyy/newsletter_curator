@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 
 from tests.helpers import write_temp_config
 
@@ -32,9 +33,11 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     macro_id = repository.upsert_source(source_type="additional_source", source_name="Macro Wire")
     ai_id = repository.upsert_source(source_type="additional_source", source_name="AI Wire")
     signal_id = repository.upsert_source(source_type="gmail", source_name="Signal Mail")
+    chip_id = repository.upsert_source(source_type="additional_source", source_name="Chip Insider")
     repository.set_source_selection_by_id(macro_id, enabled=True)
     repository.set_source_selection_by_id(ai_id, enabled=False)
     repository.set_source_selection_by_id(signal_id, enabled=True)
+    repository.set_source_selection_by_id(chip_id, enabled=True)
 
     client = admin_app.app.test_client()
     client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, session["token"])
@@ -49,8 +52,18 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Macro Wire" in page
     assert "AI Wire" in page
     assert "Unavailable" in page
+    assert 'type="search"' in page
+    assert 'id="preferred_source_search"' in page
+    assert "Start typing to search the source catalog." in page
+    assert "Selected sources" in page
+    assert "Matching sources" in page
+    assert "Gmail newsletter" in page
+    assert "Additional feed" in page
     assert "Publisher feeds" not in page
     assert "Gmail newsletters" not in page
+    assert page.index("Macro Wire") < page.index("Signal Mail")
+    assert page.index("AI Wire") < page.index("Signal Mail")
+    assert re.search(r'value="AI Wire"[^>]*checked[^>]*disabled', page)
 
     save_response = client.post(
         "/settings",
@@ -84,6 +97,8 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert 'value="1"' in second_page
     assert "Signal Mail" in second_page
     assert "AI Wire" in second_page
+    assert "Selected sources" in second_page
+    assert "Matching sources" in second_page
 
 
 def test_subscriber_settings_requires_authentication(monkeypatch, tmp_path):
