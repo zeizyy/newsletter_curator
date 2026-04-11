@@ -331,7 +331,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             recipients=group["recipients"],
             use_cached_newsletter=True,
             persist_newsletter=True,
-            audience_key=group["profile_key"],
+            audience_key=group["audience_key"],
         )
         group_status = str(profile_result.get("status", "")).strip() or "unknown"
         group_statuses.append(group_status)
