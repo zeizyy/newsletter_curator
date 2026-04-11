@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from curator.config import DEFAULT_CONFIG, load_config
@@ -152,4 +154,62 @@ def test_additional_source_builder_failure_returns_no_links_and_emits_debug_even
                 "error_type": "TimeoutError",
             },
         ),
+    ]
+
+
+def test_additional_source_builder_accepts_dataclass_story_output(monkeypatch, tmp_path):
+    @dataclass
+    class Story:
+        category: str
+        source: str
+        title: str
+        url: str
+        published_at: datetime
+        summary: str
+
+    script_path = tmp_path / "fake_digest.py"
+    script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    def fake_builder(**kwargs):
+        return {
+            "stories": [
+                Story(
+                    category="ai",
+                    source="OpenAI News",
+                    title="The next phase of enterprise AI",
+                    url="https://openai.com/index/next-phase-of-enterprise-ai",
+                    published_at=datetime(2026, 4, 11, 12, 0, 0, tzinfo=UTC),
+                    summary="OpenAI describes the next phase of enterprise AI adoption.",
+                )
+            ],
+            "failures": [],
+        }
+
+    monkeypatch.setattr("curator.sources._load_additional_source_builder", lambda _path: fake_builder)
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "additional_sources": {
+                "enabled": True,
+                "script_path": str(script_path),
+            }
+        },
+    )
+    config = load_config(str(config_path))
+
+    links = collect_additional_source_links(config, base_dir=Path(tmp_path))
+
+    assert links == [
+        {
+            "subject": "[ai] The next phase of enterprise AI",
+            "from": "OpenAI News",
+            "source_name": "OpenAI News",
+            "source_type": "additional_source",
+            "date": "2026-04-11T12:00:00+00:00",
+            "published_at": "2026-04-11T12:00:00+00:00",
+            "url": "https://openai.com/index/next-phase-of-enterprise-ai",
+            "anchor_text": "The next phase of enterprise AI",
+            "context": "OpenAI describes the next phase of enterprise AI adoption.",
+        }
     ]
