@@ -12,6 +12,8 @@
 {% endblock %}
 
 {% block content %}
+  {% set selected_sources = available_sources | selectattr("selected") | list %}
+  {% set unselected_sources = available_sources | rejectattr("selected") | list %}
   {% if message %}
     <section class="banner-ok">{{ message }}</section>
   {% endif %}
@@ -69,32 +71,95 @@
         </div>
       </div>
       <p class="section-copy">Preferred sources act as a soft uprank during your personalized final ranking pass. They do not filter ingest or rewrite the stored catalog. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
-      <div class="toggle-grid">
-        {% for source in available_sources %}
-          <label class="toggle-card">
-            <div class="stack">
-              <strong>{{ source.source_name }}</strong>
-              {% if source.enabled %}
-                <span class="pill">Available</span>
-              {% else %}
-                <span class="pill muted-pill">Unavailable</span>
-              {% endif %}
-            </div>
-            <div class="checkbox-row">
-              <input
-                type="checkbox"
-                name="preferred_source"
-                value="{{ source.source_name }}"
-                {% if source.selected %}checked{% endif %}
-                {% if not source.enabled %}disabled{% endif %}
-              />
-            </div>
-          </label>
-        {% endfor %}
-      </div>
       {% if not available_sources %}
         <div class="state-shell is-empty">
           <p class="state-copy">No sources are in the catalog yet. Once the repository has stories, preferred-source controls will appear here.</p>
+        </div>
+      {% else %}
+        <div class="search-field-row">
+          <label class="field-label" for="preferred_source_search">Search preferred sources</label>
+          <input
+            id="preferred_source_search"
+            type="search"
+            placeholder="Search by source or kind"
+            aria-label="Search preferred sources"
+            data-preferred-source-search
+          />
+          <p class="search-field-note">Start typing to search the source catalog. Matching sources appear below.</p>
+        </div>
+        <div class="source-list-shell">
+          {% if selected_sources %}
+            <section class="source-list-section" data-selected-sources-section>
+              <h3 class="source-list-heading">Selected sources</h3>
+              <div class="source-list" data-selected-sources-list>
+                {% for source in selected_sources %}
+                  <label class="source-list-item">
+                    <div class="source-list-copy">
+                      <strong>{{ source.source_name }}</strong>
+                      <div class="source-list-meta">
+                        <span class="pill">{{ source.source_kind_label }}</span>
+                        {% if source.enabled %}
+                          <span class="pill">Available</span>
+                        {% else %}
+                          <span class="pill muted-pill">Unavailable</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="checkbox-row">
+                      <input
+                        type="checkbox"
+                        name="preferred_source"
+                        value="{{ source.source_name }}"
+                        aria-label="{{ source.source_name }} {{ source.source_kind_label }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
+                        {% if source.selected %}checked{% endif %}
+                        {% if not source.enabled %}disabled{% endif %}
+                      />
+                    </div>
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+          <div class="autocomplete-shell">
+            <section class="source-list-section" data-autocomplete-section hidden>
+              <h3 class="source-list-heading">Matching sources</h3>
+              <div class="source-list" data-all-sources-list>
+                {% for source in unselected_sources %}
+                  <label
+                    class="source-list-item"
+                    data-source-option
+                    data-search-text="{{ (source.source_name ~ ' ' ~ source.source_kind_label) | lower }}"
+                    hidden
+                  >
+                    <div class="source-list-copy">
+                      <strong>{{ source.source_name }}</strong>
+                      <div class="source-list-meta">
+                        <span class="pill">{{ source.source_kind_label }}</span>
+                        {% if source.enabled %}
+                          <span class="pill">Available</span>
+                        {% else %}
+                          <span class="pill muted-pill">Unavailable</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="checkbox-row">
+                      <input
+                        type="checkbox"
+                        name="preferred_source"
+                        value="{{ source.source_name }}"
+                        aria-label="{{ source.source_name }} {{ source.source_kind_label }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
+                        {% if source.selected %}checked{% endif %}
+                        {% if not source.enabled %}disabled{% endif %}
+                      />
+                    </div>
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+            <div class="source-list-empty" data-all-sources-empty>
+              No sources match this search yet.
+            </div>
+          </div>
         </div>
       {% endif %}
     </section>
@@ -105,4 +170,49 @@
       </div>
     </section>
   </form>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (() => {
+      const searchInput = document.querySelector("[data-preferred-source-search]");
+      const sourceOptions = Array.from(document.querySelectorAll("[data-source-option]"));
+      const autocompleteSection = document.querySelector("[data-autocomplete-section]");
+      const emptyState = document.querySelector("[data-all-sources-empty]");
+      if (!searchInput || !autocompleteSection || !emptyState) {
+        return;
+      }
+
+      const applyFilter = () => {
+        const query = searchInput.value.trim().toLowerCase();
+        const queryTokens = query.split(/\s+/).filter(Boolean);
+        if (queryTokens.length === 0) {
+          autocompleteSection.hidden = true;
+          emptyState.classList.remove("is-visible");
+          for (const option of sourceOptions) {
+            option.hidden = true;
+          }
+          return;
+        }
+
+        let visibleCount = 0;
+        for (const option of sourceOptions) {
+          const searchText = (option.dataset.searchText || "").toLowerCase();
+          const searchTokens = searchText.split(/\s+/).filter(Boolean);
+          const matches = queryTokens.length === 0 || queryTokens.every((queryToken) =>
+            searchTokens.some((searchToken) => searchToken.startsWith(queryToken))
+          );
+          option.hidden = !matches;
+          if (matches) {
+            visibleCount += 1;
+          }
+        }
+        autocompleteSection.hidden = visibleCount === 0;
+        emptyState.classList.toggle("is-visible", visibleCount === 0);
+      };
+
+      searchInput.addEventListener("input", applyFilter);
+      applyFilter();
+    })();
+  </script>
 {% endblock %}
