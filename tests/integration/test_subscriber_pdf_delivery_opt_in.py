@@ -240,6 +240,14 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     assert result["personalized_delivery"] is True
     assert len(result["delivery_groups"]) == 2
     assert {group["delivery_format"] for group in result["delivery_groups"]} == {"email", "pdf"}
+    delivery_groups_by_format = {
+        group["delivery_format"]: group
+        for group in result["delivery_groups"]
+    }
+    assert delivery_groups_by_format["email"]["audience_key"] == delivery_groups_by_format["pdf"]["audience_key"]
+    assert delivery_groups_by_format["email"]["daily_newsletter_id"] == delivery_groups_by_format["pdf"]["daily_newsletter_id"]
+    assert delivery_groups_by_format["email"]["cached_newsletter"] is False
+    assert delivery_groups_by_format["pdf"]["cached_newsletter"] is True
     assert result["delivery_subscribers"] == [
         {
             "email": "reader@example.com",
@@ -293,6 +301,14 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
         for entry in events
         if entry["event"] == "delivery_started" and entry["delivery_format"] == "pdf"
     )
+    email_delivery_started = next(
+        entry
+        for entry in events
+        if entry["event"] == "delivery_started" and entry["delivery_format"] == "email"
+    )
+    assert email_delivery_started["cached_newsletter_available"] is False
+    assert pdf_delivery_started["cached_newsletter_available"] is True
+    assert email_delivery_started["audience_key"] == pdf_delivery_started["audience_key"]
     assert pdf_delivery_started["telemetry_enabled"] is True
     assert pdf_delivery_started["open_tracking_enabled"] is True
     assert pdf_delivery_started["click_tracking_enabled"] is True
