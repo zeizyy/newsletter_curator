@@ -6,12 +6,14 @@ Fetch RSS/Atom feeds and build a category-balanced daily digest.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import datetime as dt
 import email.utils
 import hashlib
 import json
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -327,6 +329,147 @@ def render_json(stories: list[Story]) -> str:
     return json.dumps(payload, indent=2)
 
 
+def _emit_event(
+    event_logger: Callable[..., None] | None,
+    event: str,
+    /,
+    **payload,
+) -> None:
+    if event_logger is None:
+        return
+    event_logger(event, **payload)
+
+
+def build_daily_digest_payload(
+    *,
+    feeds_file: str | None = None,
+    hours: int = 24,
+    top_per_category: int = 5,
+    max_total: int = 20,
+    fetch_timeout_seconds: int = 20,
+    max_redirects: int = 5,
+    total_timeout_seconds: int | None = None,
+    event_logger: Callable[..., None] | None = None,
+    fetch_xml_fn=fetch_xml,
+) -> dict[str, Any]:
+    feed_map = load_feeds(feeds_file)
+    total_feeds = sum(len(sources) for sources in feed_map.values())
+    started_at = time.monotonic()
+    _emit_event(
+        event_logger,
+        "additional_source_digest_started",
+        total_feeds=total_feeds,
+        category_count=len(feed_map),
+        hours=hours,
+        top_per_category=top_per_category,
+        max_total=max_total,
+        fetch_timeout_seconds=fetch_timeout_seconds,
+        total_timeout_seconds=total_timeout_seconds,
+        custom_feeds=bool(feeds_file),
+    )
+
+    stories: list[Story] = []
+    failures: list[str] = []
+    feed_index = 0
+    for category, sources in feed_map.items():
+        for source in sources:
+            feed_index += 1
+            name = source["name"]
+            url = source["url"]
+            remaining_budget_seconds: float | None = None
+            if total_timeout_seconds is not None:
+                remaining_budget_seconds = total_timeout_seconds - (time.monotonic() - started_at)
+                if remaining_budget_seconds <= 0:
+                    _emit_event(
+                        event_logger,
+                        "additional_source_digest_timed_out",
+                        feed_index=feed_index,
+                        total_feeds=total_feeds,
+                        category=category,
+                        source_name=name,
+                        url=url,
+                        elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+                    )
+                    raise TimeoutError(
+                        f"Additional source collection exceeded {total_timeout_seconds} seconds."
+                    )
+            effective_timeout = float(fetch_timeout_seconds)
+            if remaining_budget_seconds is not None:
+                effective_timeout = max(0.1, min(effective_timeout, remaining_budget_seconds))
+            feed_started_at = time.monotonic()
+            _emit_event(
+                event_logger,
+                "additional_source_feed_started",
+                feed_index=feed_index,
+                total_feeds=total_feeds,
+                category=category,
+                source_name=name,
+                url=url,
+                timeout_seconds=round(effective_timeout, 3),
+                remaining_budget_seconds=(
+                    round(remaining_budget_seconds, 3)
+                    if remaining_budget_seconds is not None
+                    else None
+                ),
+            )
+            try:
+                raw = fetch_xml_fn(
+                    url,
+                    timeout=effective_timeout,
+                    max_redirects=max_redirects,
+                )
+                parsed = parse_feed(raw, category=category, source_name=name)
+                stories.extend(parsed)
+                _emit_event(
+                    event_logger,
+                    "additional_source_feed_completed",
+                    feed_index=feed_index,
+                    total_feeds=total_feeds,
+                    category=category,
+                    source_name=name,
+                    url=url,
+                    response_bytes=len(raw),
+                    parsed_story_count=len(parsed),
+                    duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
+                )
+            except Exception as exc:
+                failures.append(f"{name} ({url}): {exc}")
+                _emit_event(
+                    event_logger,
+                    "additional_source_feed_failed",
+                    feed_index=feed_index,
+                    total_feeds=total_feeds,
+                    category=category,
+                    source_name=name,
+                    url=url,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
+                )
+
+    selected = pick_balanced(
+        dedupe_and_filter(stories, hours=hours),
+        top_per_category=top_per_category,
+        max_total=max_total,
+    )
+    _emit_event(
+        event_logger,
+        "additional_source_digest_completed",
+        total_feeds=total_feeds,
+        story_count=len(stories),
+        selected_count=len(selected),
+        failure_count=len(failures),
+        elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+    )
+    return {
+        "stories": selected,
+        "failures": failures,
+        "total_feeds": total_feeds,
+        "story_count": len(stories),
+        "selected_count": len(selected),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a daily digest from RSS/Atom feeds.")
     parser.add_argument("--feeds-file", help="Path to JSON feeds map. If omitted, use built-in defaults.")
@@ -340,29 +483,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        feed_map = load_feeds(args.feeds_file)
+        result = build_daily_digest_payload(
+            feeds_file=args.feeds_file,
+            hours=args.hours,
+            top_per_category=args.top_per_category,
+            max_total=args.max_total,
+        )
     except Exception as exc:
-        print(f"Failed to load feeds: {exc}", file=sys.stderr)
+        print(f"Failed to build digest: {exc}", file=sys.stderr)
         return 1
 
-    stories: list[Story] = []
-    failures: list[str] = []
-    for category, sources in feed_map.items():
-        for source in sources:
-            name = source["name"]
-            url = source["url"]
-            try:
-                raw = fetch_xml(url)
-                parsed = parse_feed(raw, category=category, source_name=name)
-                stories.extend(parsed)
-            except Exception as exc:
-                failures.append(f"{name} ({url}): {exc}")
-
-    selected = pick_balanced(
-        dedupe_and_filter(stories, hours=args.hours),
-        top_per_category=args.top_per_category,
-        max_total=args.max_total,
-    )
+    selected = result["stories"]
+    failures = result["failures"]
 
     if args.output == "json":
         print(render_json(selected))
