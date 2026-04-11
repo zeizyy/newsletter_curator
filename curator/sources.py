@@ -1,15 +1,35 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
-import subprocess
+import sys
 
 from .config import BASE_DIR
 from .content import trim_context
 from .observability import emit_event
 from .repository import SQLiteRepository
+
+
+def _load_additional_source_builder(script_path: str):
+    module_name = (
+        f"_newsletter_additional_sources_{hashlib.sha1(script_path.encode('utf-8')).hexdigest()}"
+    )
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load additional sources module from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    builder = getattr(module, "build_daily_digest_payload", None)
+    if not callable(builder):
+        raise AttributeError(
+            f"Additional sources module {script_path} must export build_daily_digest_payload"
+        )
+    return builder
 
 
 def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike[str] | None = None) -> list[dict]:
@@ -31,27 +51,13 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
     top_per_category = int(source_cfg.get("top_per_category", 5))
     max_total = int(source_cfg.get("max_total", 20))
     timeout_seconds = max(int(source_cfg.get("command_timeout_seconds", 300) or 300), 1)
-    command = [
-        "python3",
-        script_path,
-        "--output",
-        "json",
-        "--hours",
-        str(hours),
-        "--top-per-category",
-        str(top_per_category),
-        "--max-total",
-        str(max_total),
-    ]
-
     feeds_file = source_cfg.get("feeds_file", "")
     if feeds_file:
         if not os.path.isabs(feeds_file):
             feeds_file = str(root_dir / feeds_file)
-        command.extend(["--feeds-file", feeds_file])
 
     emit_event(
-        "additional_source_script_started",
+        "additional_source_collection_started",
         script_path=script_path,
         timeout_seconds=timeout_seconds,
         hours=hours,
@@ -60,66 +66,39 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
         custom_feeds=bool(feeds_file),
     )
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_seconds,
+        builder = _load_additional_source_builder(script_path)
+        result = builder(
+            feeds_file=feeds_file or None,
+            hours=hours,
+            top_per_category=top_per_category,
+            max_total=max_total,
+            total_timeout_seconds=timeout_seconds,
+            event_logger=lambda event, **payload: emit_event(
+                event,
+                script_path=script_path,
+                **payload,
+            ),
         )
-    except subprocess.TimeoutExpired as exc:
-        stderr = str(exc.stderr or "").strip()
+    except Exception as exc:
         emit_event(
-            "additional_source_script_timed_out",
+            "additional_source_collection_failed",
             script_path=script_path,
-            timeout_seconds=timeout_seconds,
-            stderr=stderr,
-        )
-        print(f"Additional source ingestion timed out after {timeout_seconds} seconds.")
-        if stderr:
-            print(stderr)
-        return []
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        emit_event(
-            "additional_source_script_failed",
-            script_path=script_path,
-            returncode=result.returncode,
-            stderr=stderr,
+            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         print("Additional source ingestion failed.")
-        if stderr:
-            print(stderr)
+        print(str(exc))
         return []
 
-    output = result.stdout.strip()
-    if not output:
-        emit_event(
-            "additional_source_script_completed",
-            script_path=script_path,
-            story_count=0,
-            link_count=0,
-        )
-        return []
-
-    try:
-        stories = json.loads(output)
-    except json.JSONDecodeError:
-        emit_event(
-            "additional_source_script_invalid_output",
-            script_path=script_path,
-            output_chars=len(output),
-        )
-        print("Additional source ingestion returned non-JSON output.")
-        return []
-
+    stories = result.get("stories", [])
+    failures = result.get("failures", [])
     if not isinstance(stories, list):
         emit_event(
-            "additional_source_script_invalid_output",
+            "additional_source_collection_invalid_output",
             script_path=script_path,
             output_type=type(stories).__name__,
         )
-        print("Additional source ingestion output was not a list.")
+        print("Additional source ingestion returned non-list stories.")
         return []
 
     links = []
@@ -149,10 +128,11 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
             }
         )
     emit_event(
-        "additional_source_script_completed",
+        "additional_source_collection_completed",
         script_path=script_path,
         story_count=len(stories),
         link_count=len(links),
+        failure_count=len(failures) if isinstance(failures, list) else 0,
     )
     return links
 
