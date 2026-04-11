@@ -137,9 +137,11 @@ def seed_review_fixture(
     macro_id = repository.upsert_source(source_type="additional_source", source_name="Macro Wire")
     ai_id = repository.upsert_source(source_type="additional_source", source_name="AI Wire")
     signal_id = repository.upsert_source(source_type="gmail", source_name="Signal Mail")
+    chip_id = repository.upsert_source(source_type="additional_source", source_name="Chip Insider")
     repository.set_source_selection_by_id(macro_id, enabled=True)
     repository.set_source_selection_by_id(ai_id, enabled=False)
     repository.set_source_selection_by_id(signal_id, enabled=True)
+    repository.set_source_selection_by_id(chip_id, enabled=True)
 
     subscriber = repository.upsert_subscriber(subscriber_email)
     repository.upsert_subscriber_profile(
@@ -359,6 +361,17 @@ def extract_ref(snapshot_text: str, *, role: str, accessible_name: str) -> str:
     return match.group(1)
 
 
+def extract_ref_with_fallback(snapshot_text: str, *, roles: list[str], accessible_name: str) -> str:
+    for role in roles:
+        try:
+            return extract_ref(snapshot_text, role=role, accessible_name=accessible_name)
+        except RuntimeError:
+            continue
+    raise RuntimeError(
+        f"Failed to find ref for roles={roles!r} accessible_name={accessible_name!r} in snapshot."
+    )
+
+
 def extract_confirm_url(snapshot_text: str) -> str:
     match = re.search(r"https?://[^\s]+/login/confirm\?token=[A-Za-z0-9\-_]+", snapshot_text)
     if match is None:
@@ -544,8 +557,33 @@ def main() -> int:
             )
 
             persona_ref = extract_ref(settings_snapshot, role="textbox", accessible_name="Persona text")
-            signal_mail_ref = extract_ref(settings_snapshot, role="checkbox", accessible_name="Signal Mail Available")
-            save_settings_ref = extract_ref(settings_snapshot, role="button", accessible_name="Save settings")
+            source_search_ref = extract_ref_with_fallback(
+                settings_snapshot,
+                roles=["searchbox", "textbox"],
+                accessible_name="Search preferred sources",
+            )
+            run_playwright_command(
+                "fill",
+                source_search_ref,
+                "Signal",
+                output_dir=output_dir,
+                session=browser_session,
+                pwcli_path=pwcli_path,
+            )
+            filtered_settings_snapshot = read_snapshot(
+                output_dir=output_dir,
+                session=browser_session,
+                pwcli_path=pwcli_path,
+            )
+            ensure_contains(filtered_settings_snapshot, "Signal Mail", context="filtered settings snapshot")
+            if "Chip Insider" in filtered_settings_snapshot:
+                raise RuntimeError("Preferred-source search did not filter the all-sources list as expected.")
+            signal_mail_ref = extract_ref(
+                filtered_settings_snapshot,
+                role="checkbox",
+                accessible_name="Signal Mail Gmail newsletter Available",
+            )
+            save_settings_ref = extract_ref(filtered_settings_snapshot, role="button", accessible_name="Save settings")
             run_playwright_command(
                 "fill",
                 persona_ref,

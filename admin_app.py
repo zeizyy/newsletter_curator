@@ -932,6 +932,17 @@ def require_subscriber_session(repository):
     return None, response
 
 
+def subscriber_source_kind_label(source_type: object) -> str:
+    normalized = str(source_type or "").strip().lower()
+    if normalized == "gmail":
+        return "Gmail newsletter"
+    if normalized == "additional_source":
+        return "Additional feed"
+    if normalized:
+        return normalized.replace("_", " ").title()
+    return "Source"
+
+
 def build_subscriber_settings_sources(available_sources: list[dict], selected_sources: list[str]) -> list[dict]:
     selected_lookup = {str(source).strip().lower() for source in selected_sources if str(source).strip()}
     normalized_sources: list[dict] = []
@@ -943,6 +954,7 @@ def build_subscriber_settings_sources(available_sources: list[dict], selected_so
                 "source_name": source_name,
                 "enabled": bool(source.get("enabled", True)),
                 "selected": source_name.lower() in selected_lookup,
+                "source_kind_label": subscriber_source_kind_label(source.get("source_type", "")),
             }
         )
     return sorted(

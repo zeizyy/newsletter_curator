@@ -56,6 +56,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
         "page": "login",
         "email": "",
         "persona": "Focus on semis, software margins, and bond yields.",
+        "source_search": "",
         "signal_checked": False,
         "shot_index": 0,
         "snapshot_index": 0,
@@ -90,22 +91,26 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 ]
             )
         if page == "settings":
-            return "\n".join(
-                [
-                    '- heading "Your digest settings" [level=1] [ref=e7]',
-                    '- textbox "Persona text" [ref=e29]: Focus on semis, software margins, and bond yields.',
-                    '- strong [ref=e42]: AI Wire',
-                    '- generic [ref=e43]: Unavailable',
-                    '- checkbox "Signal Mail Available" [ref=e61]',
-                    '- button "Save settings" [ref=e64] [cursor=pointer]',
-                ]
-            )
+            lines = [
+                '- heading "Your digest settings" [level=1] [ref=e7]',
+                '- textbox "Persona text" [ref=e29]: Focus on semis, software margins, and bond yields.',
+                f'- searchbox "Search preferred sources" [ref=e31]: {state["source_search"]}',
+                '- heading "Selected sources" [level=3] [ref=e34]',
+                '- strong [ref=e42]: AI Wire',
+                '- generic [ref=e43]: Unavailable',
+                '- generic [ref=e48]: Start typing to search the source catalog. Matching sources appear below.',
+            ]
+            if state["source_search"].lower() == "signal":
+                lines.append('- heading "Matching sources" [level=3] [ref=e50]')
+                lines.append('- checkbox "Signal Mail Gmail newsletter Available" [ref=e61]')
+            lines.append('- button "Save settings" [ref=e64] [cursor=pointer]')
+            return "\n".join(lines)
         if page == "settings_saved":
             return "\n".join(
                 [
                     '- generic [ref=e20]: Subscriber settings saved.',
                     '- textbox "Persona text" [ref=e30]: Focus on chips, software margins, and rates.',
-                    '- checkbox "Signal Mail Available" [checked] [ref=e62]',
+                    '- checkbox "Signal Mail Gmail newsletter Available" [checked] [ref=e62]',
                 ]
             )
         if page == "admin":
@@ -155,6 +160,8 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                     state["email"] = value
             elif ref == "e29":
                 state["persona"] = value
+            elif ref == "e31":
+                state["source_search"] = value
             return "### Ran Playwright code\n"
         if action == "click":
             ref = command[1]
@@ -165,6 +172,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                     state["page"] = "login_link"
             elif ref == "e17":
                 state["page"] = "settings"
+                state["source_search"] = ""
             elif ref == "e64":
                 state["page"] = "settings_saved"
                 repository = SQLiteRepository(state["db_path"])
