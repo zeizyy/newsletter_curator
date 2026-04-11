@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -585,3 +587,81 @@ def test_dry_run_recipient_without_db_profile_uses_default_personalization(monke
     ]
     assert [message["to"] for message in sent_messages] == ["dry-run@example.com"]
     assert "Rates reset changes software valuations" in sent_messages[0]["body"]
+
+
+def test_cached_delivery_sends_recipients_concurrently(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": [
+                    "a@example.com",
+                    "b@example.com",
+                    "c@example.com",
+                    "d@example.com",
+                ],
+                "digest_subject": "Cached Daily Digest",
+            },
+            "limits": {"max_delivery_send_workers": 2},
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    active = 0
+    max_active = 0
+    active_lock = threading.Lock()
+    sent_messages: list[dict] = []
+
+    def slow_send_email(
+        service,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        *,
+        message_id_header: str = "",
+        attachments: list[dict] | None = None,
+    ):
+        nonlocal active, max_active
+        with active_lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        try:
+            sent_messages.append(
+                {
+                    "to": to_address,
+                    "subject": subject,
+                    "body": body,
+                    "html_body": html_body or "",
+                    "message_id_header": message_id_header,
+                    "attachment_count": len(attachments or []),
+                }
+            )
+        finally:
+            with active_lock:
+                active -= 1
+
+    monkeypatch.setattr(main, "send_email", slow_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+
+    assert result["status"] == "completed"
+    assert result["cached_newsletter"] is True
+    assert result["sent_recipients"] == 4
+    assert max_active == 2
+    assert {message["to"] for message in sent_messages} == {
+        "a@example.com",
+        "b@example.com",
+        "c@example.com",
+        "d@example.com",
+    }

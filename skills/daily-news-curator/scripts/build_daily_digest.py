@@ -6,6 +6,7 @@ Fetch RSS/Atom feeds and build a category-balanced daily digest.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Callable
 import datetime as dt
 import email.utils
@@ -349,6 +350,7 @@ def build_daily_digest_payload(
     fetch_timeout_seconds: int = 20,
     max_redirects: int = 5,
     total_timeout_seconds: int | None = None,
+    max_feed_workers: int = 5,
     event_logger: Callable[..., None] | None = None,
     fetch_xml_fn=fetch_xml,
 ) -> dict[str, Any]:
@@ -365,87 +367,121 @@ def build_daily_digest_payload(
         max_total=max_total,
         fetch_timeout_seconds=fetch_timeout_seconds,
         total_timeout_seconds=total_timeout_seconds,
+        max_feed_workers=max_feed_workers,
         custom_feeds=bool(feeds_file),
     )
 
     stories: list[Story] = []
     failures: list[str] = []
+    feed_descriptors: list[tuple[int, str, str, str]] = []
     feed_index = 0
     for category, sources in feed_map.items():
         for source in sources:
             feed_index += 1
-            name = source["name"]
-            url = source["url"]
-            remaining_budget_seconds: float | None = None
-            if total_timeout_seconds is not None:
-                remaining_budget_seconds = total_timeout_seconds - (time.monotonic() - started_at)
-                if remaining_budget_seconds <= 0:
-                    _emit_event(
-                        event_logger,
-                        "additional_source_digest_timed_out",
-                        feed_index=feed_index,
-                        total_feeds=total_feeds,
-                        category=category,
-                        source_name=name,
-                        url=url,
-                        elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
-                    )
-                    raise TimeoutError(
-                        f"Additional source collection exceeded {total_timeout_seconds} seconds."
-                    )
-            effective_timeout = float(fetch_timeout_seconds)
-            if remaining_budget_seconds is not None:
-                effective_timeout = max(0.1, min(effective_timeout, remaining_budget_seconds))
-            feed_started_at = time.monotonic()
+            feed_descriptors.append((feed_index, category, source["name"], source["url"]))
+
+    worker_count = min(max(1, int(max_feed_workers or 1)), len(feed_descriptors)) if feed_descriptors else 0
+
+    def fetch_one(
+        descriptor: tuple[int, str, str, str],
+        *,
+        timeout_seconds: float,
+        remaining_budget_seconds: float | None,
+    ) -> tuple[int, list[Story], str | None]:
+        current_feed_index, category, name, url = descriptor
+        feed_started_at = time.monotonic()
+        _emit_event(
+            event_logger,
+            "additional_source_feed_started",
+            feed_index=current_feed_index,
+            total_feeds=total_feeds,
+            category=category,
+            source_name=name,
+            url=url,
+            timeout_seconds=round(timeout_seconds, 3),
+            remaining_budget_seconds=(
+                round(remaining_budget_seconds, 3)
+                if remaining_budget_seconds is not None
+                else None
+            ),
+        )
+        try:
+            raw = fetch_xml_fn(
+                url,
+                timeout=timeout_seconds,
+                max_redirects=max_redirects,
+            )
+            parsed = parse_feed(raw, category=category, source_name=name)
             _emit_event(
                 event_logger,
-                "additional_source_feed_started",
-                feed_index=feed_index,
+                "additional_source_feed_completed",
+                feed_index=current_feed_index,
                 total_feeds=total_feeds,
                 category=category,
                 source_name=name,
                 url=url,
-                timeout_seconds=round(effective_timeout, 3),
-                remaining_budget_seconds=(
-                    round(remaining_budget_seconds, 3)
-                    if remaining_budget_seconds is not None
-                    else None
-                ),
+                response_bytes=len(raw),
+                parsed_story_count=len(parsed),
+                duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
             )
-            try:
-                raw = fetch_xml_fn(
-                    url,
-                    timeout=effective_timeout,
-                    max_redirects=max_redirects,
+            return current_feed_index - 1, parsed, None
+        except Exception as exc:
+            _emit_event(
+                event_logger,
+                "additional_source_feed_failed",
+                feed_index=current_feed_index,
+                total_feeds=total_feeds,
+                category=category,
+                source_name=name,
+                url=url,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
+            )
+            return current_feed_index - 1, [], f"{name} ({url}): {exc}"
+
+    feed_results: list[list[Story] | None] = [None] * len(feed_descriptors)
+    for offset in range(0, len(feed_descriptors), worker_count or 1):
+        batch = feed_descriptors[offset : offset + (worker_count or 1)]
+        future_to_index = {}
+        with ThreadPoolExecutor(max_workers=worker_count or 1) as executor:
+            for descriptor in batch:
+                current_feed_index, category, name, url = descriptor
+                remaining_budget_seconds: float | None = None
+                if total_timeout_seconds is not None:
+                    remaining_budget_seconds = total_timeout_seconds - (time.monotonic() - started_at)
+                    if remaining_budget_seconds <= 0:
+                        _emit_event(
+                            event_logger,
+                            "additional_source_digest_timed_out",
+                            feed_index=current_feed_index,
+                            total_feeds=total_feeds,
+                            category=category,
+                            source_name=name,
+                            url=url,
+                            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+                        )
+                        raise TimeoutError(
+                            f"Additional source collection exceeded {total_timeout_seconds} seconds."
+                        )
+                effective_timeout = float(fetch_timeout_seconds)
+                if remaining_budget_seconds is not None:
+                    effective_timeout = max(0.1, min(effective_timeout, remaining_budget_seconds))
+                future = executor.submit(
+                    fetch_one,
+                    descriptor,
+                    timeout_seconds=effective_timeout,
+                    remaining_budget_seconds=remaining_budget_seconds,
                 )
-                parsed = parse_feed(raw, category=category, source_name=name)
-                stories.extend(parsed)
-                _emit_event(
-                    event_logger,
-                    "additional_source_feed_completed",
-                    feed_index=feed_index,
-                    total_feeds=total_feeds,
-                    category=category,
-                    source_name=name,
-                    url=url,
-                    response_bytes=len(raw),
-                    parsed_story_count=len(parsed),
-                    duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
-                )
-            except Exception as exc:
-                failures.append(f"{name} ({url}): {exc}")
-                _emit_event(
-                    event_logger,
-                    "additional_source_feed_failed",
-                    feed_index=feed_index,
-                    total_feeds=total_feeds,
-                    category=category,
-                    source_name=name,
-                    url=url,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                    duration_ms=round((time.monotonic() - feed_started_at) * 1000, 2),
-                )
+                future_to_index[future] = current_feed_index - 1
+            for future in as_completed(future_to_index):
+                result_index, parsed, failure = future.result()
+                feed_results[result_index] = parsed
+                if failure:
+                    failures.append(failure)
+
+    for parsed in feed_results:
+        stories.extend(parsed or [])
 
     selected = pick_balanced(
         dedupe_and_filter(stories, hours=hours),
@@ -476,6 +512,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hours", type=int, default=24, help="Recency window in hours (default: 24).")
     parser.add_argument("--top-per-category", type=int, default=5, help="Max items per category.")
     parser.add_argument("--max-total", type=int, default=20, help="Max items in final digest.")
+    parser.add_argument("--max-feed-workers", type=int, default=5, help="Max concurrent feed fetches.")
     parser.add_argument("--output", choices=["markdown", "json"], default="markdown")
     return parser.parse_args()
 
@@ -488,6 +525,7 @@ def main() -> int:
             hours=args.hours,
             top_per_category=args.top_per_category,
             max_total=args.max_total,
+            max_feed_workers=args.max_feed_workers,
         )
     except Exception as exc:
         print(f"Failed to build digest: {exc}", file=sys.stderr)
