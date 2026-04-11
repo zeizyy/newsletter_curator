@@ -242,6 +242,20 @@ def subscriber_profile_key(
     return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
+def subscriber_audience_key(
+    persona_text: str,
+    preferred_sources: list[str],
+) -> str:
+    payload = json.dumps(
+        {
+            "persona_text": str(persona_text).strip(),
+            "preferred_sources": [source.lower() for source in preferred_sources],
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
 def finalize_delivery_newsletter(body: str, html_body: str) -> tuple[str, str]:
     return str(body or "").strip(), str(html_body or "").strip()
 
@@ -294,6 +308,10 @@ def resolve_delivery_subscribers(
                 "persona_text": persona_text,
                 "delivery_format": delivery_format,
                 "preferred_sources": preferred_sources,
+                "audience_key": subscriber_audience_key(
+                    persona_text,
+                    preferred_sources,
+                ),
                 "profile_key": subscriber_profile_key(
                     persona_text,
                     preferred_sources,
@@ -314,6 +332,7 @@ def group_delivery_subscribers(subscribers: list[dict]) -> list[dict]:
         if group is None:
             group = {
                 "profile_key": profile_key,
+                "audience_key": str(subscriber.get("audience_key", "")).strip(),
                 "persona_text": str(subscriber.get("persona_text", "")).strip(),
                 "delivery_format": normalize_subscriber_delivery_format(
                     subscriber.get("delivery_format")
