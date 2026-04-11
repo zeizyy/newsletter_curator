@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import subprocess
-from types import SimpleNamespace
 
 from curator.config import DEFAULT_CONFIG, load_config
 from curator.jobs import run_fetch_gmail_job
@@ -68,23 +65,15 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
 
 
 def test_additional_source_discovery_requests_thirty_candidates_by_default(monkeypatch, tmp_path):
-    captured_commands: list[list[str]] = []
-    captured_timeouts: list[int] = []
+    captured_kwargs: list[dict] = []
     script_path = tmp_path / "fake_digest.py"
     script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-    def fake_run(
-        command: list[str],
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        timeout: int,
-    ):
-        captured_commands.append(list(command))
-        captured_timeouts.append(timeout)
-        return SimpleNamespace(returncode=0, stdout=json.dumps([]), stderr="")
+    def fake_builder(**kwargs):
+        captured_kwargs.append(dict(kwargs))
+        return {"stories": [], "failures": []}
 
-    monkeypatch.setattr("curator.sources.subprocess.run", fake_run)
+    monkeypatch.setattr("curator.sources._load_additional_source_builder", lambda _path: fake_builder)
 
     config_path = write_temp_config(
         tmp_path,
@@ -102,40 +91,26 @@ def test_additional_source_discovery_requests_thirty_candidates_by_default(monke
     assert links == []
     assert DEFAULT_CONFIG["additional_sources"]["max_total"] == 30
     assert config["additional_sources"]["max_total"] == 30
-    assert captured_commands == [
-        [
-            "python3",
-            str(script_path),
-            "--output",
-            "json",
-            "--hours",
-            "24",
-            "--top-per-category",
-            "5",
-            "--max-total",
-            "30",
-        ]
-    ]
-    assert captured_timeouts == [300]
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["feeds_file"] is None
+    assert captured_kwargs[0]["hours"] == 24
+    assert captured_kwargs[0]["top_per_category"] == 5
+    assert captured_kwargs[0]["max_total"] == 30
+    assert captured_kwargs[0]["total_timeout_seconds"] == 300
+    assert callable(captured_kwargs[0]["event_logger"])
     assert config["limits"]["final_top_stories"] == 15
     assert config["limits"]["source_quotas"] == {"gmail": 10, "additional_source": 5}
 
 
-def test_additional_source_timeout_returns_no_links_and_emits_debug_event(monkeypatch, tmp_path):
+def test_additional_source_builder_failure_returns_no_links_and_emits_debug_event(monkeypatch, tmp_path):
     emitted_events: list[tuple[str, dict]] = []
     script_path = tmp_path / "fake_digest.py"
     script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-    def fake_run(
-        command: list[str],
-        capture_output: bool,
-        text: bool,
-        check: bool,
-        timeout: int,
-    ):
-        raise subprocess.TimeoutExpired(cmd=command, timeout=timeout, stderr="feed stalled")
+    def fake_builder(**kwargs):
+        raise TimeoutError("feed stalled")
 
-    monkeypatch.setattr("curator.sources.subprocess.run", fake_run)
+    monkeypatch.setattr("curator.sources._load_additional_source_builder", lambda _path: fake_builder)
     monkeypatch.setattr(
         "curator.sources.emit_event",
         lambda event, /, **payload: emitted_events.append((event, payload)),
@@ -158,7 +133,7 @@ def test_additional_source_timeout_returns_no_links_and_emits_debug_event(monkey
     assert links == []
     assert emitted_events == [
         (
-            "additional_source_script_started",
+            "additional_source_collection_started",
             {
                 "script_path": str(script_path),
                 "timeout_seconds": 42,
@@ -169,11 +144,11 @@ def test_additional_source_timeout_returns_no_links_and_emits_debug_event(monkey
             },
         ),
         (
-            "additional_source_script_timed_out",
+            "additional_source_collection_failed",
             {
                 "script_path": str(script_path),
-                "timeout_seconds": 42,
-                "stderr": "feed stalled",
+                "error": "feed stalled",
+                "error_type": "TimeoutError",
             },
         ),
     ]
