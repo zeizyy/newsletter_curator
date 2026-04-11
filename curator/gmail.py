@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import email.utils
 from email.message import EmailMessage
 import hashlib
@@ -441,9 +442,10 @@ def collect_live_gmail_links(
     query = gmail_cfg["query_time_window"]
     label_id = get_label_id_fn(service, gmail_cfg["label"])
     message_ids = list_message_ids_for_label_fn(service, label_id, query)
+    configured_workers = max(1, int(limits_cfg.get("max_gmail_message_workers", 5) or 5))
+    worker_count = min(configured_workers, len(message_ids)) if message_ids else 0
 
-    all_links = []
-    for message_id in message_ids:
+    def collect_one(message_id: str) -> list[dict]:
         message = get_message_fn(service, message_id)
         payload = message.get("payload", {})
         headers = payload.get("headers", [])
@@ -457,8 +459,9 @@ def collect_live_gmail_links(
         for html in html_bodies:
             links.extend(extract_links_from_html_fn(html))
         links = links[: limits_cfg["max_links_per_email"]]
+        message_links = []
         for link in links:
-            all_links.append(
+            message_links.append(
                 {
                     "subject": subject,
                     "from": from_header,
@@ -471,6 +474,26 @@ def collect_live_gmail_links(
                     "context": link["context"],
                 }
             )
+        return message_links
+
+    if worker_count <= 1:
+        all_links: list[dict] = []
+        for message_id in message_ids:
+            all_links.extend(collect_one(message_id))
+        return all_links
+
+    links_by_index: list[list[dict] | None] = [None] * len(message_ids)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(collect_one, message_id): index
+            for index, message_id in enumerate(message_ids)
+        }
+        for future in as_completed(futures):
+            links_by_index[futures[future]] = future.result()
+
+    all_links = []
+    for links in links_by_index:
+        all_links.extend(links or [])
     return all_links
 
 

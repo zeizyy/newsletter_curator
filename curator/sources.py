@@ -51,6 +51,7 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
     top_per_category = int(source_cfg.get("top_per_category", 5))
     max_total = int(source_cfg.get("max_total", 20))
     timeout_seconds = max(int(source_cfg.get("command_timeout_seconds", 300) or 300), 1)
+    max_feed_workers = max(int(source_cfg.get("max_feed_workers", 5) or 5), 1)
     feeds_file = source_cfg.get("feeds_file", "")
     if feeds_file:
         if not os.path.isabs(feeds_file):
@@ -63,6 +64,7 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
         hours=hours,
         top_per_category=top_per_category,
         max_total=max_total,
+        max_feed_workers=max_feed_workers,
         custom_feeds=bool(feeds_file),
     )
     try:
@@ -72,6 +74,7 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
             hours=hours,
             top_per_category=top_per_category,
             max_total=max_total,
+            max_feed_workers=max_feed_workers,
             total_timeout_seconds=timeout_seconds,
             event_logger=lambda event, **payload: emit_event(
                 event,

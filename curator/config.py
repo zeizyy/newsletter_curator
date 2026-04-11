@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
         "top_per_category": 5,
         "max_total": 30,
         "command_timeout_seconds": 300,
+        "max_feed_workers": 5,
     },
     "openai": {"reasoning_model": "gpt-5-mini", "summary_model": "gpt-5-mini"},
     "limits": {
@@ -44,8 +45,10 @@ DEFAULT_CONFIG = {
         "max_article_chars": 6000,
         "article_fetch_timeout": 15,
         "article_fetch_retries": 2,
+        "max_gmail_message_workers": 5,
         "max_fetch_workers": 5,
         "max_summary_workers": 5,
+        "max_delivery_send_workers": 5,
         "max_ingest_summaries": 20,
         "max_gmail_fetch_after_score": 20,
     },

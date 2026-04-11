@@ -140,6 +140,7 @@ def test_additional_source_builder_failure_returns_no_links_and_emits_debug_even
                 "hours": 24,
                 "top_per_category": 5,
                 "max_total": 30,
+                "max_feed_workers": 5,
                 "custom_feeds": False,
             },
         ),

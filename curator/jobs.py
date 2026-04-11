@@ -1572,8 +1572,14 @@ def run_delivery_job(
             attachment_count=len(attachments or []),
             subject=subject,
         )
+        configured_workers = max(
+            1,
+            int(config.get("limits", {}).get("max_delivery_send_workers", 5) or 5),
+        )
+        worker_count = min(configured_workers, len(resolved_recipients)) if resolved_recipients else 0
         sent_count = 0
         failed_recipients: list[dict] = []
+        pending_sends: list[tuple[str, str]] = []
         for recipient in resolved_recipients:
             message_id_header = build_delivery_message_id(
                 newsletter_date=newsletter_date,
@@ -1589,19 +1595,54 @@ def run_delivery_job(
                 recipient=recipient,
                 message_id_header=message_id_header,
             )
-            send_result = send_email_with_retry_and_dedupe(
-                service,
-                send_email_fn,
-                to_address=recipient,
-                subject=subject,
-                body=send_body,
-                html_body=send_html,
-                attachments=attachments,
-                newsletter_date=newsletter_date,
-                audience_key=audience_key,
-                daily_newsletter_id=daily_newsletter_id,
-                message_id_header=message_id_header,
-            )
+            pending_sends.append((recipient, message_id_header))
+
+        send_results: list[tuple[str, str, dict]] = []
+        if worker_count <= 1:
+            for recipient, message_id_header in pending_sends:
+                send_results.append(
+                    (
+                        recipient,
+                        message_id_header,
+                        send_email_with_retry_and_dedupe(
+                            service,
+                            send_email_fn,
+                            to_address=recipient,
+                            subject=subject,
+                            body=send_body,
+                            html_body=send_html,
+                            attachments=attachments,
+                            newsletter_date=newsletter_date,
+                            audience_key=audience_key,
+                            daily_newsletter_id=daily_newsletter_id,
+                            message_id_header=message_id_header,
+                        ),
+                    )
+                )
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = {
+                    executor.submit(
+                        send_email_with_retry_and_dedupe,
+                        service,
+                        send_email_fn,
+                        to_address=recipient,
+                        subject=subject,
+                        body=send_body,
+                        html_body=send_html,
+                        attachments=attachments,
+                        newsletter_date=newsletter_date,
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        message_id_header=message_id_header,
+                    ): (recipient, message_id_header)
+                    for recipient, message_id_header in pending_sends
+                }
+                for future in as_completed(futures):
+                    recipient, message_id_header = futures[future]
+                    send_results.append((recipient, message_id_header, future.result()))
+
+        for recipient, message_id_header, send_result in send_results:
             for event in list(send_result.get("events", []) or []):
                 event_name = str(event.get("event", "")).strip()
                 if event_name == "retry":
