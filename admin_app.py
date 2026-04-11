@@ -49,6 +49,7 @@ ADMIN_TOKEN_COOKIE = "curator_admin_token"
 SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
 SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
 SUBSCRIBER_SESSION_TTL_DAYS = 30
+DEFAULT_SUBSCRIBER_SIGNUP_URL = "https://buttondown.com/zeizyynewsletter"
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
 MCP_ENDPOINT_PATH = "/mcp"
 MCP_TOKEN_HEADER = "X-MCP-Token"
@@ -690,6 +691,20 @@ def build_subscriber_login_confirm_url(raw_token: str) -> str:
     return f"{subscriber_public_base_url()}{url_for('confirm_subscriber_login', token=raw_token)}"
 
 
+def subscriber_signup_url() -> str:
+    configured = str(os.getenv("CURATOR_SUBSCRIBER_SIGNUP_URL", "")).strip()
+    if configured:
+        return configured
+    return DEFAULT_SUBSCRIBER_SIGNUP_URL
+
+
+def subscriber_email_is_registered(config: dict, email_address: str) -> bool:
+    from curator.jobs import resolve_digest_recipients
+
+    recipients, _recipient_source = resolve_digest_recipients(config)
+    return str(email_address or "").strip().lower() in set(recipients)
+
+
 def send_subscriber_login_email(config: dict, to_address: str, confirm_url: str) -> dict:
     from curator.gmail import get_gmail_service, send_email
 
@@ -1296,6 +1311,8 @@ def subscriber_login():
         email_address = normalize_email_address(request.form.get("email_address", ""))
         if not email_address:
             errors.append("Enter a valid email address.")
+        elif not subscriber_email_is_registered(merged, email_address):
+            return redirect(subscriber_signup_url())
         elif repository is None:
             errors.append("Subscriber login is unavailable because the repository could not be opened.")
         else:
