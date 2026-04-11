@@ -11,12 +11,20 @@ def _repository_for_admin(admin_app_module):
     return admin_app_module.load_repository(admin_app_module.load_merged_config())
 
 
+def _reset_login_attempts(admin_app_module) -> None:
+    admin_app_module._SUBSCRIBER_LOGIN_ATTEMPTS["ip"].clear()
+    admin_app_module._SUBSCRIBER_LOGIN_ATTEMPTS["email"].clear()
+
+
 def test_subscriber_login_attempts_email_delivery_and_hashes_token(monkeypatch, tmp_path):
     admin_app = importlib.import_module("admin_app")
 
     config_path = write_temp_config(
         tmp_path,
-        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {"digest_recipients": ["reader@example.com"]},
+        },
     )
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "http://localhost:8080")
@@ -82,7 +90,10 @@ def test_subscriber_login_and_session_flow(monkeypatch, tmp_path):
 
     config_path = write_temp_config(
         tmp_path,
-        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {"digest_recipients": ["subscriber@example.com"]},
+        },
     )
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setenv("CURATOR_EXPOSE_LOGIN_LINKS", "1")
@@ -178,7 +189,10 @@ def test_subscriber_login_falls_back_to_request_host_and_port_when_public_base_u
 
     config_path = write_temp_config(
         tmp_path,
-        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {"digest_recipients": ["reader@example.com"]},
+        },
     )
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.delenv("CURATOR_PUBLIC_BASE_URL", raising=False)
@@ -201,3 +215,92 @@ def test_subscriber_login_falls_back_to_request_host_and_port_when_public_base_u
     assert response.status_code == 200
     assert len(deliveries) == 1
     assert deliveries[0].startswith("http://localhost:8080/login/confirm?token=")
+
+
+def test_subscriber_login_redirects_unregistered_email_to_buttondown_signup(monkeypatch, tmp_path):
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {"digest_recipients": ["registered@example.com"]},
+        },
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    client = admin_app.app.test_client()
+    response = client.post(
+        "/login",
+        data={"email_address": "new-reader@example.com"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "https://buttondown.com/zeizyynewsletter"
+
+    repository = _repository_for_admin(admin_app)
+    assert repository.get_subscriber_by_email("new-reader@example.com") is None
+
+
+def test_subscriber_login_requires_turnstile_after_threshold(monkeypatch, tmp_path):
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {"digest_recipients": ["reader@example.com"]},
+        },
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.setenv("CURATOR_TURNSTILE_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("CURATOR_LOGIN_CAPTCHA_THRESHOLD", "1")
+    _reset_login_attempts(admin_app)
+
+    deliveries: list[dict] = []
+
+    def fake_send_login_email(config: dict, to_address: str, confirm_url: str) -> dict:
+        deliveries.append({"to_address": to_address, "confirm_url": confirm_url})
+        return {"sent": True, "error": ""}
+
+    def fake_verify_turnstile(token: str, *, remoteip: str = "") -> tuple[bool, str]:
+        if token == "valid-turnstile-token":
+            return True, ""
+        return False, "Complete the CAPTCHA challenge and try again."
+
+    monkeypatch.setattr(admin_app, "send_subscriber_login_email", fake_send_login_email)
+    monkeypatch.setattr(admin_app, "verify_subscriber_login_turnstile", fake_verify_turnstile)
+
+    client = admin_app.app.test_client()
+
+    first_response = client.post(
+        "/login",
+        data={"email_address": "reader@example.com"},
+    )
+    assert first_response.status_code == 200
+    assert "Sign-in link sent to reader@example.com." in first_response.get_data(as_text=True)
+    assert len(deliveries) == 1
+
+    challenge_response = client.post(
+        "/login",
+        data={"email_address": "reader@example.com"},
+    )
+    challenge_page = challenge_response.get_data(as_text=True)
+    assert challenge_response.status_code == 200
+    assert "Complete the CAPTCHA challenge and try again." in challenge_page
+    assert 'data-sitekey="1x00000000000000000000AA"' in challenge_page
+    assert len(deliveries) == 1
+
+    verified_response = client.post(
+        "/login",
+        data={
+            "email_address": "reader@example.com",
+            "cf-turnstile-response": "valid-turnstile-token",
+        },
+    )
+    verified_page = verified_response.get_data(as_text=True)
+    assert verified_response.status_code == 200
+    assert "Sign-in link sent to reader@example.com." in verified_page
+    assert len(deliveries) == 2

@@ -8,6 +8,7 @@ import threading
 from urllib.parse import urlsplit
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
+import requests
 from werkzeug.middleware.proxy_fix import ProxyFix
 import yaml
 
@@ -49,10 +50,17 @@ ADMIN_TOKEN_COOKIE = "curator_admin_token"
 SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
 SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
 SUBSCRIBER_SESSION_TTL_DAYS = 30
+DEFAULT_SUBSCRIBER_SIGNUP_URL = "https://buttondown.com/zeizyynewsletter"
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
 MCP_ENDPOINT_PATH = "/mcp"
 MCP_TOKEN_HEADER = "X-MCP-Token"
 DEBUG_LOG_ENDPOINT_PATH = "/debug/logs"
+_SUBSCRIBER_LOGIN_ATTEMPT_LOCK = threading.Lock()
+_SUBSCRIBER_LOGIN_ATTEMPTS: dict[str, dict[str, list[float]]] = {
+    "ip": {},
+    "email": {},
+}
 
 
 def load_config_file() -> dict:
@@ -619,6 +627,129 @@ def subscriber_login_link_exposure_enabled() -> bool:
     return app.testing or parse_bool(os.getenv("CURATOR_EXPOSE_LOGIN_LINKS", ""))
 
 
+def subscriber_login_turnstile_site_key() -> str:
+    return str(os.getenv("CURATOR_TURNSTILE_SITE_KEY", "")).strip()
+
+
+def subscriber_login_turnstile_secret_key() -> str:
+    return str(os.getenv("CURATOR_TURNSTILE_SECRET_KEY", "")).strip()
+
+
+def subscriber_login_turnstile_enabled() -> bool:
+    return bool(subscriber_login_turnstile_site_key() and subscriber_login_turnstile_secret_key())
+
+
+def subscriber_login_captcha_threshold() -> int:
+    try:
+        return max(1, int(str(os.getenv("CURATOR_LOGIN_CAPTCHA_THRESHOLD", "")).strip() or "5"))
+    except ValueError:
+        return 5
+
+
+def subscriber_login_captcha_window_seconds() -> int:
+    try:
+        return max(60, int(str(os.getenv("CURATOR_LOGIN_CAPTCHA_WINDOW_SECONDS", "")).strip() or "600"))
+    except ValueError:
+        return 600
+
+
+def _subscriber_login_attempt_timestamp() -> float:
+    return dt.datetime.now(dt.UTC).timestamp()
+
+
+def _prune_subscriber_login_attempts(attempts: list[float], *, now: float, window_seconds: int) -> list[float]:
+    return [timestamp for timestamp in attempts if (now - timestamp) <= window_seconds]
+
+
+def subscriber_login_requires_captcha(*, request_ip: str = "", email_address: str = "") -> bool:
+    if not subscriber_login_turnstile_enabled():
+        return False
+    now = _subscriber_login_attempt_timestamp()
+    window_seconds = subscriber_login_captcha_window_seconds()
+    threshold = subscriber_login_captcha_threshold()
+    normalized_ip = str(request_ip or "").strip()
+    normalized_email = str(email_address or "").strip().lower()
+    with _SUBSCRIBER_LOGIN_ATTEMPT_LOCK:
+        ip_attempts = _prune_subscriber_login_attempts(
+            list(_SUBSCRIBER_LOGIN_ATTEMPTS["ip"].get(normalized_ip, [])),
+            now=now,
+            window_seconds=window_seconds,
+        )
+        if normalized_ip:
+            _SUBSCRIBER_LOGIN_ATTEMPTS["ip"][normalized_ip] = ip_attempts
+        email_attempts = _prune_subscriber_login_attempts(
+            list(_SUBSCRIBER_LOGIN_ATTEMPTS["email"].get(normalized_email, [])),
+            now=now,
+            window_seconds=window_seconds,
+        )
+        if normalized_email:
+            _SUBSCRIBER_LOGIN_ATTEMPTS["email"][normalized_email] = email_attempts
+    return len(ip_attempts) >= threshold or len(email_attempts) >= threshold
+
+
+def record_subscriber_login_attempt(*, request_ip: str = "", email_address: str = "") -> None:
+    now = _subscriber_login_attempt_timestamp()
+    window_seconds = subscriber_login_captcha_window_seconds()
+    normalized_ip = str(request_ip or "").strip()
+    normalized_email = str(email_address or "").strip().lower()
+    with _SUBSCRIBER_LOGIN_ATTEMPT_LOCK:
+        if normalized_ip:
+            ip_attempts = _prune_subscriber_login_attempts(
+                list(_SUBSCRIBER_LOGIN_ATTEMPTS["ip"].get(normalized_ip, [])),
+                now=now,
+                window_seconds=window_seconds,
+            )
+            ip_attempts.append(now)
+            _SUBSCRIBER_LOGIN_ATTEMPTS["ip"][normalized_ip] = ip_attempts
+        if normalized_email:
+            email_attempts = _prune_subscriber_login_attempts(
+                list(_SUBSCRIBER_LOGIN_ATTEMPTS["email"].get(normalized_email, [])),
+                now=now,
+                window_seconds=window_seconds,
+            )
+            email_attempts.append(now)
+            _SUBSCRIBER_LOGIN_ATTEMPTS["email"][normalized_email] = email_attempts
+
+
+def subscriber_signup_url() -> str:
+    configured = str(os.getenv("CURATOR_SUBSCRIBER_SIGNUP_URL", "")).strip()
+    if configured:
+        return configured
+    return DEFAULT_SUBSCRIBER_SIGNUP_URL
+
+
+def subscriber_email_is_registered(config: dict, email_address: str) -> bool:
+    from curator.jobs import resolve_digest_recipients
+
+    recipients, _recipient_source = resolve_digest_recipients(config)
+    return str(email_address or "").strip().lower() in set(recipients)
+
+
+def verify_subscriber_login_turnstile(token: str, *, remoteip: str = "") -> tuple[bool, str]:
+    if not subscriber_login_turnstile_enabled():
+        return True, ""
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return False, "Complete the CAPTCHA challenge and try again."
+    try:
+        response = requests.post(
+            TURNSTILE_VERIFY_URL,
+            data={
+                "secret": subscriber_login_turnstile_secret_key(),
+                "response": normalized_token,
+                "remoteip": str(remoteip or "").strip(),
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        return False, "CAPTCHA verification is unavailable right now. Try again shortly."
+    if bool(payload.get("success")):
+        return True, ""
+    return False, "Complete the CAPTCHA challenge and try again."
+
+
 def subscriber_cookie_secure() -> bool:
     return bool(request.is_secure)
 
@@ -907,6 +1038,8 @@ def render_subscriber_login_page(
     errors: list[str] | None = None,
     login_link: str = "",
     login_delivery_status: str = "",
+    captcha_required: bool = False,
+    turnstile_site_key: str = "",
     status_code: int = 200,
 ):
     response = make_response(
@@ -917,6 +1050,8 @@ def render_subscriber_login_page(
             errors=errors or [],
             login_link=login_link,
             login_delivery_status=login_delivery_status,
+            captcha_required=captcha_required,
+            turnstile_site_key=turnstile_site_key,
         ),
         status_code,
     )
@@ -1303,37 +1438,61 @@ def subscriber_login():
     login_link = ""
     login_delivery_status = ""
     email_address = ""
+    captcha_required = subscriber_login_requires_captcha(request_ip=_request_ip())
+    turnstile_site_key = subscriber_login_turnstile_site_key() if captcha_required else ""
 
     if request.method == "POST":
+        request_ip = _request_ip()
         email_address = normalize_email_address(request.form.get("email_address", ""))
-        if not email_address:
-            errors.append("Enter a valid email address.")
-        elif repository is None:
-            errors.append("Subscriber login is unavailable because the repository could not be opened.")
-        else:
-            subscriber = repository.upsert_subscriber(email_address)
-            token_payload = repository.create_subscriber_login_token(
-                int(subscriber["id"]),
-                ttl_minutes=SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES,
-                request_ip=_request_ip(),
-                user_agent=request.headers.get("User-Agent", ""),
+        captcha_required = subscriber_login_requires_captcha(
+            request_ip=request_ip,
+            email_address=email_address,
+        )
+        turnstile_site_key = subscriber_login_turnstile_site_key() if captcha_required else ""
+        redirect_response = None
+
+        if captcha_required:
+            verified, captcha_error = verify_subscriber_login_turnstile(
+                request.form.get("cf-turnstile-response", ""),
+                remoteip=request_ip,
             )
-            login_link = build_subscriber_login_confirm_url(token_payload["token"])
-            delivery = send_subscriber_login_email(merged, email_address, login_link)
-            login_delivery_status = "sent" if delivery.get("sent") else "fallback"
-            if delivery.get("sent"):
-                message = f"Sign-in link sent to {email_address}."
-                if not subscriber_login_link_exposure_enabled():
-                    login_link = ""
-            elif subscriber_login_link_exposure_enabled():
-                message = (
-                    "Email delivery is unavailable on this server right now. "
-                    "Use the temporary sign-in link below."
-                )
+            if not verified:
+                errors.append(captcha_error)
+        if not errors:
+            if not email_address:
+                errors.append("Enter a valid email address.")
+            elif not subscriber_email_is_registered(merged, email_address):
+                redirect_response = redirect(subscriber_signup_url())
+            elif repository is None:
+                errors.append("Subscriber login is unavailable because the repository could not be opened.")
             else:
-                errors.append("Sign-in email delivery is unavailable right now. Contact the operator.")
-                login_link = ""
-                login_delivery_status = "failed"
+                subscriber = repository.upsert_subscriber(email_address)
+                token_payload = repository.create_subscriber_login_token(
+                    int(subscriber["id"]),
+                    ttl_minutes=SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES,
+                    request_ip=request_ip,
+                    user_agent=request.headers.get("User-Agent", ""),
+                )
+                login_link = build_subscriber_login_confirm_url(token_payload["token"])
+                delivery = send_subscriber_login_email(merged, email_address, login_link)
+                login_delivery_status = "sent" if delivery.get("sent") else "fallback"
+                if delivery.get("sent"):
+                    message = f"Sign-in link sent to {email_address}."
+                    if not subscriber_login_link_exposure_enabled():
+                        login_link = ""
+                elif subscriber_login_link_exposure_enabled():
+                    message = (
+                        "Email delivery is unavailable on this server right now. "
+                        "Use the temporary sign-in link below."
+                    )
+                else:
+                    errors.append("Sign-in email delivery is unavailable right now. Contact the operator.")
+                    login_link = ""
+                    login_delivery_status = "failed"
+
+        record_subscriber_login_attempt(request_ip=request_ip, email_address=email_address)
+        if redirect_response is not None:
+            return redirect_response
 
     if request.args.get("logged_out", "").strip() == "1" and not (message or errors):
         message = "You have been signed out."
@@ -1343,6 +1502,8 @@ def subscriber_login():
         errors=errors,
         login_link=login_link if subscriber_login_link_exposure_enabled() else "",
         login_delivery_status=login_delivery_status,
+        captcha_required=captcha_required,
+        turnstile_site_key=turnstile_site_key,
     )
 
 
