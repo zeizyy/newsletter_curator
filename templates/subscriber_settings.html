@@ -87,37 +87,6 @@
           />
         </div>
         <div class="source-list-shell">
-          {% if selected_sources %}
-            <section class="source-list-section" data-selected-sources-section>
-              <h3 class="source-list-heading">Selected sources</h3>
-              <div class="source-list" data-selected-sources-list>
-                {% for source in selected_sources %}
-                  <label class="source-list-item">
-                    <div class="source-list-copy">
-                      <strong>{{ source.source_name }}</strong>
-                      <div class="source-list-meta">
-                        {% if source.enabled %}
-                          <span class="pill">Available</span>
-                        {% else %}
-                          <span class="pill muted-pill">Unavailable</span>
-                        {% endif %}
-                      </div>
-                    </div>
-                    <div class="checkbox-row">
-                      <input
-                        type="checkbox"
-                        name="preferred_source"
-                        value="{{ source.source_name }}"
-                        aria-label="{{ source.source_name }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
-                        {% if source.selected %}checked{% endif %}
-                        {% if not source.enabled %}disabled{% endif %}
-                      />
-                    </div>
-                  </label>
-                {% endfor %}
-              </div>
-            </section>
-          {% endif %}
           <div class="autocomplete-shell">
             <section class="source-list-section" data-autocomplete-section hidden>
               <h3 class="source-list-heading" data-autocomplete-heading>Suggested sources</h3>
@@ -157,6 +126,37 @@
               No sources match this search yet.
             </div>
           </div>
+          {% if selected_sources %}
+            <section class="source-list-section" data-selected-sources-section>
+              <h3 class="source-list-heading">Your selected sources ({{ selected_sources | length }})</h3>
+              <div class="source-list" data-selected-sources-list>
+                {% for source in selected_sources %}
+                  <label class="source-list-item">
+                    <div class="source-list-copy">
+                      <strong>{{ source.source_name }}</strong>
+                      <div class="source-list-meta">
+                        {% if source.enabled %}
+                          <span class="pill">Available</span>
+                        {% else %}
+                          <span class="pill muted-pill">Unavailable</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="checkbox-row">
+                      <input
+                        type="checkbox"
+                        name="preferred_source"
+                        value="{{ source.source_name }}"
+                        aria-label="{{ source.source_name }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
+                        {% if source.selected %}checked{% endif %}
+                        {% if not source.enabled %}disabled{% endif %}
+                      />
+                    </div>
+                  </label>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
         </div>
       {% endif %}
     </section>
