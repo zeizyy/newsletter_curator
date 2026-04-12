@@ -81,11 +81,11 @@
           <input
             id="preferred_source_search"
             type="search"
-            placeholder="Search by source or kind"
+            placeholder="Search sources"
             aria-label="Search preferred sources"
             data-preferred-source-search
           />
-          <p class="search-field-note">Start typing to search the source catalog. Matching sources appear below.</p>
+          <p class="search-field-note">Suggested sources appear below before you type. Start typing to narrow the list.</p>
         </div>
         <div class="source-list-shell">
           {% if selected_sources %}
@@ -97,7 +97,6 @@
                     <div class="source-list-copy">
                       <strong>{{ source.source_name }}</strong>
                       <div class="source-list-meta">
-                        <span class="pill">{{ source.source_kind_label }}</span>
                         {% if source.enabled %}
                           <span class="pill">Available</span>
                         {% else %}
@@ -110,7 +109,7 @@
                         type="checkbox"
                         name="preferred_source"
                         value="{{ source.source_name }}"
-                        aria-label="{{ source.source_name }} {{ source.source_kind_label }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
+                        aria-label="{{ source.source_name }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
                         {% if source.selected %}checked{% endif %}
                         {% if not source.enabled %}disabled{% endif %}
                       />
@@ -122,19 +121,18 @@
           {% endif %}
           <div class="autocomplete-shell">
             <section class="source-list-section" data-autocomplete-section hidden>
-              <h3 class="source-list-heading">Matching sources</h3>
+              <h3 class="source-list-heading" data-autocomplete-heading>Suggested sources</h3>
               <div class="source-list" data-all-sources-list>
                 {% for source in unselected_sources %}
                   <label
                     class="source-list-item"
                     data-source-option
-                    data-search-text="{{ (source.source_name ~ ' ' ~ source.source_kind_label) | lower }}"
+                    data-search-text="{{ source.source_name | lower }}"
                     hidden
                   >
                     <div class="source-list-copy">
                       <strong>{{ source.source_name }}</strong>
                       <div class="source-list-meta">
-                        <span class="pill">{{ source.source_kind_label }}</span>
                         {% if source.enabled %}
                           <span class="pill">Available</span>
                         {% else %}
@@ -147,7 +145,7 @@
                         type="checkbox"
                         name="preferred_source"
                         value="{{ source.source_name }}"
-                        aria-label="{{ source.source_name }} {{ source.source_kind_label }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
+                        aria-label="{{ source.source_name }} {% if source.enabled %}Available{% else %}Unavailable{% endif %}"
                         {% if source.selected %}checked{% endif %}
                         {% if not source.enabled %}disabled{% endif %}
                       />
@@ -178,23 +176,15 @@
       const searchInput = document.querySelector("[data-preferred-source-search]");
       const sourceOptions = Array.from(document.querySelectorAll("[data-source-option]"));
       const autocompleteSection = document.querySelector("[data-autocomplete-section]");
+      const autocompleteHeading = document.querySelector("[data-autocomplete-heading]");
       const emptyState = document.querySelector("[data-all-sources-empty]");
-      if (!searchInput || !autocompleteSection || !emptyState) {
+      if (!searchInput || !autocompleteSection || !autocompleteHeading || !emptyState) {
         return;
       }
 
       const applyFilter = () => {
         const query = searchInput.value.trim().toLowerCase();
         const queryTokens = query.split(/\s+/).filter(Boolean);
-        if (queryTokens.length === 0) {
-          autocompleteSection.hidden = true;
-          emptyState.classList.remove("is-visible");
-          for (const option of sourceOptions) {
-            option.hidden = true;
-          }
-          return;
-        }
-
         let visibleCount = 0;
         for (const option of sourceOptions) {
           const searchText = (option.dataset.searchText || "").toLowerCase();
@@ -207,8 +197,9 @@
             visibleCount += 1;
           }
         }
+        autocompleteHeading.textContent = queryTokens.length === 0 ? "Suggested sources" : "Matching sources";
         autocompleteSection.hidden = visibleCount === 0;
-        emptyState.classList.toggle("is-visible", visibleCount === 0);
+        emptyState.classList.toggle("is-visible", queryTokens.length > 0 && visibleCount === 0);
       };
 
       searchInput.addEventListener("input", applyFilter);

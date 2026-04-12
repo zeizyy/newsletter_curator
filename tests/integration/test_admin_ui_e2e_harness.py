@@ -98,11 +98,12 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 '- heading "Selected sources" [level=3] [ref=e34]',
                 '- strong [ref=e42]: AI Wire',
                 '- generic [ref=e43]: Unavailable',
-                '- generic [ref=e48]: Start typing to search the source catalog. Matching sources appear below.',
+                '- generic [ref=e48]: Suggested sources appear below before you type. Start typing to narrow the list.',
+                '- heading "Suggested sources" [level=3] [ref=e50]',
+                '- checkbox "Signal Mail Available" [ref=e61]',
             ]
             if state["source_search"].lower() == "signal":
-                lines.append('- heading "Matching sources" [level=3] [ref=e50]')
-                lines.append('- checkbox "Signal Mail Gmail newsletter Available" [ref=e61]')
+                lines[6] = '- heading "Matching sources" [level=3] [ref=e50]'
             lines.append('- button "Save settings" [ref=e64] [cursor=pointer]')
             return "\n".join(lines)
         if page == "settings_saved":
@@ -110,7 +111,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 [
                     '- generic [ref=e20]: Subscriber settings saved.',
                     '- textbox "Persona text" [ref=e30]: Focus on chips, software margins, and rates.',
-                    '- checkbox "Signal Mail Gmail newsletter Available" [checked] [ref=e62]',
+                    '- checkbox "Signal Mail Available" [checked] [ref=e62]',
                 ]
             )
         if page == "admin":
