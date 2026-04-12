@@ -581,7 +581,7 @@ def main() -> int:
             signal_mail_ref = extract_ref(
                 filtered_settings_snapshot,
                 role="checkbox",
-                accessible_name="Signal Mail Gmail newsletter Available",
+                accessible_name="Signal Mail Available",
             )
             save_settings_ref = extract_ref(filtered_settings_snapshot, role="button", accessible_name="Save settings")
             run_playwright_command(
