@@ -85,7 +85,6 @@
             aria-label="Search preferred sources"
             data-preferred-source-search
           />
-          <p class="search-field-note">Suggested sources appear below before you type. Start typing to narrow the list.</p>
         </div>
         <div class="source-list-shell">
           {% if selected_sources %}
@@ -178,6 +177,7 @@
       const autocompleteSection = document.querySelector("[data-autocomplete-section]");
       const autocompleteHeading = document.querySelector("[data-autocomplete-heading]");
       const emptyState = document.querySelector("[data-all-sources-empty]");
+      const zeroPrefixLimit = 5;
       if (!searchInput || !autocompleteSection || !autocompleteHeading || !emptyState) {
         return;
       }
@@ -186,14 +186,16 @@
         const query = searchInput.value.trim().toLowerCase();
         const queryTokens = query.split(/\s+/).filter(Boolean);
         let visibleCount = 0;
-        for (const option of sourceOptions) {
+        for (const [index, option] of sourceOptions.entries()) {
           const searchText = (option.dataset.searchText || "").toLowerCase();
           const searchTokens = searchText.split(/\s+/).filter(Boolean);
           const matches = queryTokens.length === 0 || queryTokens.every((queryToken) =>
             searchTokens.some((searchToken) => searchToken.startsWith(queryToken))
           );
-          option.hidden = !matches;
-          if (matches) {
+          const withinZeroPrefixLimit = queryTokens.length > 0 || index < zeroPrefixLimit;
+          const visible = matches && withinZeroPrefixLimit;
+          option.hidden = !visible;
+          if (visible) {
             visibleCount += 1;
           }
         }
