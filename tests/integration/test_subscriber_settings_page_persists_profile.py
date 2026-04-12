@@ -85,7 +85,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Subscriber settings saved." in saved_page
     assert "Focus on chips and costs." in saved_page
     assert "Signal Mail" in saved_page
-    assert "Preferred sources act as a soft uprank during your personalized final ranking pass." in saved_page
+    assert "Catalog defaults are preselected for you." in saved_page
 
     profile = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile["persona_text"] == "Focus on chips and costs."
@@ -106,6 +106,47 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Your selected sources (3)" in second_page
     assert "Suggested sources" in second_page
     assert "Show all available sources" in second_page
+
+
+def test_subscriber_settings_auto_selects_default_catalog_sources(monkeypatch, tmp_path):
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    repository, subscriber, session = _create_logged_in_subscriber(admin_app, "defaults@example.com")
+    repository.upsert_source(source_type="additional_source", source_name="OpenAI News")
+    repository.upsert_source(source_type="additional_source", source_name="Macro Wire")
+
+    client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, session["token"])
+
+    response = client.get("/settings")
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "Your selected sources (1)" in page
+    assert re.search(r'value="OpenAI News"[^>]*checked', page)
+    profile_after_load = repository.get_subscriber_profile(int(subscriber["id"]))
+    assert profile_after_load["preferred_sources"] == ["OpenAI News"]
+
+    save_response = client.post(
+        "/settings",
+        data={
+            "persona_text": "",
+            "preferred_source": ["OpenAI News", "Macro Wire"],
+        },
+        follow_redirects=True,
+    )
+    saved_page = save_response.get_data(as_text=True)
+    assert save_response.status_code == 200
+    assert "OpenAI News" in saved_page
+    assert "Macro Wire" in saved_page
+
+    profile = repository.get_subscriber_profile(int(subscriber["id"]))
+    assert profile["preferred_sources"] == ["OpenAI News", "Macro Wire"]
 
 
 def test_subscriber_settings_requires_authentication(monkeypatch, tmp_path):

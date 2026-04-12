@@ -11,7 +11,7 @@ from threading import Lock
 from openai import OpenAI
 import requests
 
-from .config import BASE_DIR
+from .config import BASE_DIR, is_default_enabled_source_name
 from .content import (
     detect_paywalled_article,
     enrich_story_with_article_metadata,
@@ -226,6 +226,24 @@ def normalize_preferred_sources(
     return preferred_sources
 
 
+def default_preferred_sources(available_sources: list[dict] | tuple[dict, ...] | None) -> list[str]:
+    defaults: list[str] = []
+    seen: set[str] = set()
+    for source in available_sources or []:
+        source_name = str(source.get("source_name", "")).strip()
+        normalized = source_name.lower()
+        if (
+            not source_name
+            or normalized in seen
+            or not bool(source.get("enabled", True))
+            or not is_default_enabled_source_name(source_name)
+        ):
+            continue
+        defaults.append(source_name)
+        seen.add(normalized)
+    return defaults
+
+
 def subscriber_profile_key(
     persona_text: str,
     preferred_sources: list[str],
@@ -284,6 +302,8 @@ def resolve_delivery_subscribers(
             recipients = configured_recipients
 
     db_profiles_by_email: dict[str, dict] = {}
+    available_sources = repository.list_sources_with_selection() if repository is not None else []
+    seeded_default_sources = default_preferred_sources(available_sources)
     if repository is not None:
         for email in recipients:
             repository.upsert_subscriber(email)
@@ -292,6 +312,22 @@ def resolve_delivery_subscribers(
             for profile in repository.list_subscriber_delivery_profiles()
             if str(profile.get("email_address", "")).strip()
         }
+        for email in recipients:
+            profile = db_profiles_by_email.get(email)
+            if profile is not None and bool(profile.get("profile_exists")):
+                continue
+            if not seeded_default_sources:
+                continue
+            subscriber = repository.get_subscriber_by_email(email)
+            if subscriber is None:
+                continue
+            repository.upsert_subscriber_profile(
+                int(subscriber["id"]),
+                preferred_sources=seeded_default_sources,
+            )
+            seeded_profile = repository.get_subscriber_delivery_profile(email)
+            if seeded_profile is not None:
+                db_profiles_by_email[email] = seeded_profile
 
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
     subscribers: list[dict] = []
@@ -299,9 +335,7 @@ def resolve_delivery_subscribers(
         db_profile = db_profiles_by_email.get(email)
         persona_text = str((db_profile or {}).get("persona_text") or default_persona_text).strip()
         delivery_format = normalize_subscriber_delivery_format((db_profile or {}).get("delivery_format"))
-        preferred_sources = normalize_preferred_sources(
-            (db_profile or {}).get("preferred_sources", [])
-        )
+        preferred_sources = normalize_preferred_sources((db_profile or {}).get("preferred_sources", []))
         subscribers.append(
             {
                 "email": email,
@@ -1405,6 +1439,7 @@ def run_delivery_job(
     persist_newsletter: bool = True,
     audience_key: str = DEFAULT_AUDIENCE_KEY,
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     runtime_capture = start_runtime_capture()
@@ -1883,6 +1918,7 @@ def run_delivery_job(
             group_summaries_by_category_fn=group_summaries_by_category_fn,
             render_digest_html_fn=render_digest_html_fn,
             send_email_fn=send_email_fn,
+            preferred_sources=preferred_sources,
         )
         emit_event(
             "delivery_pipeline_result",

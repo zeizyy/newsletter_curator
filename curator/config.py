@@ -10,6 +10,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = os.getenv("NEWSLETTER_CONFIG", "config.yaml")
 DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest.html"
 EMAIL_SAFE_DIGEST_TEMPLATE_PATH = BASE_DIR / "templates" / "digest_email_safe.html"
+DEFAULT_ENABLED_SOURCE_NAMES = frozenset(
+    {
+        "openai news",
+        "google ai blog",
+        "google research blog",
+        "microsoft ai blog",
+        "hugging face blog",
+        "sherwood",
+        "tldr",
+        "tldr ai",
+        "cnn top stories",
+        "techcrunch daily news",
+    }
+)
 DEFAULT_CONFIG = {
     "gmail": {"label": "Newsletters", "query_time_window": "newer_than:1d"},
     "paths": {"credentials": "secrets/credentials.json", "token": "secrets/token.json"},
@@ -81,6 +95,11 @@ def normalize_openai_config(config: dict) -> dict:
     if str(openai_cfg.get("reasoning_model", "")).strip() == "gpt-4o-mini":
         openai_cfg["reasoning_model"] = "gpt-5-mini"
     return config
+
+
+def is_default_enabled_source_name(source_name: str | None) -> bool:
+    normalized = str(source_name or "").strip().lower()
+    return normalized in DEFAULT_ENABLED_SOURCE_NAMES
 
 
 def load_config(config_path: str | os.PathLike[str] | None = None) -> dict:

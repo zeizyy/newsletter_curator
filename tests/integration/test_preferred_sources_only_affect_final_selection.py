@@ -34,21 +34,16 @@ class PreferredSourceBoundaryOpenAI:
                 ]
             )
         elif "select the top stories" in lowered:
-            assert "softly uprank" in lowered
+            assert "hard filter" in lowered
             assert "ai wire" in lowered
-            preferred_index = (
-                1
-                if "[1] open model pricing changed" in lowered
-                or "[1] ai pricing and chip context." in lowered
-                else 2
-            )
+            assert "rates reset changes software valuations" not in lowered
             content = json.dumps(
                 [
                     {
-                        "index": preferred_index,
+                        "index": 1,
                         "category": "AI & ML industry developments",
                         "score": 9.9,
-                        "rationale": "Preferred source got the soft uprank.",
+                        "rationale": "Preferred source passed the hard filter.",
                     }
                 ]
             )
@@ -163,6 +158,11 @@ def test_preferred_sources_only_affect_final_selection(monkeypatch, tmp_path):
     config = main.load_config()
     repository = get_repository_from_config(config)
     _seed_story_catalog(repository)
+    repository.set_source_selection(
+        source_type="additional_source",
+        source_name="AI Wire",
+        enabled=True,
+    )
 
     subscriber = repository.upsert_subscriber("reader@example.com")
     repository.upsert_subscriber_profile(
@@ -203,5 +203,6 @@ def test_preferred_sources_only_affect_final_selection(monkeypatch, tmp_path):
 
     assert ranking_prompts
     assert all("ai wire" in prompt for prompt in ranking_prompts)
+    assert all("rates reset changes software valuations" not in prompt for prompt in ranking_prompts)
     assert all("ai wire" not in prompt for prompt in scoring_prompts)
     assert all("ai wire" not in prompt for prompt in summary_prompts)

@@ -10,6 +10,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from .config import is_default_enabled_source_name
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -1426,6 +1428,7 @@ class SQLiteRepository:
         if row is None:
             return {
                 "subscriber_id": int(subscriber_id),
+                "profile_exists": False,
                 "persona_text": "",
                 "delivery_format": DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
                 "preferred_sources": [],
@@ -1523,6 +1526,7 @@ class SQLiteRepository:
         payload = dict(row or {})
         return {
             "subscriber_id": int(payload.get("subscriber_id") or 0),
+            "profile_exists": True,
             "persona_text": str(payload.get("persona_text", "") or ""),
             "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
             "preferred_sources": json.loads(str(payload.get("preferred_sources_json", "[]") or "[]")),
@@ -2240,18 +2244,33 @@ class SQLiteRepository:
                 "id": int(row["source_id"]),
                 "source_type": row["source_type"],
                 "source_name": row["source_name"],
-                "enabled": True if row["enabled"] is None else bool(row["enabled"]),
+                "enabled": (
+                    is_default_enabled_source_name(str(row["source_name"]))
+                    if row["enabled"] is None
+                    else bool(row["enabled"])
+                ),
             }
             for row in rows
         ]
 
     def list_enabled_sources(self) -> list[dict]:
-        rows = self.list_sources_with_selection()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    s.source_type,
+                    s.source_name,
+                    uss.enabled
+                FROM sources s
+                LEFT JOIN user_source_selections uss ON uss.source_id = s.id
+                ORDER BY s.source_type, s.source_name
+                """
+            ).fetchall()
         return [
             {
                 "source_type": row["source_type"],
                 "source_name": row["source_name"],
-                "enabled": row["enabled"],
+                "enabled": True if row["enabled"] is None else bool(row["enabled"]),
             }
             for row in rows
         ]

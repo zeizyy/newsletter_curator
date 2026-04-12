@@ -171,6 +171,29 @@ def structured_counts(
     ]
 
 
+def normalize_allowed_source_names(
+    preferred_sources: list[str] | tuple[str, ...] | None,
+) -> set[str]:
+    return {
+        str(source).strip().lower()
+        for source in preferred_sources or []
+        if str(source).strip()
+    }
+
+
+def filter_links_to_allowed_sources(
+    items: list[dict],
+    allowed_source_names: set[str],
+) -> list[dict]:
+    if not allowed_source_names:
+        return list(items)
+    return [
+        item
+        for item in items
+        if str(item.get("source_name", "")).strip().lower() in allowed_source_names
+    ]
+
+
 def run_job(
     config: dict,
     service,
@@ -192,6 +215,7 @@ def run_job(
     render_digest_html_fn=render_digest_html,
     render_email_safe_digest_html_fn=render_email_safe_digest_html,
     send_email_fn=send_email,
+    preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     gmail_cfg = config["gmail"]
     openai_cfg = config["openai"]
@@ -217,12 +241,16 @@ def run_job(
     source_links = collect_additional_source_links_fn(config)
     all_links.extend(source_links)
     all_links = dedupe_links_by_url_fn(all_links)
+    allowed_source_names = normalize_allowed_source_names(preferred_sources)
+    eligible_links = filter_links_to_allowed_sources(all_links, allowed_source_names)
     emit_event(
         "pipeline_candidates_collected",
         gmail_query=query,
         gmail_links=gmail_links_count,
         additional_source_links=len(source_links),
         deduped_links=len(all_links),
+        eligible_links=len(eligible_links),
+        preferred_sources=sorted(allowed_source_names),
         source_type_counts=structured_counts(all_links, "source_type"),
         source_name_counts_top10=structured_counts(all_links, "source_name", top_n=10),
     )
@@ -232,6 +260,7 @@ def run_job(
         "gmail_links": len(gmail_links),
         "additional_source_links": len(source_links),
         "deduped_links": len(all_links),
+        "eligible_links": len(eligible_links),
     }
 
     usage_by_model = {}
@@ -243,7 +272,7 @@ def run_job(
         for source_type, quota in source_quotas.items():
             source_pool = [
                 item
-                for item in all_links
+                for item in eligible_links
                 if (item.get("source_type", "") or "unknown") == source_type
             ]
             if not source_pool or quota <= 0:
@@ -258,6 +287,7 @@ def run_job(
                 usage_by_model,
                 source_top_n,
                 openai_cfg["reasoning_model"],
+                preferred_sources=preferred_sources,
             )
             ranked_candidates.extend(source_ranked)
             selected.extend(source_ranked[:quota])
@@ -267,7 +297,7 @@ def run_job(
         if len(selected) < target_story_count:
             selected_urls = {item.get("url", "") for item in selected}
             remaining_pool = [
-                item for item in all_links if item.get("url", "") not in selected_urls
+                item for item in eligible_links if item.get("url", "") not in selected_urls
             ]
             needed = target_story_count - len(selected)
             if remaining_pool and needed > 0:
@@ -276,6 +306,7 @@ def run_job(
                     usage_by_model,
                     needed,
                     openai_cfg["reasoning_model"],
+                    preferred_sources=preferred_sources,
                 )
                 selected.extend(fill_ranked[:needed])
                 ranked_candidates.extend(fill_ranked)
@@ -283,10 +314,11 @@ def run_job(
         selected = selected[:target_story_count]
     else:
         ranked_candidates = select_top_stories_fn(
-            all_links,
+            eligible_links,
             usage_by_model,
             limits_cfg["select_top_stories"],
             openai_cfg["reasoning_model"],
+            preferred_sources=preferred_sources,
         )
         selected = post_process_selected(
             ranked_candidates,
@@ -302,9 +334,15 @@ def run_job(
             status="no_ranked_candidates",
             ranked_candidates=0,
             selected=0,
+            eligible_links=len(eligible_links),
             usage_by_model=compact_model_usage(usage_by_model),
         )
-        return {**result, "status": "no_ranked_candidates", "ranked_candidates": 0, "selected": 0}
+        return {
+            **result,
+            "status": "no_ranked_candidates",
+            "ranked_candidates": 0,
+            "selected": 0,
+        }
     if not selected:
         emit_event(
             "pipeline_completed",
