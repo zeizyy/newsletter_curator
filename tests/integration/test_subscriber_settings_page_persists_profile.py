@@ -54,7 +54,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Unavailable" in page
     assert 'type="search"' in page
     assert 'id="preferred_source_search"' in page
-    assert "Selected sources" in page
+    assert "Your selected sources (2)" in page
     assert "Suggested sources" in page
     assert "const zeroPrefixLimit = 5;" in page
     assert "Publisher feeds" not in page
@@ -64,8 +64,8 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert page.count('value="Macro Wire"') == 1
     assert page.count('value="AI Wire"') == 1
     assert page.count('value="Signal Mail"') == 1
-    assert page.index("Macro Wire") < page.index("Signal Mail")
-    assert page.index("AI Wire") < page.index("Signal Mail")
+    assert page.index("Signal Mail") < page.index("Macro Wire")
+    assert page.index("Signal Mail") < page.index("AI Wire")
     assert re.search(r'value="AI Wire"[^>]*checked[^>]*disabled', page)
 
     save_response = client.post(
@@ -100,7 +100,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert 'value="1"' in second_page
     assert "Signal Mail" in second_page
     assert "AI Wire" in second_page
-    assert "Selected sources" in second_page
+    assert "Your selected sources (3)" in second_page
     assert "Suggested sources" in second_page
 
 

@@ -95,14 +95,14 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 '- heading "Your digest settings" [level=1] [ref=e7]',
                 '- textbox "Persona text" [ref=e29]: Focus on semis, software margins, and bond yields.',
                 f'- searchbox "Search preferred sources" [ref=e31]: {state["source_search"]}',
-                '- heading "Selected sources" [level=3] [ref=e34]',
-                '- strong [ref=e42]: AI Wire',
-                '- generic [ref=e43]: Unavailable',
                 '- heading "Suggested sources" [level=3] [ref=e50]',
                 '- checkbox "Signal Mail Available" [ref=e61]',
+                '- heading "Your selected sources (2)" [level=3] [ref=e34]',
+                '- strong [ref=e42]: AI Wire',
+                '- generic [ref=e43]: Unavailable',
             ]
             if state["source_search"].lower() == "signal":
-                lines[6] = '- heading "Matching sources" [level=3] [ref=e50]'
+                lines[3] = '- heading "Matching sources" [level=3] [ref=e50]'
             lines.append('- button "Save settings" [ref=e64] [cursor=pointer]')
             return "\n".join(lines)
         if page == "settings_saved":
