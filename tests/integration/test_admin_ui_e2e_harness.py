@@ -97,6 +97,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 f'- searchbox "Search preferred sources" [ref=e31]: {state["source_search"]}',
                 '- heading "Suggested sources" [level=3] [ref=e50]',
                 '- checkbox "Signal Mail Available" [ref=e61]',
+                '- button "Show all available sources" [ref=e62] [cursor=pointer]',
                 '- heading "Your selected sources (2)" [level=3] [ref=e34]',
                 '- strong [ref=e42]: AI Wire',
                 '- generic [ref=e43]: Unavailable',
