@@ -57,6 +57,9 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Your selected sources (2)" in page
     assert "Suggested sources" in page
     assert "const zeroPrefixLimit = 5;" in page
+    assert "Show all available sources" in page
+    assert "All available sources" in page
+    assert "Show fewer sources" in page
     assert "Publisher feeds" not in page
     assert "Gmail newsletters" not in page
     assert "Gmail newsletter" not in page
@@ -102,6 +105,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "AI Wire" in second_page
     assert "Your selected sources (3)" in second_page
     assert "Suggested sources" in second_page
+    assert "Show all available sources" in second_page
 
 
 def test_subscriber_settings_requires_authentication(monkeypatch, tmp_path):

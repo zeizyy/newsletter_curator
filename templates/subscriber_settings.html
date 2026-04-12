@@ -122,6 +122,11 @@
                 {% endfor %}
               </div>
             </section>
+            {% if unselected_sources | length > 5 %}
+              <div class="button-row">
+                <button type="button" data-show-all-sources-toggle>Show all available sources</button>
+              </div>
+            {% endif %}
             <div class="source-list-empty" data-all-sources-empty>
               No sources match this search yet.
             </div>
@@ -177,7 +182,9 @@
       const autocompleteSection = document.querySelector("[data-autocomplete-section]");
       const autocompleteHeading = document.querySelector("[data-autocomplete-heading]");
       const emptyState = document.querySelector("[data-all-sources-empty]");
+      const showAllToggle = document.querySelector("[data-show-all-sources-toggle]");
       const zeroPrefixLimit = 5;
+      let showAllSources = false;
       if (!searchInput || !autocompleteSection || !autocompleteHeading || !emptyState) {
         return;
       }
@@ -192,19 +199,35 @@
           const matches = queryTokens.length === 0 || queryTokens.every((queryToken) =>
             searchTokens.some((searchToken) => searchToken.startsWith(queryToken))
           );
-          const withinZeroPrefixLimit = queryTokens.length > 0 || index < zeroPrefixLimit;
+          const withinZeroPrefixLimit = queryTokens.length > 0 || showAllSources || index < zeroPrefixLimit;
           const visible = matches && withinZeroPrefixLimit;
           option.hidden = !visible;
           if (visible) {
             visibleCount += 1;
           }
         }
-        autocompleteHeading.textContent = queryTokens.length === 0 ? "Suggested sources" : "Matching sources";
+        if (queryTokens.length > 0) {
+          autocompleteHeading.textContent = "Matching sources";
+        } else if (showAllSources) {
+          autocompleteHeading.textContent = "All available sources";
+        } else {
+          autocompleteHeading.textContent = "Suggested sources";
+        }
         autocompleteSection.hidden = visibleCount === 0;
         emptyState.classList.toggle("is-visible", queryTokens.length > 0 && visibleCount === 0);
+        if (showAllToggle) {
+          showAllToggle.hidden = queryTokens.length > 0;
+          showAllToggle.textContent = showAllSources ? "Show fewer sources" : "Show all available sources";
+        }
       };
 
       searchInput.addEventListener("input", applyFilter);
+      if (showAllToggle) {
+        showAllToggle.addEventListener("click", () => {
+          showAllSources = !showAllSources;
+          applyFilter();
+        });
+      }
       applyFilter();
     })();
   </script>
