@@ -19,10 +19,9 @@ def preferred_sources_clause(preferred_sources: list[str] | tuple[str, ...] | No
         return ""
     listed_sources = ", ".join(normalized)
     return (
-        "\nPreferred sources to softly uprank when quality is otherwise comparable:\n"
+        "\nOnly consider stories from these selected sources for this personalized edition:\n"
         f"{listed_sources}\n"
-        "Treat this as an uprank signal, not a hard filter. Do not exclude stronger stories solely "
-        "because they come from other sources.\n"
+        "Treat this as a hard filter. Do not select or backfill stories from any other source.\n"
     )
 
 
@@ -91,8 +90,8 @@ def build_ranking_prompts(
         "preserve input order; reorder by your ranking.\n"
         "If a persona is provided, interpret relevance through that reader's priorities while "
         "still respecting the global tier ordering.\n"
-        "If preferred sources are provided, use them only as a soft uprank signal when story "
-        "quality is otherwise close.\n"
+        "If preferred sources are provided, treat them as a hard allowlist and only rank stories "
+        "from those sources.\n"
         "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
     )

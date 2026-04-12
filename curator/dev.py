@@ -27,16 +27,18 @@ def fake_select_top_stories(
         if str(source).strip()
     }
     sorted_items = list(items)
+    if lowered_preferred_sources:
+        sorted_items = [
+            item
+            for item in sorted_items
+            if str(item.get("source_name", "")).strip().lower() in lowered_preferred_sources
+        ]
+    if not sorted_items:
+        return []
     if "macro" in lowered_persona or "rates" in lowered_persona or "valuation" in lowered_persona:
         sorted_items.sort(key=lambda item: "markets" not in str(item.get("category", "")).lower())
     elif "ai" in lowered_persona or "model" in lowered_persona or "chip" in lowered_persona:
         sorted_items.sort(key=lambda item: "ai" not in str(item.get("category", "")).lower())
-    if lowered_preferred_sources:
-        sorted_items.sort(
-            key=lambda item: (
-                str(item.get("source_name", "")).strip().lower() not in lowered_preferred_sources
-            )
-        )
 
     ranked = []
     for index, item in enumerate(sorted_items[:top_stories], start=1):

@@ -224,7 +224,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
         audience_key: str,
     ) -> dict:
         select_top_stories_fn = (
-            (lambda items, usage_by_model, top_stories, reasoning_model: dev.fake_select_top_stories(
+            (lambda items, usage_by_model, top_stories, reasoning_model, *, preferred_sources=None: dev.fake_select_top_stories(
                 items,
                 usage_by_model,
                 top_stories,
@@ -233,7 +233,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
                 preferred_sources=preferred_sources,
             ))
             if development_cfg.get("fake_inference", False)
-            else (lambda items, usage_by_model, top_stories, reasoning_model: select_top_stories(
+            else (lambda items, usage_by_model, top_stories, reasoning_model, *, preferred_sources=None: select_top_stories(
                 items,
                 usage_by_model,
                 top_stories,
@@ -295,6 +295,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             persist_newsletter=persist_newsletter,
             audience_key=audience_key,
             delivery_format=delivery_format,
+            preferred_sources=preferred_sources,
         )
 
     personalized_delivery = service is not None and any(

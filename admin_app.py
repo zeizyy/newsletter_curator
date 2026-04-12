@@ -1068,7 +1068,11 @@ def require_subscriber_session(repository):
 
 
 def build_subscriber_settings_sources(available_sources: list[dict], selected_sources: list[str]) -> list[dict]:
-    selected_lookup = {str(source).strip().lower() for source in selected_sources if str(source).strip()}
+    selected_lookup = {
+        str(source).strip().lower()
+        for source in selected_sources
+        if str(source).strip()
+    }
     normalized_sources: list[dict] = []
     for source in available_sources:
         source_name = str(source.get("source_name", "")).strip()
@@ -1540,12 +1544,22 @@ def subscriber_settings():
     available_sources = repository.list_sources_with_selection() if repository else []
     profile = repository.get_subscriber_profile(int(subscriber["id"])) if repository else {
         "subscriber_id": int(subscriber["id"]),
+        "profile_exists": False,
         "persona_text": "",
         "delivery_format": "email",
         "preferred_sources": [],
         "created_at": "",
         "updated_at": "",
     }
+    if repository is not None and not bool(profile.get("profile_exists")):
+        from curator.jobs import default_preferred_sources
+
+        seeded_defaults = default_preferred_sources(available_sources)
+        if seeded_defaults:
+            profile = repository.upsert_subscriber_profile(
+                int(subscriber["id"]),
+                preferred_sources=seeded_defaults,
+            )
     errors: list[str] = []
     message = ""
 

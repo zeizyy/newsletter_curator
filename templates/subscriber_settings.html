@@ -70,23 +70,23 @@
           <h2>Choose the sources you care about most</h2>
         </div>
       </div>
-      <p class="section-copy">Preferred sources act as a soft uprank during your personalized final ranking pass. They do not filter ingest or rewrite the stored catalog. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
+      <p class="section-copy">Catalog defaults are preselected for you. If you add more sources here, your newsletter uses the defaults plus your additions, and only stories from that combined set will appear. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
       {% if not available_sources %}
         <div class="state-shell is-empty">
           <p class="state-copy">No sources are in the catalog yet. Once the repository has stories, preferred-source controls will appear here.</p>
         </div>
       {% else %}
-        <div class="search-field-row">
-          <label class="field-label" for="preferred_source_search">Search preferred sources</label>
-          <input
-            id="preferred_source_search"
-            type="search"
-            placeholder="Search sources"
-            aria-label="Search preferred sources"
-            data-preferred-source-search
-          />
-        </div>
-        <div class="source-list-shell">
+      <div class="search-field-row">
+        <label class="field-label" for="preferred_source_search">Search preferred sources</label>
+        <input
+          id="preferred_source_search"
+          type="search"
+          placeholder="Search sources"
+          aria-label="Search preferred sources"
+          data-preferred-source-search
+        />
+      </div>
+      <div class="source-list-shell">
           <div class="autocomplete-shell">
             <section class="source-list-section" data-autocomplete-section hidden>
               <h3 class="source-list-heading" data-autocomplete-heading>Suggested sources</h3>
