@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from curator.config import load_config
 from curator.jobs import get_repository_from_config
@@ -42,7 +43,7 @@ def test_backfill_subscriber_default_sources_script_persists_defaults(tmp_path):
             "--config",
             str(config_path),
         ],
-        cwd="/Users/ianzheng/Projects/newsletter_curator",
+        cwd=str(Path(__file__).resolve().parents[2]),
         capture_output=True,
         text=True,
         check=True,

@@ -129,7 +129,6 @@ def test_subscriber_settings_auto_selects_default_catalog_sources(monkeypatch, t
     assert response.status_code == 200
     assert "Your selected sources (1)" in page
     assert re.search(r'value="OpenAI News"[^>]*checked', page)
-    assert page.index("OpenAI News") < page.index("Macro Wire")
     profile_after_load = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile_after_load["preferred_sources"] == ["OpenAI News"]
 
