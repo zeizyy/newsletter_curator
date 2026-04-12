@@ -98,7 +98,6 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
                 '- heading "Selected sources" [level=3] [ref=e34]',
                 '- strong [ref=e42]: AI Wire',
                 '- generic [ref=e43]: Unavailable',
-                '- generic [ref=e48]: Suggested sources appear below before you type. Start typing to narrow the list.',
                 '- heading "Suggested sources" [level=3] [ref=e50]',
                 '- checkbox "Signal Mail Available" [ref=e61]',
             ]

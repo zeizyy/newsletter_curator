@@ -54,13 +54,16 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Unavailable" in page
     assert 'type="search"' in page
     assert 'id="preferred_source_search"' in page
-    assert "Suggested sources appear below before you type." in page
     assert "Selected sources" in page
     assert "Suggested sources" in page
+    assert "const zeroPrefixLimit = 5;" in page
     assert "Publisher feeds" not in page
     assert "Gmail newsletters" not in page
     assert "Gmail newsletter" not in page
     assert "Additional feed" not in page
+    assert page.count('value="Macro Wire"') == 1
+    assert page.count('value="AI Wire"') == 1
+    assert page.count('value="Signal Mail"') == 1
     assert page.index("Macro Wire") < page.index("Signal Mail")
     assert page.index("AI Wire") < page.index("Signal Mail")
     assert re.search(r'value="AI Wire"[^>]*checked[^>]*disabled', page)
