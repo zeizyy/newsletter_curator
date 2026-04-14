@@ -1090,6 +1090,7 @@ def run_fetch_gmail_job(
         "run_id": run_id,
         "ttl_cleanup": cleanup_result,
         "stories_seen": 0,
+        "stories_selected_for_fetch": 0,
         "stories_persisted": 0,
         "snapshots_persisted": 0,
         "article_failures": 0,
