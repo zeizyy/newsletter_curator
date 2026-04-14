@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -340,13 +341,21 @@ def _read_response_text_limited(
     response: requests.Response,
     *,
     max_response_bytes: int | None = None,
+    read_deadline_seconds: float | None = None,
 ) -> tuple[str, bool]:
     max_response_bytes = max_response_bytes or MAX_FETCH_RESPONSE_BYTES
     chunks: list[bytes] = []
     total_bytes = 0
     truncated = False
+    deadline = None
+    if read_deadline_seconds is not None and float(read_deadline_seconds) > 0:
+        deadline = time.monotonic() + float(read_deadline_seconds)
 
     for chunk in response.iter_content(chunk_size=FETCH_CHUNK_SIZE_BYTES):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise requests.Timeout(
+                f"Timed out reading response body after {float(read_deadline_seconds):g} seconds"
+            )
         if not chunk:
             continue
         remaining = max_response_bytes - total_bytes
@@ -371,6 +380,7 @@ def fetch_article_details(
     timeout: int = 25,
     retries: int = 3,
 ) -> dict[str, str]:
+    session = None
     try:
         last_exc = None
         response = None
@@ -395,7 +405,10 @@ def fetch_article_details(
         if response is None:
             return {"article_text": "", "document_title": "", "document_excerpt": ""}
         try:
-            response_text, truncated = _read_response_text_limited(response)
+            response_text, truncated = _read_response_text_limited(
+                response,
+                read_deadline_seconds=timeout,
+            )
             if truncated:
                 emit_event(
                     "article_fetch_truncated",
@@ -416,6 +429,10 @@ def fetch_article_details(
             error=str(exc),
         )
         return {"article_text": "", "document_title": "", "document_excerpt": ""}
+    finally:
+        close_session = getattr(session, "close", None)
+        if callable(close_session):
+            close_session()
 
 
 def fetch_article_text(
