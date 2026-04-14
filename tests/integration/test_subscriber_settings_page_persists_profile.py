@@ -58,6 +58,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Suggested sources" in page
     assert "const zeroPrefixLimit = 5;" in page
     assert "Show all available sources" in page
+    assert "secondary-button" in page
     assert "All available sources" in page
     assert "Show fewer sources" in page
     assert "Publisher feeds" not in page

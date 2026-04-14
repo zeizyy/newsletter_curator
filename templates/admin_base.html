@@ -180,6 +180,19 @@
       background: rgba(221, 243, 235, 0.64);
     }
 
+    .secondary-button {
+      background: rgba(255, 255, 255, 0.6);
+      border-color: rgba(19, 91, 72, 0.16);
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .secondary-button:hover {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: var(--line-strong);
+      color: var(--ink);
+    }
+
     .signout-button {
       background: rgba(255, 255, 255, 0.34);
       border-color: rgba(24, 37, 58, 0.16);
@@ -769,6 +782,18 @@
       button.primary-button,
       button[type="submit"] {
         background: linear-gradient(135deg, #0e3f35, #0f8661);
+      }
+
+      .secondary-button {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.14);
+        color: var(--ink);
+      }
+
+      .secondary-button:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(103, 211, 172, 0.28);
+        color: #f3fffb;
       }
 
       .state-shell {
