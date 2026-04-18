@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 
+import pytest
+
 
 def test_daily_pipeline_passes_dry_run_recipient_to_delivery_runner(monkeypatch):
     daily_pipeline = importlib.import_module("daily_pipeline")
@@ -36,10 +38,9 @@ def test_daily_pipeline_passes_dry_run_recipient_to_delivery_runner(monkeypatch)
     assert captured["delivery_result"] == {"recipient_override": "me@example.com"}
 
 
-def test_daily_pipeline_sends_alert_for_delivery_stage_failure(monkeypatch):
+def test_daily_pipeline_exits_nonzero_for_delivery_stage_failure(monkeypatch):
     daily_pipeline = importlib.import_module("daily_pipeline")
 
-    captured: dict[str, object] = {}
     fake_service = object()
     fake_config = {
         "paths": {},
@@ -90,35 +91,9 @@ def test_daily_pipeline_sends_alert_for_delivery_stage_failure(monkeypatch):
             "failures": [],
         }
 
-    def fake_send_delivery_failure_alert_if_needed(
-        config,
-        service,
-        *,
-        source: str,
-        result=None,
-        exception=None,
-        traceback_text: str = "",
-    ):
-        captured["config"] = config
-        captured["service"] = service
-        captured["source"] = source
-        captured["result"] = result
-        captured["exception"] = exception
-        captured["traceback_text"] = traceback_text
-        return True
-
     monkeypatch.setattr(daily_pipeline, "run_daily_orchestrator_job", fake_run_daily_orchestrator_job)
-    monkeypatch.setattr(
-        daily_pipeline.delivery_main,
-        "send_delivery_failure_alert_if_needed",
-        fake_send_delivery_failure_alert_if_needed,
-    )
 
-    daily_pipeline.main([])
+    with pytest.raises(SystemExit) as exc_info:
+        daily_pipeline.main([])
 
-    assert captured["config"] == fake_config
-    assert captured["service"] is fake_service
-    assert captured["source"] == "daily_pipeline.py"
-    assert captured["exception"] is None
-    assert captured["traceback_text"] == ""
-    assert captured["result"]["stages"]["deliver_digest"]["failed_recipient_count"] == 1
+    assert exc_info.value.code == 1

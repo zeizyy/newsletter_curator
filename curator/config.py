@@ -69,7 +69,7 @@ DEFAULT_CONFIG = {
     "email": {
         "digest_recipients": [],
         "digest_subject": "AI Signal Daily",
-        "alert_recipient": "",
+        "alert_recipient": "zeizyy@gmail.com",
         "alert_subject_prefix": "[ALERT] Newsletter Curator Failure",
     },
     "tracking": {

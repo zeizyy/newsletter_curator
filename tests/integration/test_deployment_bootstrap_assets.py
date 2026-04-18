@@ -210,9 +210,11 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
     assert 'systemctl --user start "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
-    assert "trap resume_admin_service EXIT" in daily_script_text
+    assert "trap handle_exit EXIT" in daily_script_text
     assert "trap handle_interrupt INT" in daily_script_text
     assert "trap handle_terminate TERM" in daily_script_text
+    assert "scripts/send_pipeline_failure_alert.py" in daily_script_text
+    assert "pipeline_status=${PIPESTATUS[0]}" in daily_script_text
 
     cron_text = cron_file.read_text(encoding="utf-8")
     assert f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}" in cron_text
@@ -472,10 +474,17 @@ def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(t
     )
 
     assert result.returncode == 7
-    assert command_log.read_text(encoding="utf-8").splitlines() == [
+    command_lines = command_log.read_text(encoding="utf-8").splitlines()
+    assert command_lines[:3] == [
         "systemctl --user stop newsletter-curator-admin",
         "systemctl --user is-active --quiet newsletter-curator-admin",
         "uv run python daily_pipeline.py",
+    ]
+    assert command_lines[3].startswith(
+        "uv run python scripts/send_pipeline_failure_alert.py "
+        "--source run_daily_pipeline.sh --exit-status 7 --output-file "
+    )
+    assert command_lines[4:] == [
         "systemctl --user start newsletter-curator-admin",
     ]
 
