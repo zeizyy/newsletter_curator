@@ -1929,7 +1929,15 @@ def newsletter_history():
         return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
-    newsletters = repository.list_daily_newsletters(limit=30) if repository else []
+    newsletters = (
+        repository.list_daily_newsletters(
+            limit=30,
+            include_all_audiences=True,
+            one_per_date=True,
+        )
+        if repository
+        else []
+    )
     all_active_stories = repository.list_stories() if repository else []
     all_active_stories = [
         normalize_story_source_name(story)
@@ -1960,7 +1968,11 @@ def newsletter_history_detail(newsletter_date: str):
         return redirect_response
     merged = load_merged_config()
     repository = load_repository(merged)
-    newsletter = repository.get_daily_newsletter(newsletter_date) if repository else None
+    newsletter = (
+        repository.get_daily_newsletter(newsletter_date, include_all_audiences=True)
+        if repository
+        else None
+    )
     if newsletter is None:
         abort(404)
 

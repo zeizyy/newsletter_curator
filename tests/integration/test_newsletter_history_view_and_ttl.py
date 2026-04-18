@@ -196,3 +196,59 @@ def test_newsletter_history_empty_state_uses_editorial_shell(monkeypatch, tmp_pa
     assert "No stored newsletters yet" in html
     assert "No active stories yet" in html
     assert "Open Control Room" in html
+
+
+def test_newsletter_history_shows_one_generated_newsletter_per_day_across_audiences(
+    monkeypatch,
+    tmp_path,
+):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    repository.upsert_daily_newsletter(
+        newsletter_date="2026-03-23",
+        audience_key="personalized-a",
+        subject="Personalized Only Digest",
+        body="Personalized only body",
+        html_body="<div>Personalized only body</div>",
+        selected_items=[{"title": "Personalized Story", "url": "https://example.com/p"}],
+    )
+    repository.upsert_daily_newsletter(
+        newsletter_date="2026-03-24",
+        audience_key="personalized-b",
+        subject="Personalized Variant Digest",
+        body="Personalized variant body",
+        html_body="<div>Personalized variant body</div>",
+        selected_items=[{"title": "Personalized Variant", "url": "https://example.com/v"}],
+    )
+    repository.upsert_daily_newsletter(
+        newsletter_date="2026-03-24",
+        subject="Default Digest",
+        body="Default body",
+        html_body="<div>Default body</div>",
+        selected_items=[{"title": "Default Story", "url": "https://example.com/d"}],
+    )
+
+    client = admin_app.app.test_client()
+
+    history_response = client.get("/newsletters")
+    assert history_response.status_code == 200
+    history_page = history_response.get_data(as_text=True)
+    assert "Personalized Only Digest" in history_page
+    assert "Default Digest" in history_page
+    assert "Personalized Variant Digest" not in history_page
+
+    detail_response = client.get("/newsletters/2026-03-23")
+    assert detail_response.status_code == 200
+    detail_page = detail_response.get_data(as_text=True)
+    assert "Personalized Only Digest" in detail_page
+    assert "Personalized only body" in detail_page
