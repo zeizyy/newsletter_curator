@@ -105,6 +105,8 @@ def _write_fake_runtime(fake_bin: Path, log_path: Path) -> None:
                 "    sys.exit(1)",
                 "if action == 'start' and os.getenv('FAKE_SYSTEMCTL_FAIL_START') == '1':",
                 "    sys.exit(1)",
+                "if action == 'is-active':",
+                "    sys.exit(0 if os.getenv('FAKE_SYSTEMCTL_ACTIVE') == '1' else 3)",
                 "sys.exit(0)",
                 "",
             ]
@@ -294,6 +296,7 @@ def test_generated_daily_wrapper_stops_and_restarts_admin_service(tmp_path, repo
     assert result.returncode == 0
     assert command_log.read_text(encoding="utf-8").splitlines() == [
         "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
         "uv run python daily_pipeline.py --dry-run-recipient you@example.com",
         "systemctl --user start newsletter-curator-admin",
     ]
@@ -471,12 +474,13 @@ def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(t
     assert result.returncode == 7
     assert command_log.read_text(encoding="utf-8").splitlines() == [
         "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
         "uv run python daily_pipeline.py",
         "systemctl --user start newsletter-curator-admin",
     ]
 
 
-def test_generated_daily_wrapper_continues_when_admin_stop_fails(tmp_path, repo_root):
+def test_generated_daily_wrapper_aborts_when_admin_stop_fails(tmp_path, repo_root):
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     command_log = tmp_path / "commands.log"
@@ -499,13 +503,47 @@ def test_generated_daily_wrapper_continues_when_admin_stop_fails(tmp_path, repo_
         },
     )
 
-    assert result.returncode == 0
-    assert "continuing daily pipeline" in result.stderr
+    assert result.returncode == 1
+    assert "aborting daily pipeline" in result.stderr
     assert command_log.read_text(encoding="utf-8").splitlines() == [
         "systemctl --user stop newsletter-curator-admin",
-        "uv run python daily_pipeline.py",
         "systemctl --user start newsletter-curator-admin",
     ]
+
+
+def test_generated_daily_wrapper_aborts_when_admin_remains_active(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    _write_fake_runtime(fake_bin, command_log)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"])],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "FAKE_SYSTEMCTL_ACTIVE": "1",
+            "CURATOR_ADMIN_STOP_WAIT_SECONDS": "1",
+            "FAKE_UV_EXIT_CODE": "0",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "is still active after stop" in result.stderr
+    command_lines = command_log.read_text(encoding="utf-8").splitlines()
+    assert command_lines[:2] == [
+        "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
+    ]
+    assert "uv run python daily_pipeline.py" not in command_lines
+    assert command_lines[-1] == "systemctl --user start newsletter-curator-admin"
 
 
 def test_generated_daily_wrapper_fails_when_api_keys_are_empty(tmp_path, repo_root):
@@ -682,4 +720,73 @@ def test_main_restarts_admin_service_before_reloading_caddy(monkeypatch, tmp_pat
     assert calls == [
         ("systemd", "newsletter-curator-admin"),
         ("caddy", "caddy"),
+    ]
+
+
+def test_main_enables_linger_before_user_systemd_install(monkeypatch, tmp_path):
+    repo_dir = tmp_path / "repo"
+    output_dir = tmp_path / "generated"
+    repo_dir.mkdir()
+
+    monkeypatch.setattr(
+        bootstrap_server,
+        "parse_args",
+        lambda: argparse.Namespace(
+            repo_dir=repo_dir,
+            output_dir=output_dir,
+            uv_bin="/usr/local/bin/uv",
+            config_path=repo_dir / "config.yaml",
+            app_host="127.0.0.1",
+            app_port=8080,
+            admin_token="test-admin-token",
+            mcp_token="",
+            debug_log_token="test-debug-log-token",
+            openai_api_key="test-openai-key",
+            buttondown_api_key="test-buttondown-key",
+            public_base_url="",
+            caddyfile_path=tmp_path / "etc" / "caddy" / "Caddyfile",
+            caddy_service_name="caddy",
+            cron_timezone="",
+            daily_schedule="0 13 * * *",
+            cron_log_file=None,
+            debug_log_file=None,
+            logrotate_file=None,
+            logrotate_dir=tmp_path / "etc" / "logrotate.d",
+            logrotate_rotate_count=7,
+            install_logrotate=False,
+            service_name="newsletter-curator-admin",
+            install_crontab=True,
+            install_caddy=False,
+            install_systemd_user=True,
+            enable_linger=True,
+            linger_user="deploy-user",
+        ),
+    )
+    monkeypatch.setattr(bootstrap_server, "read_env_assignments", lambda path: {})
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_enable_user_linger(user_name):
+        calls.append(("linger", user_name))
+
+    def fake_install_crontab(cron_file):
+        calls.append(("crontab", cron_file.name))
+
+    def fake_install_systemd_user_service(service_file, service_name):
+        calls.append(("systemd", service_name))
+
+    monkeypatch.setattr(bootstrap_server, "enable_user_linger", fake_enable_user_linger)
+    monkeypatch.setattr(bootstrap_server, "install_crontab", fake_install_crontab)
+    monkeypatch.setattr(
+        bootstrap_server,
+        "install_systemd_user_service",
+        fake_install_systemd_user_service,
+    )
+
+    bootstrap_server.main()
+
+    assert calls == [
+        ("linger", "deploy-user"),
+        ("crontab", "newsletter-curator.cron"),
+        ("systemd", "newsletter-curator-admin"),
     ]

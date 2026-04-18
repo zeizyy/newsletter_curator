@@ -431,8 +431,22 @@ def build_daily_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str) ->
             '  if [[ "$should_manage_admin" -ne 1 ]]; then',
             "    return 0",
             "  fi",
-            '  systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME" || \\',
-            '    echo "warning: failed to stop admin service $CURATOR_ADMIN_SERVICE_NAME; continuing daily pipeline" >&2',
+            '  if ! systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"; then',
+            '    echo "error: failed to stop admin service $CURATOR_ADMIN_SERVICE_NAME; aborting daily pipeline" >&2',
+            "    return 1",
+            "  fi",
+            '  stop_wait_seconds="${CURATOR_ADMIN_STOP_WAIT_SECONDS:-10}"',
+            '  if ! [[ "$stop_wait_seconds" =~ ^[0-9]+$ ]]; then',
+            "    stop_wait_seconds=10",
+            "  fi",
+            '  for ((attempt = 0; attempt < stop_wait_seconds; attempt++)); do',
+            '    if ! systemctl --user is-active --quiet "$CURATOR_ADMIN_SERVICE_NAME"; then',
+            "      return 0",
+            "    fi",
+            "    sleep 1",
+            "  done",
+            '  echo "error: admin service $CURATOR_ADMIN_SERVICE_NAME is still active after stop; aborting daily pipeline" >&2',
+            "  return 1",
             "}",
             "",
             "pause_admin_service",
@@ -695,6 +709,8 @@ def main() -> None:
             mode=0o644,
         )
 
+    if args.enable_linger:
+        enable_user_linger(args.linger_user)
     if args.install_crontab:
         install_crontab(cron_file)
     installed_logrotate_path: Path | None = None
@@ -715,9 +731,6 @@ def main() -> None:
             args.caddyfile_path.resolve(),
             args.caddy_service_name,
         )
-    if args.enable_linger:
-        enable_user_linger(args.linger_user)
-
     print("Generated deployment assets:")
     for path in [
         env_file,
