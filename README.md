@@ -300,6 +300,7 @@ Notes:
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated env file also stores conservative Gunicorn defaults for a small box: one `gthread` worker process with four threads, plus `CURATOR_TRUST_PROXY_HEADERS=1` so Flask correctly honors `X-Forwarded-Proto` and marks cookies `Secure` behind Caddy.
 - The generated env and cron files include a de-duplicated `PATH` with the repo virtualenv first. They also set `XDG_RUNTIME_DIR=/run/user/<uid>` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus` so cron-launched wrappers can call `systemctl --user` for the admin service.
+- The generated daily wrapper stops the admin service and verifies it is inactive before running the pipeline. If the service cannot be stopped, the wrapper aborts instead of running the daily job while the admin app is still consuming memory.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
 - If you already use Caddy for other sites, point `--caddyfile-path` at the dedicated file your main Caddyfile imports instead of overwriting `/etc/caddy/Caddyfile`.
