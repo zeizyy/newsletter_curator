@@ -17,7 +17,7 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
             f'<p>Context {index} <a href="https://example.com/story-{index:02d}">'
             f"Story {index:02d}</a></p>"
         )
-        for index in range(1, 21)
+        for index in range(1, 26)
     ) + "</body></html>"
 
     service = FakeGmailService(
@@ -36,7 +36,7 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
             f"https://example.com/story-{index:02d}": (
                 f"Story {index:02d} article text with enough detail to summarize deterministically."
             )
-            for index in range(1, 21)
+            for index in range(1, 26)
         }
     )
 
@@ -47,7 +47,7 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
             "development": {"fake_inference": True},
             "additional_sources": {"enabled": False},
             "limits": {
-                "max_links_per_email": 20,
+                "max_links_per_email": 25,
                 "max_ingest_summaries": 10,
             },
         },
@@ -56,12 +56,13 @@ def test_default_gmail_discovery_budget_fetches_more_candidates(tmp_path):
 
     result = run_fetch_gmail_job(config, service, article_fetcher=article_fetcher)
 
-    assert DEFAULT_CONFIG["limits"]["max_gmail_fetch_after_score"] == 20
-    assert config["limits"]["max_gmail_fetch_after_score"] == 20
+    assert DEFAULT_CONFIG["limits"]["max_gmail_fetch_after_score"] == 25
+    assert DEFAULT_CONFIG["limits"]["max_ingest_summaries"] == 25
+    assert config["limits"]["max_gmail_fetch_after_score"] == 25
     assert result["status"] == "completed"
-    assert result["stories_seen"] == 20
-    assert result["stories_selected_for_fetch"] == 20
-    assert len(article_fetcher.calls) == 20
+    assert result["stories_seen"] == 25
+    assert result["stories_selected_for_fetch"] == 25
+    assert len(article_fetcher.calls) == 25
     assert config["limits"]["final_top_stories"] == 15
     assert config["limits"]["source_quotas"] == {"gmail": 10, "additional_source": 5}
 

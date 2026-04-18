@@ -430,7 +430,7 @@ def score_for_ingest(
 
     max_ingest_summaries = max(
         1,
-        int(config.get("limits", {}).get("max_ingest_summaries", 20) or 20),
+        int(config.get("limits", {}).get("max_ingest_summaries", 25) or 25),
     )
     development_cfg = config.get("development", {})
     scoring_model = config["openai"]["reasoning_model"]
@@ -499,7 +499,7 @@ def score_gmail_stories_for_fetch(
 
     max_fetch_after_score = max(
         1,
-        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 20) or 20),
+        int(config.get("limits", {}).get("max_gmail_fetch_after_score", 25) or 25),
     )
     development_cfg = config.get("development", {})
     scoring_model = config["openai"]["reasoning_model"]
