@@ -62,6 +62,21 @@ jobs:
           cd "$REMOTE_REPO_DIR"
 
           git fetch --prune origin "$DEPLOY_BRANCH"
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            backup_dir=".git/deploy-local-change-backups"
+            timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            safe_deploy_branch="${DEPLOY_BRANCH//[^A-Za-z0-9._-]/-}"
+            backup_base="$backup_dir/${safe_deploy_branch}-${timestamp}"
+            mkdir -p "$backup_dir"
+            git status --short > "$backup_base.status"
+            git diff --binary > "$backup_base.patch"
+            git diff --cached --binary > "$backup_base.cached.patch"
+            git stash push --message "deploy backup $DEPLOY_BRANCH $timestamp" -- .
+            echo "Saved tracked local server changes before deploy:"
+            echo "- $backup_base.status"
+            echo "- $backup_base.patch"
+            echo "- $backup_base.cached.patch"
+          fi
           if git show-ref --verify --quiet "refs/heads/$DEPLOY_BRANCH"; then
             git checkout "$DEPLOY_BRANCH"
           else
