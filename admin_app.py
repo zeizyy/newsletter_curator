@@ -509,6 +509,67 @@ def normalize_story_source_name(story: dict) -> dict:
     return normalized
 
 
+def _story_inventory_day(story: dict) -> str:
+    raw_timestamp = str(story.get("published_at") or story.get("first_seen_at") or "").strip()
+    parsed = _parse_iso_datetime(raw_timestamp)
+    if parsed is not None:
+        return parsed.date().isoformat()
+    if len(raw_timestamp) >= 10:
+        raw_day = raw_timestamp[:10]
+        try:
+            dt.date.fromisoformat(raw_day)
+            return raw_day
+        except ValueError:
+            pass
+    return "Unknown"
+
+
+def build_story_inventory_day_view(stories: list[dict], requested_day: str | None) -> dict:
+    day_counts: dict[str, int] = {}
+    for story in stories:
+        day = _story_inventory_day(story)
+        story["inventory_day"] = day
+        day_counts[day] = day_counts.get(day, 0) + 1
+
+    sorted_days = sorted(
+        day_counts,
+        key=lambda day: (day != "Unknown", day),
+        reverse=True,
+    )
+    requested = str(requested_day or "").strip()
+    if requested == "all":
+        selected_day = "all"
+    elif requested in day_counts:
+        selected_day = requested
+    else:
+        selected_day = sorted_days[0] if sorted_days else ""
+
+    if selected_day == "all":
+        visible_stories = stories
+    elif selected_day:
+        visible_stories = [
+            story
+            for story in stories
+            if story.get("inventory_day") == selected_day
+        ]
+    else:
+        visible_stories = []
+
+    return {
+        "days": [
+            {
+                "date": day,
+                "count": day_counts[day],
+                "is_selected": selected_day == day,
+            }
+            for day in sorted_days
+        ],
+        "selected_day": selected_day,
+        "visible_stories": visible_stories,
+        "total_stories": len(stories),
+    }
+
+
 def build_preview_payload(
     newsletter: dict | None,
     *,
@@ -1869,17 +1930,24 @@ def newsletter_history():
     merged = load_merged_config()
     repository = load_repository(merged)
     newsletters = repository.list_daily_newsletters(limit=30) if repository else []
-    active_stories = repository.list_stories()[:12] if repository else []
-    active_stories = [
+    all_active_stories = repository.list_stories() if repository else []
+    all_active_stories = [
         normalize_story_source_name(story)
-        for story in active_stories
+        for story in all_active_stories
     ]
+    inventory_view = build_story_inventory_day_view(
+        all_active_stories,
+        request.args.get("inventory_day"),
+    )
     response = make_response(
         render_admin_template(
             "newsletter_history.html",
             config_path=CONFIG_PATH,
             newsletters=newsletters,
-            active_stories=active_stories,
+            active_stories=inventory_view["visible_stories"],
+            active_story_total=inventory_view["total_stories"],
+            inventory_days=inventory_view["days"],
+            selected_inventory_day=inventory_view["selected_day"],
         )
     )
     return response
