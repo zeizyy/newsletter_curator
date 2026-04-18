@@ -174,6 +174,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "OPENAI_API_KEY=test-openai-key" in env_text
     assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "CURATOR_PUBLIC_BASE_URL=https://curator.example.com" in env_text
+    assert f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}" in env_text
+    assert f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{os.getuid()}/bus" in env_text
     assert oct(env_file.stat().st_mode & 0o777) == "0o600"
 
     admin_script_text = admin_script.read_text(encoding="utf-8")
@@ -211,6 +213,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "trap handle_terminate TERM" in daily_script_text
 
     cron_text = cron_file.read_text(encoding="utf-8")
+    assert f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}" in cron_text
+    assert f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{os.getuid()}/bus" in cron_text
     assert "CRON_TZ=" not in cron_text
     assert "0 13 * * *" in cron_text
     assert str(daily_script) in cron_text
@@ -236,6 +240,33 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"- Generated Caddy config: {caddy_file}" in result.stdout
     assert "Caddy config not installed by default. Pass --install-caddy to install and reload it." in result.stdout
     assert "App bind host normalized for reverse proxy use: 0.0.0.0 -> 127.0.0.1" in result.stdout
+
+
+def test_bootstrap_deduplicates_generated_deploy_path(tmp_path, repo_root):
+    venv_bin = repo_root / ".venv" / "bin"
+    duplicated_path = os.pathsep.join(
+        [
+            str(venv_bin),
+            str(venv_bin),
+            "/root/.local/bin",
+            "/usr/local/bin",
+            "/root/.local/bin",
+            "/usr/bin",
+        ]
+    )
+
+    _, paths = _run_bootstrap(tmp_path, repo_root, extra_env={"PATH": duplicated_path})
+
+    expected_path = os.pathsep.join(
+        [
+            str(venv_bin),
+            "/root/.local/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+        ]
+    )
+    assert f"PATH={expected_path}\n" in paths["env_file"].read_text(encoding="utf-8")
+    assert f"PATH={expected_path}\n" in paths["cron_file"].read_text(encoding="utf-8")
 
 
 def test_generated_daily_wrapper_stops_and_restarts_admin_service(tmp_path, repo_root):

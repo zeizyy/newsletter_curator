@@ -155,7 +155,7 @@ jobs:
             bootstrap_args+=(--buttondown-api-key "$BUTTONDOWN_API_KEY")
           fi
 
-          bootstrap_args+=(--install-crontab --install-systemd-user)
+          bootstrap_args+=(--install-crontab --install-systemd-user --enable-linger)
           bootstrap_display_args=(
             --repo-dir "$REMOTE_REPO_DIR"
             --config-path "${NEWSLETTER_CONFIG:-$REMOTE_REPO_DIR/config.yaml}"
@@ -184,7 +184,7 @@ jobs:
             bootstrap_display_args+=(--buttondown-api-key "[redacted]")
           fi
 
-          bootstrap_display_args+=(--install-crontab --install-systemd-user)
+          bootstrap_display_args+=(--install-crontab --install-systemd-user --enable-linger)
           printf 'Bootstrap command:\n'
           printf '%q run python scripts/bootstrap_server.py' "$uv_bin"
           printf ' %q' "${bootstrap_display_args[@]}"
