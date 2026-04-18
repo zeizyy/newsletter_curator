@@ -489,6 +489,8 @@ Edit `config.yaml`:
 - `limits.final_top_stories` (default `15`)
 - `limits.source_quotas` (default `gmail: 10`, `additional_source: 5`)
 - `limits.max_article_chars`
+- `limits.max_gmail_fetch_after_score` (default `25`)
+- `limits.max_ingest_summaries` (default `25`)
 - `limits.max_summary_workers`
 - `email.digest_subject` (default `AI Signal Daily`)
 - `openai.reasoning_model` (default `gpt-5-mini`)
