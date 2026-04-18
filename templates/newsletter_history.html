@@ -5,6 +5,26 @@
 {% block page_title %}Archive{% endblock %}
 {% block page_lead %}{% endblock %}
 {% block page_meta %}{% endblock %}
+{% block head_extra %}
+  <style>
+    .inventory-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .inventory-controls .button-link {
+      width: auto;
+    }
+
+    @media (max-width: 720px) {
+      .inventory-controls .button-link {
+        width: 100%;
+      }
+    }
+  </style>
+{% endblock %}
 
 {% block content %}
   <section class="surface surface-section">
@@ -67,8 +87,24 @@
         <div class="section-kicker">Active Stories</div>
         <h2>Current repository inventory</h2>
       </div>
-      <div class="section-copy">{{ active_stories|length }} recent stories available for review.</div>
+      <div class="section-copy">
+        {% if selected_inventory_day == "all" %}
+          Showing all {{ active_story_total }} repository stories.
+        {% elif selected_inventory_day %}
+          Showing {{ active_stories|length }} of {{ active_story_total }} repository stories for {{ selected_inventory_day }}.
+        {% else %}
+          {{ active_story_total }} repository stories available for review.
+        {% endif %}
+      </div>
     </div>
+    {% if inventory_days %}
+    <div class="inventory-controls" aria-label="Repository inventory days">
+      <a class="button-link {% if selected_inventory_day == 'all' %}primary{% else %}ghost{% endif %}" href="{{ url_for('newsletter_history', inventory_day='all') }}">All Days</a>
+      {% for day in inventory_days %}
+        <a class="button-link {% if day.is_selected %}primary{% else %}ghost{% endif %}" href="{{ url_for('newsletter_history', inventory_day=day.date) }}">{{ day.date }} &middot; {{ day.count }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% if active_stories %}
     <div class="table-wrap">
       <table>
@@ -78,6 +114,7 @@
             <th>Source</th>
             <th>Category</th>
             <th>Published</th>
+            <th>Day</th>
             <th>Snapshot</th>
           </tr>
         </thead>
@@ -96,6 +133,7 @@
             </td>
             <td data-label="Category">{{ story.category or "Uncategorized" }}</td>
             <td data-label="Published">{{ story.published_at or story.first_seen_at }}</td>
+            <td data-label="Day">{{ story.inventory_day }}</td>
             <td data-label="Snapshot">
               {% if story.article_text %}
                 <span class="pill">snapshot stored</span>

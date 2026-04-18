@@ -74,6 +74,32 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
         story_id,
         "Rates reset changes software valuations and reprices growth.",
     )
+    repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Macro Wire",
+            "subject": "[ai] Semis supply",
+            "url": "https://example.com/markets/semis-supply",
+            "anchor_text": "Semis supply improves for AI servers",
+            "context": "Repository context for semis supply",
+            "category": "AI infrastructure",
+            "published_at": "2026-03-21T11:15:00+00:00",
+        },
+        ingestion_run_id=ingestion_run_id,
+    )
+    repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Macro Wire",
+            "subject": "[markets] Credit spreads",
+            "url": "https://example.com/markets/credit-spreads",
+            "anchor_text": "Credit spreads widen into earnings",
+            "context": "Repository context for credit spreads",
+            "category": "Markets / stocks / macro / economy",
+            "published_at": "2026-03-20T20:45:00+00:00",
+        },
+        ingestion_run_id=ingestion_run_id,
+    )
 
     open_token = repository.ensure_newsletter_open_token(old_newsletter_id)
     tracked_links = repository.ensure_tracked_links(
@@ -120,7 +146,27 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Old Digest" not in history_page
     assert 'data-label="Subject"' in history_page
     assert "Active Stories" in history_page
+    assert "Showing 2 of 3 repository stories for 2026-03-21." in history_page
+    assert "All Days" in history_page
+    assert "2026-03-21 &middot; 2" in history_page
+    assert "2026-03-20 &middot; 1" in history_page
     assert "Rates reset changes software valuations" in history_page
+    assert "Semis supply improves for AI servers" in history_page
+    assert "Credit spreads widen into earnings" not in history_page
+
+    older_inventory_response = client.get("/newsletters?inventory_day=2026-03-20")
+    assert older_inventory_response.status_code == 200
+    older_inventory_page = older_inventory_response.get_data(as_text=True)
+    assert "Showing 1 of 3 repository stories for 2026-03-20." in older_inventory_page
+    assert "Credit spreads widen into earnings" in older_inventory_page
+    assert "Rates reset changes software valuations" not in older_inventory_page
+
+    all_inventory_response = client.get("/newsletters?inventory_day=all")
+    assert all_inventory_response.status_code == 200
+    all_inventory_page = all_inventory_response.get_data(as_text=True)
+    assert "Showing all 3 repository stories." in all_inventory_page
+    assert "Rates reset changes software valuations" in all_inventory_page
+    assert "Credit spreads widen into earnings" in all_inventory_page
 
     detail_response = client.get("/newsletters/2026-03-21")
     assert detail_response.status_code == 200
