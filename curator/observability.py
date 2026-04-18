@@ -47,8 +47,11 @@ def emit_event(event: str, /, **payload) -> None:
         }
     )
     _RECENT_EVENT_LINES.append(rendered)
-    print(rendered, flush=True)
     append_debug_log_line(rendered)
+    try:
+        print(rendered, flush=True)
+    except (BrokenPipeError, OSError):
+        return
 
 
 def recent_event_lines(limit: int = 80) -> list[str]:
