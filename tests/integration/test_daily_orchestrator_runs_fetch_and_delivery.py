@@ -215,3 +215,37 @@ def test_daily_orchestrator_reports_partial_failure_when_one_recipient_send_fail
     assert result["stages"]["deliver_digest"]["sent_recipients"] == 1
     assert result["stages"]["deliver_digest"]["failed_recipient_count"] == 1
     assert sent_messages == ["ok@example.com"]
+
+
+def test_daily_orchestrator_records_error_type_for_delivery_key_error(monkeypatch, tmp_path):
+    jobs = importlib.import_module("curator.jobs")
+    main = importlib.import_module("main")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+
+    monkeypatch.setattr(jobs, "run_fetch_gmail_job", lambda *args, **kwargs: {"status": "completed"})
+    monkeypatch.setattr(jobs, "run_fetch_sources_job", lambda *args, **kwargs: {"status": "completed"})
+
+    def fail_delivery(config, service):
+        raise KeyError("digest_html")
+
+    result = jobs.run_daily_orchestrator_job(
+        config,
+        object(),
+        repository=repository,
+        delivery_runner_fn=fail_delivery,
+    )
+
+    delivery_stage = result["stages"]["deliver_digest"]
+    assert result["status"] == "failed"
+    assert result["failed_stages"] == ["deliver_digest"]
+    assert delivery_stage["status"] == "failed"
+    assert delivery_stage["error"] == "'digest_html'"
+    assert delivery_stage["error_type"] == "KeyError"
+    assert result["failures"][0]["error_type"] == "KeyError"

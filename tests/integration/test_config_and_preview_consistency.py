@@ -48,6 +48,7 @@ def test_checked_in_config_keeps_tracking_explicit_without_public_origin():
     assert config["database"]["newsletter_ttl_days"] == 7
     assert config["database"]["allow_schema_reset"] is False
     assert config["email"]["digest_subject"] == "AI Signal Daily"
+    assert config["email"]["alert_recipient"] == "zeizyy@gmail.com"
     assert config["tracking"]["enabled"] is True
     assert config["tracking"]["open_enabled"] is True
     assert config["tracking"]["click_enabled"] is True

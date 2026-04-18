@@ -496,7 +496,7 @@ Edit `config.yaml`:
 - `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
 - `tracking.open_enabled` (optional explicit toggle for the open pixel; the checked-in config currently enables it)
 - `tracking.click_enabled` (optional explicit toggle for tracked link redirects; the checked-in config currently enables it)
-- `email.digest_recipients` and `email.alert_recipient`
+- `email.digest_recipients` and `email.alert_recipient` (checked-in config alerts `zeizyy@gmail.com`)
 
 The public origin for subscriber links, settings links, and tracked URLs is not stored in checked-in YAML. Set `CURATOR_PUBLIC_BASE_URL` through the bootstrap-generated server env file instead.
 
@@ -551,4 +551,4 @@ You can override the config file path with `NEWSLETTER_CONFIG`.
 - Article fetching requires outbound network access during ingest jobs, not during delivery.
 - Token usage stats are printed per model at the end of each delivery run.
 - Source quotas are enforced during final story selection; if one source has fewer usable stored stories, fallback draws from next-ranked candidates.
-- Failure alerts are emailed when a job raises an exception.
+- Failure alerts are emailed when delivery fails or when the generated daily wrapper observes a non-zero pipeline exit.

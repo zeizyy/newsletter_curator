@@ -1261,16 +1261,26 @@ def run_daily_orchestrator_job(
             stage_result = dict(stage_fn())
         except Exception as exc:
             runtime = finish_runtime_capture(stage_runtime_capture)
+            error_type = exc.__class__.__name__
             stages[stage_name] = {
                 "status": "failed",
                 "error": str(exc),
+                "error_type": error_type,
                 "runtime": runtime,
             }
-            failures.append({"stage": stage_name, "error": str(exc), "runtime": runtime})
+            failures.append(
+                {
+                    "stage": stage_name,
+                    "error": str(exc),
+                    "error_type": error_type,
+                    "runtime": runtime,
+                }
+            )
             emit_event(
                 "daily_orchestrator_stage_failed",
                 stage=stage_name,
                 error=str(exc),
+                error_type=error_type,
                 runtime=runtime,
             )
             return
