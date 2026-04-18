@@ -1938,6 +1938,23 @@ def newsletter_history():
         if repository
         else []
     )
+    response = make_response(
+        render_admin_template(
+            "newsletter_history.html",
+            config_path=CONFIG_PATH,
+            newsletters=newsletters,
+        )
+    )
+    return response
+
+
+@app.route("/inventory", methods=["GET"])
+def repository_inventory():
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    merged = load_merged_config()
+    repository = load_repository(merged)
     all_active_stories = repository.list_stories() if repository else []
     all_active_stories = [
         normalize_story_source_name(story)
@@ -1949,9 +1966,8 @@ def newsletter_history():
     )
     response = make_response(
         render_admin_template(
-            "newsletter_history.html",
+            "repository_inventory.html",
             config_path=CONFIG_PATH,
-            newsletters=newsletters,
             active_stories=inventory_view["visible_stories"],
             active_story_total=inventory_view["total_stories"],
             inventory_days=inventory_view["days"],

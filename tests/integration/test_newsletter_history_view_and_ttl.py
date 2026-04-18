@@ -145,23 +145,32 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Recent Digest" in history_page
     assert "Old Digest" not in history_page
     assert 'data-label="Subject"' in history_page
-    assert "Active Stories" in history_page
-    assert "Showing 2 of 3 repository stories for 2026-03-21." in history_page
-    assert "All Days" in history_page
-    assert "2026-03-21 &middot; 2" in history_page
-    assert "2026-03-20 &middot; 1" in history_page
-    assert "Rates reset changes software valuations" in history_page
-    assert "Semis supply improves for AI servers" in history_page
+    assert "Inventory" in history_page
+    assert "Current repository inventory" not in history_page
+    assert "Rates reset changes software valuations" not in history_page
     assert "Credit spreads widen into earnings" not in history_page
 
-    older_inventory_response = client.get("/newsletters?inventory_day=2026-03-20")
+    inventory_response = client.get("/inventory")
+    assert inventory_response.status_code == 200
+    inventory_page = inventory_response.get_data(as_text=True)
+    assert "Inventory" in inventory_page
+    assert "Current repository inventory" in inventory_page
+    assert "Showing 2 of 3 repository stories for 2026-03-21." in inventory_page
+    assert "All Days" in inventory_page
+    assert "2026-03-21 &middot; 2" in inventory_page
+    assert "2026-03-20 &middot; 1" in inventory_page
+    assert "Rates reset changes software valuations" in inventory_page
+    assert "Semis supply improves for AI servers" in inventory_page
+    assert "Credit spreads widen into earnings" not in inventory_page
+
+    older_inventory_response = client.get("/inventory?inventory_day=2026-03-20")
     assert older_inventory_response.status_code == 200
     older_inventory_page = older_inventory_response.get_data(as_text=True)
     assert "Showing 1 of 3 repository stories for 2026-03-20." in older_inventory_page
     assert "Credit spreads widen into earnings" in older_inventory_page
     assert "Rates reset changes software valuations" not in older_inventory_page
 
-    all_inventory_response = client.get("/newsletters?inventory_day=all")
+    all_inventory_response = client.get("/inventory?inventory_day=all")
     assert all_inventory_response.status_code == 200
     all_inventory_page = all_inventory_response.get_data(as_text=True)
     assert "Showing all 3 repository stories." in all_inventory_page
@@ -194,8 +203,14 @@ def test_newsletter_history_empty_state_uses_editorial_shell(monkeypatch, tmp_pa
 
     assert response.status_code == 200
     assert "No stored newsletters yet" in html
-    assert "No active stories yet" in html
     assert "Open Control Room" in html
+
+    inventory_response = client.get("/inventory")
+    inventory_html = inventory_response.get_data(as_text=True)
+
+    assert inventory_response.status_code == 200
+    assert "No active stories yet" in inventory_html
+    assert "Open Archive" in inventory_html
 
 
 def test_newsletter_history_shows_one_generated_newsletter_per_day_across_audiences(
