@@ -299,6 +299,7 @@ Notes:
 - Bootstrap no longer decides whether tracking is on. Keep tracking booleans in `config.yaml`, and use `--public-base-url` only for the deployment-specific public origin written to `CURATOR_PUBLIC_BASE_URL` in the generated server env file.
 - The generated env file stores the admin token, OpenAI key, and optional Buttondown key with `0600` permissions, so run the bootstrap as the same server user that will own the service and cron jobs.
 - The generated env file also stores conservative Gunicorn defaults for a small box: one `gthread` worker process with four threads, plus `CURATOR_TRUST_PROXY_HEADERS=1` so Flask correctly honors `X-Forwarded-Proto` and marks cookies `Secure` behind Caddy.
+- The generated env and cron files include a de-duplicated `PATH` with the repo virtualenv first. They also set `XDG_RUNTIME_DIR=/run/user/<uid>` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus` so cron-launched wrappers can call `systemctl --user` for the admin service.
 - Pass `--debug-log-token` to enable the shareable `/debug/logs` endpoint. The bootstrap writes `CURATOR_DEBUG_LOG_PATH` to `deploy/generated/debug.ndjson` by default.
 - The bootstrap also writes `deploy/generated/newsletter-curator.logrotate` for that debug log path. The default policy is `daily`, `rotate 7`, `compress`, `missingok`, and `notifempty`.
 - If you already use Caddy for other sites, point `--caddyfile-path` at the dedicated file your main Caddyfile imports instead of overwriting `/etc/caddy/Caddyfile`.
@@ -346,7 +347,7 @@ The workflow:
 - runs `uv sync --frozen`
 - sources `deploy/generated/newsletter-curator.env`
 - reruns `scripts/bootstrap_server.py` with the current server-side tokens and keys
-- reapplies the managed `crontab`, the `systemd --user` Gunicorn service, and the Caddy config on each deploy
+- reapplies the managed `crontab`, the `systemd --user` Gunicorn service, user linger, and the Caddy config on each deploy
 
 Behavior notes:
 - `.github/workflows/ci.yml` runs the full `uv run pytest` suite on pull requests to `main` and on pushes to `main`.
