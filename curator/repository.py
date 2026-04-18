@@ -772,10 +772,19 @@ class SQLiteRepository:
         newsletter_date: str,
         *,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        include_all_audiences: bool = False,
     ) -> dict | None:
+        if include_all_audiences:
+            where_clause = "WHERE newsletter_date = ?"
+            order_clause = "ORDER BY CASE WHEN audience_key = ? THEN 0 ELSE 1 END, id DESC"
+            params: tuple[str, str] = (newsletter_date, audience_key)
+        else:
+            where_clause = "WHERE newsletter_date = ? AND audience_key = ?"
+            order_clause = ""
+            params = (newsletter_date, audience_key)
         with self.connect() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT
                     id,
                     newsletter_date,
@@ -790,11 +799,11 @@ class SQLiteRepository:
                     created_at,
                     updated_at
                 FROM daily_newsletters
-                WHERE newsletter_date = ?
-                  AND audience_key = ?
+                {where_clause}
+                {order_clause}
                 LIMIT 1
                 """,
-                (newsletter_date, audience_key),
+                params,
             ).fetchone()
         if row is None:
             return None
@@ -812,13 +821,74 @@ class SQLiteRepository:
         limit: int = 30,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
         include_all_audiences: bool = False,
+        one_per_date: bool = False,
     ) -> list[dict]:
         where_clause = "" if include_all_audiences else "WHERE audience_key = ?"
         params: tuple[int] | tuple[str, int]
         params = (limit,) if include_all_audiences else (audience_key, limit)
-        with self.connect() as connection:
-            rows = connection.execute(
-                f"""
+        if one_per_date:
+            if include_all_audiences:
+                query = """
+                    SELECT
+                        id,
+                        newsletter_date,
+                        audience_key,
+                        delivery_run_id,
+                        subject,
+                        body,
+                        html_body,
+                        content_json,
+                        selected_items_json,
+                        metadata_json,
+                        created_at,
+                        updated_at
+                    FROM (
+                        SELECT
+                            id,
+                            newsletter_date,
+                            audience_key,
+                            delivery_run_id,
+                            subject,
+                            body,
+                            html_body,
+                            content_json,
+                            selected_items_json,
+                            metadata_json,
+                            created_at,
+                            updated_at,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY newsletter_date
+                                ORDER BY CASE WHEN audience_key = ? THEN 0 ELSE 1 END, id DESC
+                            ) AS row_number
+                        FROM daily_newsletters
+                    )
+                    WHERE row_number = 1
+                    ORDER BY newsletter_date DESC, id DESC
+                    LIMIT ?
+                    """
+                params = (audience_key, limit)
+            else:
+                query = """
+                    SELECT
+                        id,
+                        newsletter_date,
+                        audience_key,
+                        delivery_run_id,
+                        subject,
+                        body,
+                        html_body,
+                        content_json,
+                        selected_items_json,
+                        metadata_json,
+                        created_at,
+                        updated_at
+                    FROM daily_newsletters
+                    WHERE audience_key = ?
+                    ORDER BY newsletter_date DESC, id DESC
+                    LIMIT ?
+                    """
+        else:
+            query = f"""
                 SELECT
                     id,
                     newsletter_date,
@@ -836,9 +906,9 @@ class SQLiteRepository:
                 {where_clause}
                 ORDER BY newsletter_date DESC, id DESC
                 LIMIT ?
-                """,
-                params,
-            ).fetchall()
+                """
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
 
         newsletters: list[dict] = []
         for row in rows:
