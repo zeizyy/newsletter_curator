@@ -102,3 +102,61 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
         "Chip supply is tightening across cloud" in payload["body"]
         or "Rates reset changes software valuations" in payload["body"]
     )
+
+
+def test_gmail_ingest_prefers_article_timestamp_over_email_timestamp(monkeypatch, repo_root, tmp_path):
+    now_utc = datetime.now(UTC)
+    email_timestamp = now_utc - timedelta(hours=2)
+    article_timestamp = "2026-03-21T12:15:00+00:00"
+
+    fixture_html = (repo_root / "tests" / "fixtures" / "newsletter_sample.html").read_text(
+        encoding="utf-8"
+    )
+    ingest_service = FakeGmailService(
+        messages=[
+            make_gmail_message(
+                message_id="msg-1",
+                subject="Daily Macro Notes",
+                from_header="Macro Letter <macro@example.com>",
+                date_header=format_datetime(email_timestamp),
+                html_body=fixture_html,
+            )
+        ]
+    )
+
+    def fake_article_fetcher(url: str, max_article_chars: int, timeout: int = 25, retries: int = 3):
+        return {
+            "article_text": "Rates reset changes software valuations and reprices growth expectations.",
+            "document_title": "Rates reset",
+            "document_excerpt": "Macro reset article excerpt.",
+            "published_at": article_timestamp,
+            "access_blocked": False,
+            "access_reason": "",
+            "access_signals": {},
+        }
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "additional_sources": {"enabled": False},
+            "development": {"fake_inference": True},
+            "limits": {
+                "select_top_stories": 1,
+                "final_top_stories": 1,
+                "source_quotas": {"gmail": 1, "additional_source": 0},
+            },
+        },
+    )
+
+    main = importlib.import_module("main")
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    config = main.load_config()
+
+    result = run_fetch_gmail_job(config, ingest_service, article_fetcher=fake_article_fetcher)
+    repository = get_repository_from_config(config)
+    stories = repository.list_stories(source_type="gmail")
+
+    assert result["status"] == "completed"
+    assert len(stories) == 2
+    assert {story["published_at"] for story in stories} == {article_timestamp}
