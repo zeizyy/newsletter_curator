@@ -34,6 +34,19 @@
       text-transform: uppercase;
       color: var(--soft);
     }
+
+    .funnel-list {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .funnel-list strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
   </style>
 {% endblock %}
 
@@ -46,26 +59,11 @@
       </div>
       <div class="section-copy">created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}</div>
     </div>
-    <div class="stat-grid">
-      <article class="stat-card">
-        <div class="stat-label">Sourced</div>
-        <div class="stat-value">{{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }}</div>
-        <div class="stat-sub">
-          Gmail {{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }}
-          / additional {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }}
-        </div>
-      </article>
-      <article class="stat-card">
-        <div class="stat-label">Processed</div>
-        <div class="stat-value">{{ newsletter.funnel_stats.processed }}</div>
-        <div class="stat-sub">after initial ranking</div>
-      </article>
-      <article class="stat-card">
-        <div class="stat-label">Selected</div>
-        <div class="stat-value">{{ newsletter.funnel_stats.selected }}</div>
-        <div class="stat-sub">in final issue</div>
-      </article>
-    </div>
+    <ul class="funnel-list">
+      <li><strong>Sourced:</strong> {{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }} total ({{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }} Gmail / {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }} additional)</li>
+      <li><strong>Processed:</strong> {{ newsletter.funnel_stats.processed }}</li>
+      <li><strong>Selected:</strong> {{ newsletter.funnel_stats.selected }}</li>
+    </ul>
   </section>
 
   <section class="surface surface-section">

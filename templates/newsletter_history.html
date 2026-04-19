@@ -5,6 +5,22 @@
 {% block page_title %}Archive{% endblock %}
 {% block page_lead %}{% endblock %}
 {% block page_meta %}{% endblock %}
+{% block head_extra %}
+  <style>
+    .funnel-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .funnel-list strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
+  </style>
+{% endblock %}
 
 {% block content %}
   <section class="surface surface-section">
@@ -38,17 +54,11 @@
             <td data-label="Subject">{{ newsletter.subject }}</td>
             <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
             <td data-label="Funnel">
-              <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                <span class="pill {% if newsletter.funnel_stats.total_sourced is none %}muted-pill{% endif %}">
-                  sourced={{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }}
-                </span>
-                <span class="pill muted-pill">
-                  gmail={{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }}
-                  / additional={{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }}
-                </span>
-                <span class="pill">processed={{ newsletter.funnel_stats.processed }}</span>
-                <span class="pill">selected={{ newsletter.funnel_stats.selected }}</span>
-              </div>
+              <ul class="funnel-list">
+                <li><strong>Sourced:</strong> {{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }} total ({{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }} Gmail / {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }} additional)</li>
+                <li><strong>Processed:</strong> {{ newsletter.funnel_stats.processed }}</li>
+                <li><strong>Selected:</strong> {{ newsletter.funnel_stats.selected }}</li>
+              </ul>
             </td>
             <td data-label="Updated">{{ newsletter.updated_at }}</td>
             <td data-label="Action">
