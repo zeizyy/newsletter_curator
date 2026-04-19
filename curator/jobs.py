@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,7 +12,7 @@ from threading import Lock
 from openai import OpenAI
 import requests
 
-from .config import BASE_DIR, is_default_enabled_source_name
+from .config import BASE_DIR, DEFAULT_ENABLED_SOURCE_NAMES, is_default_enabled_source_name
 from .content import (
     detect_paywalled_article,
     enrich_story_with_article_metadata,
@@ -242,6 +243,35 @@ def default_preferred_sources(available_sources: list[dict] | tuple[dict, ...] |
         defaults.append(source_name)
         seen.add(normalized)
     return defaults
+
+
+def enabled_additional_source_names(repository: SQLiteRepository) -> list[str]:
+    enabled_names = {str(name).strip().lower() for name in DEFAULT_ENABLED_SOURCE_NAMES}
+    for source in repository.list_sources_with_selection():
+        if str(source.get("source_type", "")).strip() != "additional_source":
+            continue
+        source_name = str(source.get("source_name", "")).strip()
+        normalized = source_name.lower()
+        if not source_name:
+            continue
+        if bool(source.get("enabled", True)):
+            enabled_names.add(normalized)
+        else:
+            enabled_names.discard(normalized)
+    return sorted(enabled_names)
+
+
+def collect_enabled_additional_source_links(config: dict, repository: SQLiteRepository) -> list[dict]:
+    try:
+        signature = inspect.signature(collect_additional_source_links)
+    except (TypeError, ValueError):
+        signature = None
+    if signature is None or "allowed_source_names" not in signature.parameters:
+        return collect_additional_source_links(config)
+    return collect_additional_source_links(
+        config,
+        allowed_source_names=enabled_additional_source_names(repository),
+    )
 
 
 def subscriber_profile_key(
@@ -932,7 +962,7 @@ def run_fetch_sources_job(
         if config.get("development", {}).get("use_canned_sources", False):
             source_fetcher = load_canned_source_links
         else:
-            source_fetcher = collect_additional_source_links
+            source_fetcher = lambda cfg: collect_enabled_additional_source_links(cfg, repository)
     article_fetcher = article_fetcher or fetch_article_details
     cleanup_result = run_repository_ttl_cleanup(config, repository)
     run_id = repository.create_ingestion_run("additional_source", metadata={"job": job_name})

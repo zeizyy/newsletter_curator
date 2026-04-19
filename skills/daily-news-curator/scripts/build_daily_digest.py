@@ -351,10 +351,27 @@ def build_daily_digest_payload(
     max_redirects: int = 5,
     total_timeout_seconds: int | None = None,
     max_feed_workers: int = 5,
+    allowed_source_names: list[str] | tuple[str, ...] | set[str] | None = None,
     event_logger: Callable[..., None] | None = None,
     fetch_xml_fn=fetch_xml,
 ) -> dict[str, Any]:
     feed_map = load_feeds(feeds_file)
+    normalized_allowed_source_names = {
+        str(source_name).strip().lower()
+        for source_name in allowed_source_names or []
+        if str(source_name).strip()
+    }
+    if normalized_allowed_source_names:
+        feed_map = {
+            category: [
+                source
+                for source in sources
+                if str(source.get("name", "")).strip().lower()
+                in normalized_allowed_source_names
+            ]
+            for category, sources in feed_map.items()
+        }
+        feed_map = {category: sources for category, sources in feed_map.items() if sources}
     total_feeds = sum(len(sources) for sources in feed_map.values())
     started_at = time.monotonic()
     _emit_event(
@@ -369,6 +386,7 @@ def build_daily_digest_payload(
         total_timeout_seconds=total_timeout_seconds,
         max_feed_workers=max_feed_workers,
         custom_feeds=bool(feeds_file),
+        allowed_source_count=len(normalized_allowed_source_names),
     )
 
     stories: list[Story] = []

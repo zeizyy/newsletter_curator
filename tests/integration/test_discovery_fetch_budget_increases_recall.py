@@ -99,10 +99,47 @@ def test_additional_source_discovery_requests_thirty_candidates_by_default(monke
     assert captured_kwargs[0]["hours"] == 24
     assert captured_kwargs[0]["top_per_category"] == 5
     assert captured_kwargs[0]["max_total"] == 30
+    assert captured_kwargs[0]["allowed_source_names"] == []
     assert captured_kwargs[0]["total_timeout_seconds"] == 300
     assert callable(captured_kwargs[0]["event_logger"])
     assert config["limits"]["final_top_stories"] == 15
     assert config["limits"]["source_quotas"] == {"gmail": 10, "additional_source": 5}
+
+
+def test_additional_source_collection_filters_feeds_to_allowed_sources(monkeypatch, tmp_path):
+    captured_kwargs: list[dict] = []
+    script_path = tmp_path / "fake_digest.py"
+    script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    def fake_builder(**kwargs):
+        captured_kwargs.append(dict(kwargs))
+        return {"stories": [], "failures": []}
+
+    monkeypatch.setattr("curator.sources._load_additional_source_builder", lambda _path: fake_builder)
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "additional_sources": {
+                "enabled": True,
+                "script_path": str(script_path),
+            }
+        },
+    )
+    config = load_config(str(config_path))
+
+    links = collect_additional_source_links(
+        config,
+        base_dir=Path(tmp_path),
+        allowed_source_names=["OpenAI News", " openai news ", "Google AI Blog"],
+    )
+
+    assert links == []
+    assert len(captured_kwargs) == 1
+    assert captured_kwargs[0]["allowed_source_names"] == [
+        "google ai blog",
+        "openai news",
+    ]
 
 
 def test_additional_source_builder_failure_returns_no_links_and_emits_debug_event(monkeypatch, tmp_path):
