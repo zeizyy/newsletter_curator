@@ -119,6 +119,7 @@ class SQLiteRepository:
                 "id",
                 "newsletter_date",
                 "audience_key",
+                "issue_type",
                 "delivery_run_id",
                 "subject",
                 "body",
@@ -251,6 +252,7 @@ class SQLiteRepository:
 
     def _migrate_compatible_schema(self, connection: sqlite3.Connection) -> None:
         self._migrate_daily_newsletters_audience_keys(connection)
+        self._migrate_daily_newsletters_issue_types(connection)
         self._migrate_subscriber_profiles_delivery_format(connection)
 
     def _migrate_daily_newsletters_audience_keys(self, connection: sqlite3.Connection) -> None:
@@ -413,6 +415,153 @@ class SQLiteRepository:
             """
         )
 
+    def _migrate_daily_newsletters_issue_types(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "daily_newsletters")
+        if not columns or "issue_type" in columns:
+            return
+
+        connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE daily_newsletters_migrated (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    newsletter_date TEXT NOT NULL,
+                    audience_key TEXT NOT NULL DEFAULT 'default',
+                    issue_type TEXT NOT NULL DEFAULT 'daily',
+                    delivery_run_id INTEGER REFERENCES delivery_runs(id) ON DELETE SET NULL,
+                    subject TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    html_body TEXT NOT NULL,
+                    content_json TEXT NOT NULL DEFAULT '{}',
+                    selected_items_json TEXT NOT NULL DEFAULT '[]',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(newsletter_date, audience_key, issue_type)
+                );
+
+                INSERT INTO daily_newsletters_migrated (
+                    id,
+                    newsletter_date,
+                    audience_key,
+                    issue_type,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    content_json,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                )
+                SELECT
+                    id,
+                    newsletter_date,
+                    audience_key,
+                    CASE
+                        WHEN json_valid(metadata_json) THEN
+                            COALESCE(NULLIF(json_extract(metadata_json, '$.issue_type'), ''), 'daily')
+                        ELSE 'daily'
+                    END,
+                    delivery_run_id,
+                    subject,
+                    body,
+                    html_body,
+                    content_json,
+                    selected_items_json,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM daily_newsletters;
+                """
+            )
+
+            dependent_tables = {
+                "newsletter_telemetry": """
+                    CREATE TABLE newsletter_telemetry_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL UNIQUE REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL UNIQUE,
+                        created_at TEXT NOT NULL
+                    )
+                """,
+                "tracked_links": """
+                    CREATE TABLE tracked_links_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL UNIQUE,
+                        target_url TEXT NOT NULL,
+                        story_title TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        UNIQUE(daily_newsletter_id, target_url)
+                    )
+                """,
+                "newsletter_open_events": """
+                    CREATE TABLE newsletter_open_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        open_token TEXT NOT NULL,
+                        opened_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+                "newsletter_click_events": """
+                    CREATE TABLE newsletter_click_events_migrated (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                        tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                        click_token TEXT NOT NULL,
+                        clicked_at TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        ip_address TEXT NOT NULL DEFAULT ''
+                    )
+                """,
+            }
+
+            for table_name, create_sql in dependent_tables.items():
+                if not self._table_exists(connection, table_name):
+                    continue
+                connection.execute(create_sql)
+                column_names = [
+                    str(row["name"])
+                    for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+                ]
+                joined_columns = ", ".join(column_names)
+                connection.execute(
+                    f"""
+                    INSERT INTO {table_name}_migrated ({joined_columns})
+                    SELECT {joined_columns}
+                    FROM {table_name}
+                    """
+                )
+
+            for table_name in [
+                "newsletter_click_events",
+                "newsletter_open_events",
+                "tracked_links",
+                "newsletter_telemetry",
+            ]:
+                if self._table_exists(connection, table_name):
+                    connection.execute(f"DROP TABLE {table_name}")
+
+            connection.execute("DROP TABLE daily_newsletters")
+            connection.execute("ALTER TABLE daily_newsletters_migrated RENAME TO daily_newsletters")
+
+            for table_name in [
+                "newsletter_telemetry",
+                "tracked_links",
+                "newsletter_open_events",
+                "newsletter_click_events",
+            ]:
+                migrated_table = f"{table_name}_migrated"
+                if self._table_exists(connection, migrated_table):
+                    connection.execute(f"ALTER TABLE {migrated_table} RENAME TO {table_name}")
+        finally:
+            connection.execute("PRAGMA foreign_keys = ON")
+
     def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
         for table_name in [
             "schema_migrations",
@@ -468,6 +617,7 @@ class SQLiteRepository:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 newsletter_date TEXT NOT NULL,
                 audience_key TEXT NOT NULL DEFAULT 'default',
+                issue_type TEXT NOT NULL DEFAULT 'daily',
                 delivery_run_id INTEGER REFERENCES delivery_runs(id) ON DELETE SET NULL,
                 subject TEXT NOT NULL,
                 body TEXT NOT NULL,
@@ -477,11 +627,11 @@ class SQLiteRepository:
                 metadata_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                UNIQUE(newsletter_date, audience_key)
+                UNIQUE(newsletter_date, audience_key, issue_type)
             );
 
             CREATE INDEX IF NOT EXISTS idx_daily_newsletters_date_audience
-            ON daily_newsletters(newsletter_date, audience_key);
+            ON daily_newsletters(newsletter_date, audience_key, issue_type);
 
             CREATE TABLE IF NOT EXISTS preview_generations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -784,16 +934,24 @@ class SQLiteRepository:
         newsletter_date: str,
         *,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        issue_type: str | None = None,
         include_all_audiences: bool = False,
     ) -> dict | None:
+        normalized_issue_type = str(issue_type or "").strip().lower()
         if include_all_audiences:
             where_clause = "WHERE newsletter_date = ?"
             order_clause = "ORDER BY CASE WHEN audience_key = ? THEN 0 ELSE 1 END, id DESC"
-            params: tuple[str, str] = (newsletter_date, audience_key)
+            params: tuple[str, ...] = (newsletter_date, audience_key)
+            if normalized_issue_type:
+                where_clause += " AND issue_type = ?"
+                params = (newsletter_date, normalized_issue_type, audience_key)
         else:
             where_clause = "WHERE newsletter_date = ? AND audience_key = ?"
             order_clause = ""
             params = (newsletter_date, audience_key)
+            if normalized_issue_type:
+                where_clause += " AND issue_type = ?"
+                params = (newsletter_date, audience_key, normalized_issue_type)
         with self.connect() as connection:
             row = connection.execute(
                 f"""
@@ -801,6 +959,7 @@ class SQLiteRepository:
                     id,
                     newsletter_date,
                     audience_key,
+                    issue_type,
                     delivery_run_id,
                     subject,
                     body,
@@ -845,6 +1004,7 @@ class SQLiteRepository:
                         id,
                         newsletter_date,
                         audience_key,
+                        issue_type,
                         delivery_run_id,
                         subject,
                         body,
@@ -859,6 +1019,7 @@ class SQLiteRepository:
                             id,
                             newsletter_date,
                             audience_key,
+                            issue_type,
                             delivery_run_id,
                             subject,
                             body,
@@ -885,6 +1046,7 @@ class SQLiteRepository:
                         id,
                         newsletter_date,
                         audience_key,
+                        issue_type,
                         delivery_run_id,
                         subject,
                         body,
@@ -905,6 +1067,7 @@ class SQLiteRepository:
                     id,
                     newsletter_date,
                     audience_key,
+                    issue_type,
                     delivery_run_id,
                     subject,
                     body,
@@ -1056,6 +1219,7 @@ class SQLiteRepository:
         *,
         newsletter_date: str,
         audience_key: str = DEFAULT_AUDIENCE_KEY,
+        issue_type: str = "daily",
         subject: str,
         body: str,
         html_body: str,
@@ -1065,12 +1229,14 @@ class SQLiteRepository:
         delivery_run_id: int | None = None,
     ) -> int:
         now = utc_now()
+        normalized_issue_type = str(issue_type or "daily").strip().lower() or "daily"
         with self.connect() as connection:
             connection.execute(
                 """
                 INSERT INTO daily_newsletters (
                     newsletter_date,
                     audience_key,
+                    issue_type,
                     delivery_run_id,
                     subject,
                     body,
@@ -1081,8 +1247,8 @@ class SQLiteRepository:
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(newsletter_date, audience_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(newsletter_date, audience_key, issue_type)
                 DO UPDATE SET
                     delivery_run_id = excluded.delivery_run_id,
                     subject = excluded.subject,
@@ -1096,6 +1262,7 @@ class SQLiteRepository:
                 (
                     newsletter_date,
                     audience_key,
+                    normalized_issue_type,
                     delivery_run_id,
                     subject,
                     body,
@@ -1113,8 +1280,9 @@ class SQLiteRepository:
                 FROM daily_newsletters
                 WHERE newsletter_date = ?
                   AND audience_key = ?
+                  AND issue_type = ?
                 """,
-                (newsletter_date, audience_key),
+                (newsletter_date, audience_key, normalized_issue_type),
             ).fetchone()
             return int(row["id"])
 

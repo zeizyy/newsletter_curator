@@ -168,6 +168,16 @@ def test_manual_weekly_digest_override_sends_past_week_outside_saturday(monkeypa
     monkeypatch.setattr(sources, "datetime", FixedMondayDateTime)
     config = main.load_config()
     repository = get_repository_from_config(config)
+    repository.upsert_daily_newsletter(
+        newsletter_date="2026-03-30",
+        audience_key="default",
+        issue_type="daily",
+        subject="Daily Cached",
+        body="Cached daily body",
+        html_body="<p>Cached daily body</p>",
+        selected_items=[{"title": "Cached daily story"}],
+        metadata={"issue_type": "daily", "selected": 1},
+    )
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
     _seed_story(
         repository,
@@ -199,10 +209,23 @@ def test_manual_weekly_digest_override_sends_past_week_outside_saturday(monkeypa
 
     assert result["status"] == "completed"
     assert result["issue_type"] == "weekly"
+    assert result["cached_newsletter"] is False
     assert len(sent_messages) == 1
     assert sent_messages[0]["subject"] == "Weekly Digest"
     assert "Manual weekly platform shift" in sent_messages[0]["body"]
     assert "Manual weekly stale platform shift" not in sent_messages[0]["body"]
+    daily_newsletter = repository.get_daily_newsletter(
+        "2026-03-30",
+        issue_type="daily",
+    )
+    weekly_newsletter = repository.get_daily_newsletter(
+        "2026-03-30",
+        issue_type="weekly",
+    )
+    assert daily_newsletter is not None
+    assert weekly_newsletter is not None
+    assert daily_newsletter["subject"] == "Daily Cached"
+    assert weekly_newsletter["subject"] == "Weekly Digest"
 
 
 def test_weekly_digest_caps_candidates_to_five_stories_per_day(monkeypatch, tmp_path):

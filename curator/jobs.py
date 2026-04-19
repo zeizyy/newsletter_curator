@@ -1585,7 +1585,11 @@ def run_delivery_job(
 
     config = delivery_config_for_issue(config, issue_type)
     cached_newsletter = (
-        repository.get_daily_newsletter(newsletter_date, audience_key=audience_key)
+        repository.get_daily_newsletter(
+            newsletter_date,
+            audience_key=audience_key,
+            issue_type=issue_type,
+        )
         if use_cached_newsletter
         else None
     )
@@ -2102,6 +2106,7 @@ def run_delivery_job(
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,
                     audience_key=audience_key,
+                    issue_type=issue_type,
                     delivery_run_id=run_id,
                     subject=str(pipeline_result.get("digest_subject", "")).strip(),
                     body=digest_body,
