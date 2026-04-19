@@ -17,6 +17,7 @@ from .llm import extract_summary_json, select_top_stories, summarize_article_wit
 from .rendering import (
     build_render_groups,
     group_summaries_by_category,
+    parse_story_datetime,
     parse_summary_block,
     render_email_safe_digest_html,
     render_digest_html,
@@ -133,6 +134,30 @@ def post_process_selected(
     return result
 
 
+def story_day_key(item: dict) -> str:
+    parsed = parse_story_datetime(str(item.get("published_at", "") or item.get("date", "")))
+    if parsed is not None:
+        return parsed.date().isoformat()
+    raw = str(item.get("published_at", "") or item.get("date", "")).strip()
+    if len(raw) >= 10:
+        return raw[:10]
+    return "unknown"
+
+
+def cap_links_per_day(items: list[dict], max_per_day: int) -> list[dict]:
+    if max_per_day <= 0:
+        return list(items)
+    counts: dict[str, int] = {}
+    capped: list[dict] = []
+    for item in items:
+        day_key = story_day_key(item)
+        if counts.get(day_key, 0) >= max_per_day:
+            continue
+        capped.append(item)
+        counts[day_key] = counts.get(day_key, 0) + 1
+    return capped
+
+
 def normalize_source_quotas(raw: dict | None) -> dict[str, int]:
     if not isinstance(raw, dict):
         return {}
@@ -243,6 +268,19 @@ def run_job(
     all_links = dedupe_links_by_url_fn(all_links)
     allowed_source_names = normalize_allowed_source_names(preferred_sources)
     eligible_links = filter_links_to_allowed_sources(all_links, allowed_source_names)
+    uncapped_eligible_links = len(eligible_links)
+    weekly_cfg = (
+        config.get("weekly", {}) if config.get("delivery", {}).get("issue_type") == "weekly" else {}
+    )
+    max_stories_per_day = int(weekly_cfg.get("max_stories_per_day", 0) or 0)
+    if max_stories_per_day > 0:
+        eligible_links = cap_links_per_day(eligible_links, max_stories_per_day)
+        emit_event(
+            "pipeline_weekly_candidate_cap_applied",
+            max_stories_per_day=max_stories_per_day,
+            uncapped_eligible_links=uncapped_eligible_links,
+            capped_eligible_links=len(eligible_links),
+        )
     emit_event(
         "pipeline_candidates_collected",
         gmail_query=query,
@@ -250,6 +288,8 @@ def run_job(
         additional_source_links=len(source_links),
         deduped_links=len(all_links),
         eligible_links=len(eligible_links),
+        uncapped_eligible_links=uncapped_eligible_links,
+        weekly_max_stories_per_day=max_stories_per_day,
         preferred_sources=sorted(allowed_source_names),
         source_type_counts=structured_counts(all_links, "source_type"),
         source_name_counts_top10=structured_counts(all_links, "source_name", top_n=10),
@@ -261,6 +301,8 @@ def run_job(
         "additional_source_links": len(source_links),
         "deduped_links": len(all_links),
         "eligible_links": len(eligible_links),
+        "uncapped_eligible_links": uncapped_eligible_links,
+        "weekly_max_stories_per_day": max_stories_per_day,
     }
 
     usage_by_model = {}

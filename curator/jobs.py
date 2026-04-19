@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import json
 import os
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -75,10 +76,50 @@ BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
     "undeliverable",
     "unsubscribed",
 )
+WEEKLY_DIGEST_LOOKBACK_DAYS = 7
 
 
 def current_newsletter_date() -> str:
     return datetime.now(UTC).date().isoformat()
+
+
+def current_delivery_datetime() -> datetime:
+    return datetime.now(UTC)
+
+
+def delivery_issue_type_for_datetime(value: datetime) -> str:
+    weekday = value.weekday()
+    if weekday <= 4:
+        return "daily"
+    if weekday == 5:
+        return "weekly"
+    return "skipped"
+
+
+def delivery_schedule_ignored() -> bool:
+    return str(os.getenv("CURATOR_IGNORE_DELIVERY_SCHEDULE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def delivery_config_for_issue(config: dict, issue_type: str) -> dict:
+    if issue_type != "weekly":
+        return config
+
+    weekly_config = deepcopy(config)
+    weekly_config.setdefault("gmail", {})["query_time_window"] = (
+        f"newer_than:{WEEKLY_DIGEST_LOOKBACK_DAYS}d"
+    )
+    weekly_config.setdefault("additional_sources", {})["hours"] = WEEKLY_DIGEST_LOOKBACK_DAYS * 24
+    weekly_config.setdefault("delivery", {})["issue_type"] = "weekly"
+    email_cfg = weekly_config.setdefault("email", {})
+    weekly_subject = str(email_cfg.get("weekly_digest_subject", "")).strip()
+    if weekly_subject:
+        email_cfg["digest_subject"] = weekly_subject
+    return weekly_config
 
 
 def get_repository_from_config(config: dict) -> SQLiteRepository:
@@ -1358,6 +1399,11 @@ def run_daily_orchestrator_job(
         for stage_name in stage_order
         if stages.get(stage_name, {}).get("status") == "completed"
     ]
+    skipped_stages = [
+        stage_name
+        for stage_name in stage_order
+        if stages.get(stage_name, {}).get("status") == "skipped"
+    ]
     partial_failure_stages = [
         stage_name
         for stage_name in stage_order
@@ -1367,7 +1413,7 @@ def run_daily_orchestrator_job(
         stage_name
         for stage_name in stage_order
         if str(stages.get(stage_name, {}).get("status", "")).strip()
-        not in {"completed", "partial_failure"}
+        not in {"completed", "partial_failure", "skipped"}
     ]
 
     if not failed_stages and not partial_failure_stages:
@@ -1383,6 +1429,7 @@ def run_daily_orchestrator_job(
         "status": status,
         "stage_order": stage_order,
         "completed_stages": completed_stages,
+        "skipped_stages": skipped_stages,
         "partial_failure_stages": partial_failure_stages,
         "failed_stages": failed_stages,
         "stages": stages,
@@ -1490,8 +1537,37 @@ def run_delivery_job(
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     runtime_capture = start_runtime_capture()
+    delivery_now = current_delivery_datetime()
     newsletter_date = current_newsletter_date()
+    scheduled_issue_type = delivery_issue_type_for_datetime(delivery_now)
+    issue_type = (
+        "daily"
+        if (service is None or delivery_schedule_ignored()) and scheduled_issue_type == "skipped"
+        else scheduled_issue_type
+    )
     delivery_format = normalize_subscriber_delivery_format(delivery_format)
+    if issue_type == "skipped":
+        runtime = finish_runtime_capture(runtime_capture)
+        emit_event(
+            "delivery_skipped",
+            newsletter_date=newsletter_date,
+            reason="weekend_daily_delivery_disabled",
+            weekday=delivery_now.weekday(),
+        )
+        return {
+            "status": "skipped",
+            "newsletter_date": newsletter_date,
+            "issue_type": issue_type,
+            "cached_newsletter": False,
+            "delivery_format": delivery_format,
+            "recipient_source": "",
+            "sent_recipients": 0,
+            "failed_recipient_count": 0,
+            "failed_recipients": [],
+            "runtime": runtime,
+        }
+
+    config = delivery_config_for_issue(config, issue_type)
     cached_newsletter = (
         repository.get_daily_newsletter(newsletter_date, audience_key=audience_key)
         if use_cached_newsletter
@@ -1509,6 +1585,7 @@ def run_delivery_job(
     emit_event(
         "delivery_started",
         audience_key=audience_key,
+        issue_type=issue_type,
         delivery_format=delivery_format,
         cached_newsletter_available=cached_newsletter is not None,
         telemetry_enabled=open_tracking_enabled or click_tracking_enabled,
@@ -1627,9 +1704,10 @@ def run_delivery_job(
                 selected_items=selected_items,
             )
         if delivery_format == "pdf":
+            issue_slug = "weekly" if issue_type == "weekly" else "daily"
             attachments = [
                 {
-                    "filename": f"ai-signal-daily-{newsletter_date}.pdf",
+                    "filename": f"ai-signal-{issue_slug}-{newsletter_date}.pdf",
                     "mime_type": "application/pdf",
                     "content_bytes": render_digest_pdf(
                         content.get("render_groups", {}) if isinstance(content, dict) else {},
@@ -1642,6 +1720,7 @@ def run_delivery_job(
         emit_event(
             "delivery_send_started",
             audience_key=audience_key,
+            issue_type=issue_type,
             daily_newsletter_id=daily_newsletter_id,
             delivery_format=delivery_format,
             recipient_count=len(resolved_recipients),
@@ -1867,6 +1946,7 @@ def run_delivery_job(
             "newsletter_ttl_cleanup": newsletter_cleanup,
             "newsletter_date": newsletter_date,
             "audience_key": audience_key,
+            "issue_type": issue_type,
         }
     )
     try:
@@ -1874,6 +1954,7 @@ def run_delivery_job(
             emit_event(
                 "delivery_cached_newsletter_used",
                 audience_key=audience_key,
+                issue_type=issue_type,
                 daily_newsletter_id=int(cached_newsletter["id"]),
                 newsletter_date=newsletter_date,
                 selected_item_count=len(cached_newsletter.get("selected_items", [])),
@@ -1901,6 +1982,7 @@ def run_delivery_job(
                 "cached_newsletter": True,
                 "delivery_format": delivery_format,
                 "newsletter_date": newsletter_date,
+                "issue_type": issue_type,
                 "audience_key": audience_key,
                 "daily_newsletter_id": int(cached_newsletter["id"]),
                 "ranked_candidates": int(
@@ -1936,6 +2018,7 @@ def run_delivery_job(
                     "newsletter_ttl_cleanup": newsletter_cleanup,
                     "newsletter_date": newsletter_date,
                     "audience_key": audience_key,
+                    "issue_type": issue_type,
                     "cached_newsletter": True,
                     "daily_newsletter_id": cached_newsletter["id"],
                     "pipeline_result": cached_result,
@@ -1945,6 +2028,7 @@ def run_delivery_job(
             emit_event(
                 "delivery_completed",
                 audience_key=audience_key,
+                issue_type=issue_type,
                 cached_newsletter=True,
                 daily_newsletter_id=int(cached_newsletter["id"]),
                 delivery_format=delivery_format,
@@ -2016,6 +2100,14 @@ def run_delivery_job(
                         ),
                         "deduped_links": pipeline_result.get("deduped_links", 0),
                         "eligible_links": pipeline_result.get("eligible_links", 0),
+                        "uncapped_eligible_links": pipeline_result.get(
+                            "uncapped_eligible_links",
+                            pipeline_result.get("eligible_links", 0),
+                        ),
+                        "weekly_max_stories_per_day": pipeline_result.get(
+                            "weekly_max_stories_per_day",
+                            0,
+                        ),
                         "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
                         "selected": pipeline_result.get("selected", 0),
                         "accepted_items": pipeline_result.get("accepted_items", 0),
@@ -2024,11 +2116,13 @@ def run_delivery_job(
                         "skipped_count": pipeline_result.get("skipped_count", 0),
                         "render_groups": pipeline_result.get("render_groups", {}),
                         "newsletter_ttl_cleanup": newsletter_cleanup,
+                        "issue_type": issue_type,
                     },
                 )
                 emit_event(
                     "delivery_newsletter_persisted",
                     audience_key=audience_key,
+                    issue_type=issue_type,
                     daily_newsletter_id=daily_newsletter_id,
                     newsletter_date=newsletter_date,
                     selected_item_count=len(list(pipeline_result.get("accepted_story_items", []))),
@@ -2052,6 +2146,7 @@ def run_delivery_job(
             pipeline_result["email_safe_digest_html"] = delivery_html
             pipeline_result["daily_newsletter_id"] = daily_newsletter_id
             pipeline_result["audience_key"] = audience_key
+            pipeline_result["issue_type"] = issue_type
             if send_result["status"] != "completed":
                 pipeline_result["status"] = send_result["status"]
         runtime = finish_runtime_capture(runtime_capture)
@@ -2065,6 +2160,7 @@ def run_delivery_job(
                 "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
                 "audience_key": audience_key,
+                "issue_type": issue_type,
                 "cached_newsletter": False,
                 "daily_newsletter_id": daily_newsletter_id,
                 "pipeline_result": pipeline_result,
@@ -2074,6 +2170,7 @@ def run_delivery_job(
         emit_event(
             "delivery_completed",
             audience_key=audience_key,
+            issue_type=issue_type,
             cached_newsletter=False,
             daily_newsletter_id=daily_newsletter_id,
             delivery_format=delivery_format,
@@ -2086,6 +2183,7 @@ def run_delivery_job(
             "run_id": run_id,
             "newsletter_date": newsletter_date,
             "audience_key": audience_key,
+            "issue_type": issue_type,
             "cached_newsletter": False,
             "delivery_format": delivery_format,
             "status": final_status,
@@ -2103,6 +2201,7 @@ def run_delivery_job(
                 "newsletter_ttl_cleanup": newsletter_cleanup,
                 "newsletter_date": newsletter_date,
                 "audience_key": audience_key,
+                "issue_type": issue_type,
                 "error": str(exc),
                 "runtime": runtime,
             },
@@ -2110,6 +2209,7 @@ def run_delivery_job(
         emit_event(
             "delivery_failed",
             audience_key=audience_key,
+            issue_type=issue_type,
             error=str(exc),
             runtime=runtime,
         )

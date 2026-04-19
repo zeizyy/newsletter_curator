@@ -187,6 +187,9 @@ def preview_job(config: dict) -> dict:
 def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
     from curator.jobs import (
         DEFAULT_AUDIENCE_KEY,
+        current_delivery_datetime,
+        delivery_schedule_ignored,
+        delivery_issue_type_for_datetime,
         get_repository_from_config,
         group_delivery_subscribers,
         resolve_delivery_subscribers,
@@ -196,6 +199,19 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     development_cfg = config.get("development", {})
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
     repository = get_repository_from_config(config)
+    if (
+        service is not None
+        and not delivery_schedule_ignored()
+        and delivery_issue_type_for_datetime(current_delivery_datetime()) == "skipped"
+    ):
+        skipped_result = run_delivery_job(
+            config,
+            service,
+            repository=repository,
+            send_email_fn=send_email_fn,
+        )
+        return {**skipped_result, "delivery_subscribers": []}
+
     subscribers, recipient_source = resolve_delivery_subscribers(
         config,
         repository=repository,

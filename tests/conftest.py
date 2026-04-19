@@ -13,6 +13,7 @@ def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(socket, "create_connection", deny)
     monkeypatch.setattr(socket.socket, "connect", deny)
+    monkeypatch.setenv("CURATOR_IGNORE_DELIVERY_SCHEDULE", "1")
 
 
 @pytest.fixture

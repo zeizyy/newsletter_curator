@@ -493,6 +493,8 @@ Edit `config.yaml`:
 - `limits.max_ingest_summaries` (default `25`)
 - `limits.max_summary_workers`
 - `email.digest_subject` (default `AI Signal Daily`)
+- `email.weekly_digest_subject` (default `AI Signal Weekly`)
+- `weekly.max_stories_per_day` (default `5`; applies before Saturday final ranking)
 - `openai.reasoning_model` (default `gpt-5-mini`)
 - `openai.summary_model` (default `gpt-5-mini`)
 - `tracking.enabled` (default `false`; legacy global switch for both open-pixel and click tracking)
@@ -501,6 +503,8 @@ Edit `config.yaml`:
 - `email.digest_recipients` and `email.alert_recipient` (checked-in config alerts `zeizyy@gmail.com`)
 
 The public origin for subscriber links, settings links, and tracked URLs is not stored in checked-in YAML. Set `CURATOR_PUBLIC_BASE_URL` through the bootstrap-generated server env file instead.
+
+Delivery sends the daily issue on Monday through Friday. Saturday delivery automatically uses the weekly subject and a seven-day story window, capped to five candidate stories per publication day before final ranking. Sunday delivery is skipped without sending an alert.
 
 ### Persona Behavior
 `persona.text` now affects only the final delivery ranking step.
