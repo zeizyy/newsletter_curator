@@ -65,6 +65,10 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
         selected_items=[{"title": "Recent Story", "url": "https://example.com/recent"}],
         metadata={
             "accepted_items": 1,
+            "usage_by_model": {
+                "gpt-5-mini": {"input": 1200, "output": 345, "total": 1545},
+                "gpt-5": {"input": 500, "output": 100, "total": 600},
+            },
         },
     )
     repository.upsert_daily_newsletter(
@@ -79,6 +83,7 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
             "eligible_links": 11,
             "processed_candidates": 2,
             "accepted_items": 1,
+            "total_tokens": 12345,
         },
     )
     story_id = repository.upsert_story(
@@ -167,6 +172,10 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Command Rail" in history_page
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
+    assert 'data-label="Tokens">12,345</td>' in history_page
+    assert 'data-label="Tokens">2,145</td>' in history_page
+    assert 'data-label="Cost">n/a</td>' in history_page
+    assert 'data-label="Cost">$0.0026</td>' in history_page
     assert "<strong>Sourced:</strong> 11 total (5 Gmail / 7 additional)" in history_page
     assert "<strong>Processed:</strong> 2" in history_page
     assert "<strong>Selected:</strong> 1" in history_page
@@ -209,6 +218,8 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     detail_page = detail_response.get_data(as_text=True)
     assert "Recent Digest" in detail_page
     assert "Recent digest body" in detail_page
+    assert "tokens=2,145" in detail_page
+    assert "cost=$0.0026" in detail_page
     assert "<strong>Sourced:</strong> 9 total (4 Gmail / 6 additional)" in detail_page
     assert "<strong>Processed:</strong> 3" in detail_page
     assert "<strong>Selected:</strong> 1" in detail_page

@@ -29,6 +29,7 @@ from curator.mcp_server import (
     handle_request,
     supports_http_protocol_version,
 )
+from curator.pricing import estimate_openai_text_cost_usd, format_usd_cost
 from curator.repository import SQLiteRepository
 from curator.telemetry import (
     build_settings_url,
@@ -691,10 +692,39 @@ def build_newsletter_funnel_stats(newsletter: dict, repository=None) -> dict:
     }
 
 
+def build_newsletter_token_stats(newsletter: dict, repository=None) -> dict:
+    metadata = _newsletter_metadata_with_delivery_fallback(newsletter, repository)
+    total_tokens = _metadata_int(metadata, "total_tokens")
+
+    usage_by_model = metadata.get("usage_by_model", {})
+    if total_tokens is None and isinstance(usage_by_model, dict):
+        total_tokens = 0
+        found_usage = False
+        for stats in usage_by_model.values():
+            if not isinstance(stats, dict):
+                continue
+            try:
+                total_tokens += int(stats.get("total", 0) or 0)
+                found_usage = True
+            except (TypeError, ValueError):
+                continue
+        if not found_usage:
+            total_tokens = None
+
+    estimated_cost = estimate_openai_text_cost_usd(usage_by_model)
+    return {
+        "total": total_tokens,
+        "formatted_total": f"{total_tokens:,}" if total_tokens is not None else "n/a",
+        "estimated_cost_usd": float(estimated_cost) if estimated_cost is not None else None,
+        "formatted_estimated_cost": format_usd_cost(estimated_cost),
+    }
+
+
 def attach_newsletter_funnel_stats(newsletter: dict, repository=None) -> dict:
     return {
         **newsletter,
         "funnel_stats": build_newsletter_funnel_stats(newsletter, repository),
+        "token_stats": build_newsletter_token_stats(newsletter, repository),
     }
 
 

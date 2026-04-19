@@ -533,6 +533,12 @@ def run_job(
     digest_html = render_digest_html_fn(render_groups)
     email_safe_digest_html = render_email_safe_digest_html_fn(render_groups)
     digest_subject = email_cfg["digest_subject"]
+    final_usage_by_model = compact_model_usage(usage_by_model)
+    total_tokens = sum(
+        int(stats.get("total", 0) or 0)
+        for stats in final_usage_by_model.values()
+        if isinstance(stats, dict)
+    )
     accepted_story_payloads = []
     for _, item, summary_block in summaries:
         title, url, _ = parse_summary_block(summary_block)
@@ -559,7 +565,8 @@ def run_job(
         final_source_type_counts=structured_counts(accepted_items, "source_type"),
         final_source_name_counts_top10=structured_counts(accepted_items, "source_name", top_n=10),
         accepted_story_urls=[story["url"] for story in accepted_story_payloads],
-        usage_by_model=compact_model_usage(usage_by_model),
+        usage_by_model=final_usage_by_model,
+        total_tokens=total_tokens,
     )
     return {
         **result,
@@ -576,4 +583,6 @@ def run_job(
         "digest_html": digest_html,
         "email_safe_digest_html": email_safe_digest_html,
         "render_groups": render_groups,
+        "usage_by_model": final_usage_by_model,
+        "total_tokens": total_tokens,
     }

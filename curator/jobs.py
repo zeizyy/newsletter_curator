@@ -39,6 +39,7 @@ from .llm import (
 from .observability import emit_event
 from .pdf import render_digest_pdf
 from .pipeline import process_story, run_job as run_pipeline_job
+from .pricing import estimate_openai_text_cost_usd
 from .rendering import (
     group_summaries_by_category,
     render_digest_text,
@@ -2103,6 +2104,9 @@ def run_delivery_job(
                     int(pipeline_result.get("accepted_items", 0) or 0)
                     + int(pipeline_result.get("skipped_count", 0) or 0)
                 )
+                estimated_cost = estimate_openai_text_cost_usd(
+                    pipeline_result.get("usage_by_model", {})
+                )
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,
                     audience_key=audience_key,
@@ -2136,6 +2140,11 @@ def run_delivery_job(
                         "backfilled_count": pipeline_result.get("backfilled_count", 0),
                         "skipped_count": pipeline_result.get("skipped_count", 0),
                         "render_groups": pipeline_result.get("render_groups", {}),
+                        "usage_by_model": pipeline_result.get("usage_by_model", {}),
+                        "total_tokens": pipeline_result.get("total_tokens", 0),
+                        "estimated_openai_text_cost_usd": (
+                            float(estimated_cost) if estimated_cost is not None else None
+                        ),
                         "newsletter_ttl_cleanup": newsletter_cleanup,
                         "issue_type": issue_type,
                     },

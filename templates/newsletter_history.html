@@ -39,6 +39,8 @@
             <th>Date</th>
             <th>Subject</th>
             <th>Stories</th>
+            <th>Tokens</th>
+            <th>Cost</th>
             <th>Funnel</th>
             <th>Updated</th>
             <th></th>
@@ -53,6 +55,8 @@
             </td>
             <td data-label="Subject">{{ newsletter.subject }}</td>
             <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td data-label="Tokens">{{ newsletter.token_stats.formatted_total }}</td>
+            <td data-label="Cost">{{ newsletter.token_stats.formatted_estimated_cost }}</td>
             <td data-label="Funnel">
               <ul class="funnel-list">
                 <li><strong>Sourced:</strong> {{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }} total ({{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }} Gmail / {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }} additional)</li>
