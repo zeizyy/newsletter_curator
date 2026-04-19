@@ -57,7 +57,7 @@
         <div class="section-kicker">Stored Subject</div>
         <h2>{{ preview.subject }}</h2>
       </div>
-      <div class="section-copy">created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}</div>
+      <div class="section-copy">created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }} tokens={{ newsletter.token_stats.formatted_total }} cost={{ newsletter.token_stats.formatted_estimated_cost }}</div>
     </div>
     <ul class="funnel-list">
       <li><strong>Sourced:</strong> {{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }} total ({{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }} Gmail / {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }} additional)</li>
