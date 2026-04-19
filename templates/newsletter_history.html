@@ -23,6 +23,7 @@
             <th>Date</th>
             <th>Subject</th>
             <th>Stories</th>
+            <th>Funnel</th>
             <th>Updated</th>
             <th></th>
           </tr>
@@ -36,6 +37,19 @@
             </td>
             <td data-label="Subject">{{ newsletter.subject }}</td>
             <td data-label="Stories"><span class="pill">{{ newsletter.selected_items_count }} stories</span></td>
+            <td data-label="Funnel">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <span class="pill {% if newsletter.funnel_stats.total_sourced is none %}muted-pill{% endif %}">
+                  sourced={{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }}
+                </span>
+                <span class="pill muted-pill">
+                  gmail={{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }}
+                  / additional={{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }}
+                </span>
+                <span class="pill">processed={{ newsletter.funnel_stats.processed }}</span>
+                <span class="pill">selected={{ newsletter.funnel_stats.selected }}</span>
+              </div>
+            </td>
             <td data-label="Updated">{{ newsletter.updated_at }}</td>
             <td data-label="Action">
               <a class="button-link ghost" href="{{ url_for('newsletter_history_detail', newsletter_date=newsletter.newsletter_date) }}">Open</a>

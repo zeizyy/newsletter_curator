@@ -724,6 +724,18 @@ class SQLiteRepository:
             ).fetchone()
         return self._run_row_to_dict(row)
 
+    def get_delivery_run(self, run_id: int) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, status, started_at, finished_at, metadata_json
+                FROM delivery_runs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        return self._run_row_to_dict(row)
+
     def list_recent_ingestion_runs(
         self,
         *,

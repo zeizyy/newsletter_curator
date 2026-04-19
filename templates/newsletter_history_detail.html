@@ -46,6 +46,26 @@
       </div>
       <div class="section-copy">created={{ newsletter.created_at }} updated={{ newsletter.updated_at }} stories={{ newsletter.selected_items|length }}</div>
     </div>
+    <div class="stat-grid">
+      <article class="stat-card">
+        <div class="stat-label">Sourced</div>
+        <div class="stat-value">{{ newsletter.funnel_stats.total_sourced if newsletter.funnel_stats.total_sourced is not none else "n/a" }}</div>
+        <div class="stat-sub">
+          Gmail {{ newsletter.funnel_stats.gmail_sourced if newsletter.funnel_stats.gmail_sourced is not none else "n/a" }}
+          / additional {{ newsletter.funnel_stats.additional_sourced if newsletter.funnel_stats.additional_sourced is not none else "n/a" }}
+        </div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Processed</div>
+        <div class="stat-value">{{ newsletter.funnel_stats.processed }}</div>
+        <div class="stat-sub">after initial ranking</div>
+      </article>
+      <article class="stat-card">
+        <div class="stat-label">Selected</div>
+        <div class="stat-value">{{ newsletter.funnel_stats.selected }}</div>
+        <div class="stat-sub">in final issue</div>
+      </article>
+    </div>
   </section>
 
   <section class="surface surface-section">
