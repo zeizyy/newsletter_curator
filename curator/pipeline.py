@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import inspect
 from threading import Lock
 
 from .content import dedupe_links_by_url, extract_links_from_html, fetch_article_text
@@ -25,6 +26,18 @@ from .rendering import (
 )
 from .sources import collect_additional_source_links
 from .observability import compact_model_usage, emit_event
+
+
+def _render_html_with_issue_type(render_html_fn, render_groups, *, issue_type: str) -> str:
+    signature = inspect.signature(render_html_fn)
+    parameters = signature.parameters
+    accepts_issue_type = "issue_type" in parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if accepts_issue_type:
+        return render_html_fn(render_groups, issue_type=issue_type)
+    return render_html_fn(render_groups)
 
 
 def process_story(
@@ -530,8 +543,17 @@ def run_job(
 
     render_groups = build_render_groups_fn(summaries)
     final_text = render_digest_text_fn(render_groups)
-    digest_html = render_digest_html_fn(render_groups)
-    email_safe_digest_html = render_email_safe_digest_html_fn(render_groups)
+    issue_type = str(config.get("delivery", {}).get("issue_type", "daily") or "daily")
+    digest_html = _render_html_with_issue_type(
+        render_digest_html_fn,
+        render_groups,
+        issue_type=issue_type,
+    )
+    email_safe_digest_html = _render_html_with_issue_type(
+        render_email_safe_digest_html_fn,
+        render_groups,
+        issue_type=issue_type,
+    )
     digest_subject = email_cfg["digest_subject"]
     final_usage_by_model = compact_model_usage(usage_by_model)
     total_tokens = sum(

@@ -89,6 +89,26 @@ def format_digest_date(now: datetime | None = None) -> str:
     return f"{month} {day}, {year}"
 
 
+def digest_header_copy(issue_type: str | None = None) -> dict[str, str]:
+    normalized_issue_type = str(issue_type or "daily").strip().lower() or "daily"
+    if normalized_issue_type == "weekly":
+        return {
+            "title": "AI Signal Weekly Digest",
+            "subtitle": "Your highest-signal weekly briefing ICYMI.",
+            "full_subtitle": (
+                "The highest-signal stories from the week, pre-ranked and condensed "
+                "for fast scanning."
+            ),
+        }
+    return {
+        "title": "AI Signal Daily",
+        "subtitle": "Your highest-signal daily briefing.",
+        "full_subtitle": (
+            "The highest-signal stories for today, pre-ranked and condensed for fast scanning."
+        ),
+    }
+
+
 def build_render_groups(summaries: list[tuple[int, dict, str]]) -> list[dict]:
     render_items: list[dict] = []
     for _, item, summary_block in summaries:
@@ -421,16 +441,19 @@ def render_digest_text(render_payload: RenderPayload) -> str:
     return "\n\n".join(block for block in story_blocks if block)
 
 
-def render_digest_html(render_payload: RenderPayload) -> str:
+def render_digest_html(render_payload: RenderPayload, *, issue_type: str | None = None) -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_story_card(entry) for entry in entries)
     total_entries = len(entries)
     digest_date = format_digest_date()
+    header_copy = digest_header_copy(issue_type)
 
     with DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
     rendered = template_html.replace("{{CATEGORY_SECTIONS}}", story_cards)
     rendered = rendered.replace("{{HERO_COUNT}}", str(total_entries))
+    rendered = rendered.replace("{{DIGEST_TITLE}}", html.escape(header_copy["title"]))
+    rendered = rendered.replace("{{DIGEST_SUBTITLE}}", html.escape(header_copy["full_subtitle"]))
     return rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))
 
 
@@ -448,15 +471,23 @@ def _render_settings_link_html(settings_url: str) -> str:
     )
 
 
-def render_email_safe_digest_html(render_payload: RenderPayload, *, settings_url: str = "") -> str:
+def render_email_safe_digest_html(
+    render_payload: RenderPayload,
+    *,
+    settings_url: str = "",
+    issue_type: str | None = None,
+) -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_email_safe_story_card(entry) for entry in entries)
     total_entries = len(entries)
     digest_date = format_digest_date()
+    header_copy = digest_header_copy(issue_type)
 
     with EMAIL_SAFE_DIGEST_TEMPLATE_PATH.open("r", encoding="utf-8") as handle:
         template_html = handle.read()
     rendered = template_html.replace("{{CATEGORY_SECTIONS}}", story_cards)
     rendered = rendered.replace("{{HEADER_LINKS}}", _render_settings_link_html(settings_url))
     rendered = rendered.replace("{{HERO_COUNT}}", str(total_entries))
+    rendered = rendered.replace("{{DIGEST_TITLE}}", html.escape(header_copy["title"]))
+    rendered = rendered.replace("{{DIGEST_SUBTITLE}}", html.escape(header_copy["subtitle"]))
     return rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))

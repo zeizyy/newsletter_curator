@@ -1958,7 +1958,11 @@ def run_delivery_job(
         render_groups = content.get("render_groups", {}) if isinstance(content, dict) else {}
         if not render_groups:
             return fallback_html
-        return render_email_safe_digest_html(render_groups, settings_url=subscriber_settings_url)
+        return render_email_safe_digest_html(
+            render_groups,
+            settings_url=subscriber_settings_url,
+            issue_type=issue_type,
+        )
 
     run_id = repository.create_delivery_run(
         metadata={
