@@ -35,6 +35,19 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     config = main.load_config()
     repository = get_repository_from_config(config)
     ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
+    recent_delivery_run_id = repository.create_delivery_run(metadata={"job": "deliver_digest"})
+    repository.complete_delivery_run(
+        recent_delivery_run_id,
+        status="completed",
+        metadata={
+            "pipeline_result": {
+                "gmail_links": 4,
+                "additional_source_links": 6,
+                "eligible_links": 9,
+                "processed_candidates": 3,
+            }
+        },
+    )
 
     old_newsletter_id = repository.upsert_daily_newsletter(
         newsletter_date="2026-03-20",
@@ -45,10 +58,14 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     )
     recent_newsletter_id = repository.upsert_daily_newsletter(
         newsletter_date="2026-03-21",
+        delivery_run_id=recent_delivery_run_id,
         subject="Recent Digest",
         body="Recent digest body",
         html_body="<div>Recent digest body</div>",
         selected_items=[{"title": "Recent Story", "url": "https://example.com/recent"}],
+        metadata={
+            "accepted_items": 1,
+        },
     )
     repository.upsert_daily_newsletter(
         newsletter_date="2026-03-22",
@@ -56,6 +73,13 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
         body="Today digest body",
         html_body="<div>Today digest body</div>",
         selected_items=[{"title": "Today Story", "url": "https://example.com/today"}],
+        metadata={
+            "gmail_links": 5,
+            "additional_source_links": 7,
+            "eligible_links": 11,
+            "processed_candidates": 2,
+            "accepted_items": 1,
+        },
     )
     story_id = repository.upsert_story(
         {
@@ -143,6 +167,11 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Command Rail" in history_page
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
+    assert "sourced=11" in history_page
+    assert "gmail=5" in history_page
+    assert "additional=7" in history_page
+    assert "processed=2" in history_page
+    assert "selected=1" in history_page
     assert "Old Digest" not in history_page
     assert 'data-label="Subject"' in history_page
     assert "Inventory" in history_page
@@ -182,6 +211,9 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     detail_page = detail_response.get_data(as_text=True)
     assert "Recent Digest" in detail_page
     assert "Recent digest body" in detail_page
+    assert "Gmail 4" in detail_page
+    assert "additional 6" in detail_page
+    assert "after initial ranking" in detail_page
     assert "Back To History" in detail_page
     assert "Archive" in detail_page
 

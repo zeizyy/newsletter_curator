@@ -610,6 +610,94 @@ def build_preview_payload(
     }
 
 
+def _metadata_int(metadata: dict, key: str) -> int | None:
+    try:
+        value = metadata.get(key)
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _newsletter_metadata_with_delivery_fallback(newsletter: dict, repository=None) -> dict:
+    metadata = newsletter.get("metadata", {}) or {}
+    if all(
+        _metadata_int(metadata, key) is not None
+        for key in ("gmail_links", "additional_source_links", "eligible_links")
+    ):
+        return metadata
+    if repository is None:
+        return metadata
+
+    delivery_run_id = newsletter.get("delivery_run_id")
+    if delivery_run_id is None:
+        return metadata
+    try:
+        delivery_run = repository.get_delivery_run(int(delivery_run_id))
+    except (AttributeError, TypeError, ValueError):
+        return metadata
+    if not delivery_run:
+        return metadata
+
+    run_metadata = delivery_run.get("metadata", {}) or {}
+    pipeline_result = run_metadata.get("pipeline_result", {})
+    if not isinstance(pipeline_result, dict):
+        return metadata
+
+    merged = dict(pipeline_result)
+    merged.update(metadata)
+    return merged
+
+
+def build_newsletter_funnel_stats(newsletter: dict, repository=None) -> dict:
+    metadata = _newsletter_metadata_with_delivery_fallback(newsletter, repository)
+    selected_items = newsletter.get("selected_items", [])
+    selected_items_count = newsletter.get("selected_items_count")
+    if selected_items_count is None:
+        selected_items_count = (
+            len(selected_items) if isinstance(selected_items, list) else 0
+        )
+
+    gmail_sourced = _metadata_int(metadata, "gmail_links")
+    additional_sourced = _metadata_int(metadata, "additional_source_links")
+    total_sourced = _metadata_int(metadata, "eligible_links")
+    if total_sourced is None:
+        total_sourced = _metadata_int(metadata, "deduped_links")
+    if (
+        total_sourced is None
+        and gmail_sourced is not None
+        and additional_sourced is not None
+    ):
+        total_sourced = gmail_sourced + additional_sourced
+
+    processed = _metadata_int(metadata, "processed_candidates")
+    if processed is None:
+        accepted_items = _metadata_int(metadata, "accepted_items")
+        skipped_count = _metadata_int(metadata, "skipped_count")
+        if accepted_items is not None and skipped_count is not None:
+            processed = accepted_items + skipped_count
+    if processed is None:
+        processed = _metadata_int(metadata, "selected")
+    if processed is None:
+        processed = selected_items_count
+
+    return {
+        "total_sourced": total_sourced,
+        "gmail_sourced": gmail_sourced,
+        "additional_sourced": additional_sourced,
+        "processed": processed,
+        "selected": selected_items_count,
+    }
+
+
+def attach_newsletter_funnel_stats(newsletter: dict, repository=None) -> dict:
+    return {
+        **newsletter,
+        "funnel_stats": build_newsletter_funnel_stats(newsletter, repository),
+    }
+
+
 def resolve_preview_template() -> str:
     template_name = request.args.get("template", "").strip().lower()
     if template_name == "email_safe":
@@ -1930,11 +2018,14 @@ def newsletter_history():
     merged = load_merged_config()
     repository = load_repository(merged)
     newsletters = (
-        repository.list_daily_newsletters(
-            limit=30,
-            include_all_audiences=True,
-            one_per_date=True,
-        )
+        [
+            attach_newsletter_funnel_stats(newsletter, repository)
+            for newsletter in repository.list_daily_newsletters(
+                limit=30,
+                include_all_audiences=True,
+                one_per_date=True,
+            )
+        ]
         if repository
         else []
     )
@@ -1991,6 +2082,7 @@ def newsletter_history_detail(newsletter_date: str):
     )
     if newsletter is None:
         abort(404)
+    newsletter = attach_newsletter_funnel_stats(newsletter, repository)
 
     response = make_response(
         render_admin_template(

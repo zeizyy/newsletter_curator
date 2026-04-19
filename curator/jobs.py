@@ -1964,6 +1964,10 @@ def run_delivery_job(
             )
             digest_body, delivery_html = finalize_delivery_newsletter(digest_body, delivery_html)
             if persist_newsletter:
+                processed_candidates = (
+                    int(pipeline_result.get("accepted_items", 0) or 0)
+                    + int(pipeline_result.get("skipped_count", 0) or 0)
+                )
                 daily_newsletter_id = repository.upsert_daily_newsletter(
                     newsletter_date=newsletter_date,
                     audience_key=audience_key,
@@ -1974,9 +1978,17 @@ def run_delivery_job(
                     content=newsletter_content,
                     selected_items=list(pipeline_result.get("accepted_story_items", [])),
                     metadata={
+                        "gmail_links": pipeline_result.get("gmail_links", 0),
+                        "additional_source_links": pipeline_result.get(
+                            "additional_source_links",
+                            0,
+                        ),
+                        "deduped_links": pipeline_result.get("deduped_links", 0),
+                        "eligible_links": pipeline_result.get("eligible_links", 0),
                         "ranked_candidates": pipeline_result.get("ranked_candidates", 0),
                         "selected": pipeline_result.get("selected", 0),
                         "accepted_items": pipeline_result.get("accepted_items", 0),
+                        "processed_candidates": processed_candidates,
                         "backfilled_count": pipeline_result.get("backfilled_count", 0),
                         "skipped_count": pipeline_result.get("skipped_count", 0),
                         "render_groups": pipeline_result.get("render_groups", {}),
