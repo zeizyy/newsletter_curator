@@ -41,7 +41,12 @@ def _load_additional_source_builder(script_path: str):
     return builder
 
 
-def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike[str] | None = None) -> list[dict]:
+def collect_additional_source_links(
+    config: dict,
+    *,
+    base_dir: str | os.PathLike[str] | None = None,
+    allowed_source_names: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> list[dict]:
     source_cfg = config.get("additional_sources", {})
     if not source_cfg.get("enabled", False):
         return []
@@ -61,6 +66,13 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
     max_total = int(source_cfg.get("max_total", 20))
     timeout_seconds = max(int(source_cfg.get("command_timeout_seconds", 300) or 300), 1)
     max_feed_workers = max(int(source_cfg.get("max_feed_workers", 5) or 5), 1)
+    normalized_allowed_source_names = sorted(
+        {
+            str(source_name).strip().lower()
+            for source_name in allowed_source_names or []
+            if str(source_name).strip()
+        }
+    )
     feeds_file = source_cfg.get("feeds_file", "")
     if feeds_file:
         if not os.path.isabs(feeds_file):
@@ -84,6 +96,7 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
             top_per_category=top_per_category,
             max_total=max_total,
             max_feed_workers=max_feed_workers,
+            allowed_source_names=normalized_allowed_source_names,
             total_timeout_seconds=timeout_seconds,
             event_logger=lambda event, **payload: emit_event(
                 event,
@@ -150,6 +163,7 @@ def collect_additional_source_links(config: dict, *, base_dir: str | os.PathLike
         story_count=len(stories),
         link_count=len(links),
         failure_count=len(failures) if isinstance(failures, list) else 0,
+        allowed_source_count=len(normalized_allowed_source_names),
     )
     return links
 
