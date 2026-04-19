@@ -1,4 +1,3 @@
-import os
 import traceback
 
 from openai import OpenAI
@@ -120,7 +119,7 @@ def summarize_article_with_llm(
 
 
 def collect_additional_source_links(config: dict) -> list[dict]:
-    return sources.collect_repository_source_links(config, base_dir=os.path.dirname(__file__))
+    return sources.collect_repository_source_links(config, base_dir=config_module.BASE_DIR)
 
 
 def collect_gmail_links(config: dict, service) -> list[dict]:

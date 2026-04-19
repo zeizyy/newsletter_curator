@@ -85,8 +85,10 @@ def delivery_failure_requires_alert(result: dict | None) -> bool:
         delivery_stage = stages.get("deliver_digest")
         if not isinstance(delivery_stage, dict):
             return False
-        return str(delivery_stage.get("status", "")).strip() in {"partial_failure", "failed"}
-    return str(result.get("status", "")).strip() in {"partial_failure", "failed"}
+        status = str(delivery_stage.get("status", "")).strip()
+        return bool(status and status != "completed")
+    status = str(result.get("status", "")).strip()
+    return bool(status and status != "completed")
 
 
 def collect_recent_debug_log_context(*, lines: int = DELIVERY_FAILURE_ALERT_LOG_LINES) -> dict:

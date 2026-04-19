@@ -217,6 +217,35 @@ def test_daily_orchestrator_reports_partial_failure_when_one_recipient_send_fail
     assert sent_messages == ["ok@example.com"]
 
 
+def test_daily_orchestrator_treats_no_ranked_candidates_as_failed(monkeypatch, tmp_path):
+    jobs = importlib.import_module("curator.jobs")
+    main = importlib.import_module("main")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+
+    monkeypatch.setattr(jobs, "run_fetch_gmail_job", lambda *args, **kwargs: {"status": "completed"})
+    monkeypatch.setattr(jobs, "run_fetch_sources_job", lambda *args, **kwargs: {"status": "completed"})
+
+    result = jobs.run_daily_orchestrator_job(
+        config,
+        object(),
+        repository=repository,
+        delivery_runner_fn=lambda _config, _service: {"status": "no_ranked_candidates"},
+    )
+
+    assert result["status"] == "failed"
+    assert result["completed_stages"] == ["fetch_gmail", "fetch_sources"]
+    assert result["partial_failure_stages"] == []
+    assert result["failed_stages"] == ["deliver_digest"]
+    assert result["stages"]["deliver_digest"]["status"] == "no_ranked_candidates"
+
+
 def test_daily_orchestrator_records_error_type_for_delivery_key_error(monkeypatch, tmp_path):
     jobs = importlib.import_module("curator.jobs")
     main = importlib.import_module("main")

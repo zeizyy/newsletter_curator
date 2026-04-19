@@ -1336,7 +1336,8 @@ def run_daily_orchestrator_job(
     failed_stages = [
         stage_name
         for stage_name in stage_order
-        if stages.get(stage_name, {}).get("status") == "failed"
+        if str(stages.get(stage_name, {}).get("status", "")).strip()
+        not in {"completed", "partial_failure"}
     ]
 
     if not failed_stages and not partial_failure_stages:
