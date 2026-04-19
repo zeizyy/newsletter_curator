@@ -60,3 +60,6 @@ Make Newsletter Curator a self-hosted product with durable subscriber profiles, 
 - `T70` opt-in PDF delivery format for subscriber profiles
 - `T71` delivery public-host hardening plus direct-link fallback
 - `T72` resolve doc, config, and artifact consistency drift
+- `T73` skip the generated daily pipeline wrapper on Sunday
+- `T74` verify weekday decisions use Pacific time
+- `T75` add a manual weekly digest override to the daily pipeline wrapper
