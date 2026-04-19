@@ -98,6 +98,10 @@ def _write_fake_runtime(fake_bin: Path, log_path: Path) -> None:
                 "#!/usr/bin/env python3",
                 "import os",
                 "import sys",
+                "expected_tz = os.getenv('FAKE_EXPECT_DATE_TZ')",
+                "if expected_tz and os.getenv('TZ') != expected_tz:",
+                "    print(f\"expected TZ={expected_tz}, got {os.getenv('TZ')}\", file=sys.stderr)",
+                "    sys.exit(2)",
                 "if sys.argv[1:] == ['+%u']:",
                 "    print(os.getenv('FAKE_DATE_WEEKDAY', '2'))",
                 "    sys.exit(0)",
@@ -264,6 +268,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "create 0600" in logrotate_text
 
     daily_script_text = daily_script.read_text(encoding="utf-8")
+    assert "TZ=America/Los_Angeles date +%u" in daily_script_text
     assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
@@ -566,6 +571,7 @@ def test_generated_daily_wrapper_skips_entire_pipeline_on_sunday(tmp_path, repo_
         env={
             **os.environ,
             "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+            "FAKE_EXPECT_DATE_TZ": "America/Los_Angeles",
             "FAKE_DATE_WEEKDAY": "7",
             "FAKE_UV_EXIT_CODE": "7",
             "FAKE_SYSTEMCTL_FAIL_STOP": "1",
