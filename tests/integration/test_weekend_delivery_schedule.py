@@ -130,12 +130,17 @@ def test_saturday_delivery_sends_weekly_digest_for_past_week(monkeypatch, tmp_pa
     assert result["issue_type"] == "weekly"
     assert len(sent_messages) == 1
     assert sent_messages[0]["subject"] == "Weekly Digest"
+    assert "AI Signal Weekly Digest" in sent_messages[0]["html_body"]
+    assert "Your highest-signal weekly briefing ICYMI." in sent_messages[0]["html_body"]
+    assert "AI Signal Daily" not in sent_messages[0]["html_body"]
+    assert "Your highest-signal daily briefing." not in sent_messages[0]["html_body"]
     assert "Six day old platform shift" in sent_messages[0]["body"]
     assert "Eight day old platform shift" not in sent_messages[0]["body"]
 
     stored_newsletter = repository.get_daily_newsletter("2026-03-28")
     assert stored_newsletter is not None
     assert stored_newsletter["subject"] == "Weekly Digest"
+    assert "AI Signal Weekly Digest" in stored_newsletter["html_body"]
     assert stored_newsletter["metadata"]["issue_type"] == "weekly"
 
 
