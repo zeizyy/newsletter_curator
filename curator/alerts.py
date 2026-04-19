@@ -86,9 +86,9 @@ def delivery_failure_requires_alert(result: dict | None) -> bool:
         if not isinstance(delivery_stage, dict):
             return False
         status = str(delivery_stage.get("status", "")).strip()
-        return bool(status and status != "completed")
+        return bool(status and status not in {"completed", "skipped"})
     status = str(result.get("status", "")).strip()
-    return bool(status and status != "completed")
+    return bool(status and status not in {"completed", "skipped"})
 
 
 def collect_recent_debug_log_context(*, lines: int = DELIVERY_FAILURE_ALERT_LOG_LINES) -> dict:

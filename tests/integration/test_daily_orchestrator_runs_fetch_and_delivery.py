@@ -9,8 +9,15 @@ from tests.fakes import FakeArticleFetcher, FakeGmailService, FakeSourceFetcher,
 from tests.helpers import write_temp_config
 
 
+class FixedTuesdayDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 24, 18, 0, 0, tzinfo=tz or UTC)
+
+
 def test_daily_orchestrator_runs_fetch_and_delivery(monkeypatch, repo_root, tmp_path):
     main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
     now_utc = datetime.now(UTC)
 
     fixture_html = (repo_root / "tests" / "fixtures" / "newsletter_sample.html").read_text(
@@ -75,6 +82,7 @@ def test_daily_orchestrator_runs_fetch_and_delivery(monkeypatch, repo_root, tmp_
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedTuesdayDateTime)
     config = main.load_config()
     repository = get_repository_from_config(config)
 
@@ -184,6 +192,7 @@ def test_daily_orchestrator_reports_partial_failure_when_one_recipient_send_fail
         },
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedTuesdayDateTime)
     monkeypatch.setattr(gmail.time, "sleep", lambda _seconds: None)
     config = main.load_config()
     repository = get_repository_from_config(config)
