@@ -167,11 +167,9 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     assert "Command Rail" in history_page
     assert "Today Digest" in history_page
     assert "Recent Digest" in history_page
-    assert "sourced=11" in history_page
-    assert "gmail=5" in history_page
-    assert "additional=7" in history_page
-    assert "processed=2" in history_page
-    assert "selected=1" in history_page
+    assert "<strong>Sourced:</strong> 11 total (5 Gmail / 7 additional)" in history_page
+    assert "<strong>Processed:</strong> 2" in history_page
+    assert "<strong>Selected:</strong> 1" in history_page
     assert "Old Digest" not in history_page
     assert 'data-label="Subject"' in history_page
     assert "Inventory" in history_page
@@ -211,9 +209,9 @@ def test_newsletter_history_view_and_ttl(monkeypatch, tmp_path):
     detail_page = detail_response.get_data(as_text=True)
     assert "Recent Digest" in detail_page
     assert "Recent digest body" in detail_page
-    assert "Gmail 4" in detail_page
-    assert "additional 6" in detail_page
-    assert "after initial ranking" in detail_page
+    assert "<strong>Sourced:</strong> 9 total (4 Gmail / 6 additional)" in detail_page
+    assert "<strong>Processed:</strong> 3" in detail_page
+    assert "<strong>Selected:</strong> 1" in detail_page
     assert "Back To History" in detail_page
     assert "Archive" in detail_page
 
