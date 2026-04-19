@@ -3,6 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import main as delivery_main
 from curator.alerts import delivery_failure_requires_alert
@@ -53,10 +58,10 @@ def load_result_from_output(output_file: str) -> dict | None:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     config = delivery_main.load_config()
-    service = delivery_main.get_gmail_service(config["paths"])
     result = load_result_from_output(args.output_file)
     if result is not None and not delivery_failure_requires_alert(result):
         return
+    service = delivery_main.get_gmail_service(config["paths"])
     exception = RuntimeError(f"daily pipeline exited with status {args.exit_status}")
     sent = delivery_main.send_delivery_failure_alert_if_needed(
         config,
