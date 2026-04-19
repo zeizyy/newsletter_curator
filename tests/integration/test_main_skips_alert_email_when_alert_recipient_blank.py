@@ -4,6 +4,7 @@ import importlib
 
 import pytest
 
+from curator.alerts import delivery_failure_requires_alert
 from tests.helpers import write_temp_config
 
 
@@ -37,3 +38,20 @@ def test_main_skips_alert_email_when_alert_recipient_blank(monkeypatch, tmp_path
 
     with pytest.raises(RuntimeError, match="boom"):
         main.main()
+
+
+def test_alert_required_when_delivery_finds_no_ranked_candidates():
+    assert delivery_failure_requires_alert({"status": "no_ranked_candidates"}) is True
+    assert (
+        delivery_failure_requires_alert(
+            {
+                "status": "failed",
+                "stages": {
+                    "fetch_gmail": {"status": "completed"},
+                    "fetch_sources": {"status": "completed"},
+                    "deliver_digest": {"status": "no_ranked_candidates"},
+                },
+            }
+        )
+        is True
+    )
