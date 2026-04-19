@@ -147,12 +147,19 @@ def process_story(
     )
 
 
-def run_job(config: dict, service, *, recipient_override: str | None = None) -> dict:
+def run_job(
+    config: dict,
+    service,
+    *,
+    recipient_override: str | None = None,
+    issue_type_override: str | None = None,
+) -> dict:
     return _run_delivery(
         config,
         service,
         send_email_fn=send_email,
         recipient_override=recipient_override,
+        issue_type_override=issue_type_override,
     )
 
 
@@ -184,7 +191,14 @@ def preview_job(config: dict) -> dict:
     return {**result, "preview": preview}
 
 
-def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: str | None = None) -> dict:
+def _run_delivery(
+    config: dict,
+    service,
+    *,
+    send_email_fn,
+    recipient_override: str | None = None,
+    issue_type_override: str | None = None,
+) -> dict:
     from curator.jobs import (
         DEFAULT_AUDIENCE_KEY,
         current_delivery_datetime,
@@ -200,7 +214,8 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
     default_persona_text = str(config.get("persona", {}).get("text", "")).strip()
     repository = get_repository_from_config(config)
     if (
-        service is not None
+        not issue_type_override
+        and service is not None
         and not delivery_schedule_ignored()
         and delivery_issue_type_for_datetime(current_delivery_datetime()) == "skipped"
     ):
@@ -209,6 +224,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             service,
             repository=repository,
             send_email_fn=send_email_fn,
+            issue_type_override=issue_type_override,
         )
         return {**skipped_result, "delivery_subscribers": []}
 
@@ -311,6 +327,7 @@ def _run_delivery(config: dict, service, *, send_email_fn, recipient_override: s
             audience_key=audience_key,
             delivery_format=delivery_format,
             preferred_sources=preferred_sources,
+            issue_type_override=issue_type_override,
         )
 
     personalized_delivery = service is not None and any(

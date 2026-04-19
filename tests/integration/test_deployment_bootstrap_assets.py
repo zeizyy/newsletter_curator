@@ -269,6 +269,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
 
     daily_script_text = daily_script.read_text(encoding="utf-8")
     assert "TZ=America/Los_Angeles date +%u" in daily_script_text
+    assert 'if [[ "$arg" == "--weekly-digest" ]]; then' in daily_script_text
     assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
@@ -581,6 +582,41 @@ def test_generated_daily_wrapper_skips_entire_pipeline_on_sunday(tmp_path, repo_
     assert result.returncode == 0
     assert "daily pipeline skipped: Sunday" in result.stdout
     assert not command_log.exists()
+
+
+def test_generated_daily_wrapper_allows_manual_weekly_digest_on_sunday(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    _write_fake_runtime(fake_bin, command_log)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"]), "--weekly-digest"],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+            "FAKE_EXPECT_DATE_TZ": "America/Los_Angeles",
+            "FAKE_DATE_WEEKDAY": "7",
+            "FAKE_UV_EXIT_CODE": "0",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "daily pipeline skipped: Sunday" not in result.stdout
+    assert command_log.read_text(encoding="utf-8").splitlines() == [
+        "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
+        "uv run python daily_pipeline.py --weekly-digest",
+        "systemctl --user start newsletter-curator-admin",
+    ]
 
 
 def test_generated_daily_wrapper_alert_receives_pipeline_output_file(tmp_path, repo_root):

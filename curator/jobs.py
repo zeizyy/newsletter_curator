@@ -109,6 +109,15 @@ def delivery_schedule_ignored() -> bool:
     }
 
 
+def normalize_issue_type_override(issue_type_override: str | None) -> str | None:
+    normalized = str(issue_type_override or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized not in {"daily", "weekly"}:
+        raise ValueError(f"Unsupported delivery issue type override: {issue_type_override}")
+    return normalized
+
+
 def delivery_config_for_issue(config: dict, issue_type: str) -> dict:
     if issue_type != "weekly":
         return config
@@ -1538,17 +1547,20 @@ def run_delivery_job(
     audience_key: str = DEFAULT_AUDIENCE_KEY,
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
     preferred_sources: list[str] | tuple[str, ...] | None = None,
+    issue_type_override: str | None = None,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
     runtime_capture = start_runtime_capture()
     delivery_now = current_delivery_datetime()
     newsletter_date = current_newsletter_date()
     scheduled_issue_type = delivery_issue_type_for_datetime(delivery_now)
-    issue_type = (
-        "daily"
-        if (service is None or delivery_schedule_ignored()) and scheduled_issue_type == "skipped"
-        else scheduled_issue_type
-    )
+    override_issue_type = normalize_issue_type_override(issue_type_override)
+    if override_issue_type:
+        issue_type = override_issue_type
+    elif (service is None or delivery_schedule_ignored()) and scheduled_issue_type == "skipped":
+        issue_type = "daily"
+    else:
+        issue_type = scheduled_issue_type
     delivery_format = normalize_subscriber_delivery_format(delivery_format)
     if issue_type == "skipped":
         runtime = finish_runtime_capture(runtime_capture)

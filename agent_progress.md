@@ -653,3 +653,12 @@ Add new entries below this line.
 - Open risks: None known for scheduling; non-scheduling UTC persistence and freshness windows remain unchanged.
 - Evaluator note: A separate evaluator subagent remains unavailable because the account hit its usage limit. The generator completed a local contract review and the full test suite passed.
 - Next recommended task: `T75` Add a manual weekly digest override to the daily pipeline wrapper.
+
+### 2026-04-19 - T75 added a manual weekly digest override
+- Context: Added an operator path for sending the weekly seven-day digest outside the scheduled Saturday run while keeping default cron behavior unchanged.
+- Files changed: `agent_contracts/T75_manual_weekly_digest_override.md`, `agent_tasks.json`, `agent_progress.md`, `README.md`, `daily_pipeline.py`, `main.py`, `curator/jobs.py`, `scripts/bootstrap_server.py`, `tests/integration/test_daily_pipeline_dry_run_recipient.py`, `tests/integration/test_deployment_bootstrap_assets.py`, `tests/integration/test_weekend_delivery_schedule.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py tests/integration/test_weekend_delivery_schedule.py tests/integration/test_daily_pipeline_dry_run_recipient.py -q`; `uv run pytest`; `git diff --check`
+- Outcome: Operators can run `deploy/generated/run_daily_pipeline.sh --weekly-digest` to force weekly delivery settings, including the weekly subject, seven-day story window, and weekly candidate cap. The generated wrapper now forwards that flag even on Sunday instead of taking the normal Sunday no-op path.
+- Open risks: None known; the manual override intentionally still runs the full orchestrator before delivery, so source and Gmail refresh cost remains the same as a normal wrapper run.
+- Evaluator note: A separate evaluator subagent remains unavailable because the account hit its usage limit. The generator completed a local contract review and the full test suite passed.
+- Next recommended task: none for this requested scheduling wave; `T73` through `T75` are complete.
