@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
+import sys
 
 import pytest
 
@@ -153,3 +155,39 @@ def test_pipeline_failure_alert_script_skips_upstream_failure_when_delivery_comp
             str(output_file),
         ]
     )
+
+
+def test_pipeline_failure_alert_script_imports_main_when_run_by_path(repo_root, tmp_path):
+    output_file = tmp_path / "pipeline.log"
+    output_file.write_text(
+        "\n".join(
+            [
+                "{",
+                '  "status": "partial_failure",',
+                '  "stages": {',
+                '    "fetch_gmail": {"status": "failed"},',
+                '    "deliver_digest": {"status": "completed"}',
+                "  }",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "send_pipeline_failure_alert.py"),
+            "--exit-status",
+            "1",
+            "--output-file",
+            str(output_file),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+
+    assert "ModuleNotFoundError: No module named 'main'" not in result.stderr
+    assert result.returncode == 0
