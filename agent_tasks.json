@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "newsletter-curator",
-  "updated_at": "2026-04-05",
+  "updated_at": "2026-04-19",
   "agent_roles": {
     "planner": "Maintains agent_spec.md, keeps the task map aligned to the product shape, and drafts each sprint contract before coding.",
     "generator": "Implements exactly one bounded task per session, updates tests, and leaves the repo mergeable.",
@@ -1789,6 +1789,97 @@
         "Subscriber and admin settings surfaces explain persona and preferred-source behavior accurately",
         "Preview and delivery artifacts no longer drift on settings-link, PDF, or template labeling details",
         "The targeted integration tests pass offline"
+      ]
+    },
+    {
+      "id": "T73",
+      "title": "Skip the whole generated daily pipeline on Sunday",
+      "status": "completed",
+      "depends_on": ["T72"],
+      "scope": [
+        "Update the generated run_daily_pipeline.sh wrapper to exit 0 on Sunday before admin-service pause logic.",
+        "Ensure Sunday skips do not invoke daily_pipeline.py, failure alerts, or systemctl.",
+        "Keep Monday-Saturday wrapper behavior unchanged."
+      ],
+      "artifacts": [
+        "agent_contracts/T73_skip_sunday_pipeline.md",
+        "scripts/bootstrap_server.py",
+        "tests/integration/test_deployment_bootstrap_assets.py"
+      ],
+      "contract_file": "agent_contracts/T73_skip_sunday_pipeline.md",
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "evaluator_checks": [
+        "The generated wrapper exits 0 on Sunday before stopping or starting the admin service.",
+        "The generated wrapper does not invoke daily_pipeline.py or the failure-alert script on Sunday.",
+        "Non-Sunday wrapper success, failure-alert, and admin-resume behavior remains unchanged."
+      ],
+      "done_when": [
+        "The generated wrapper no-ops on Sunday.",
+        "The Sunday skip path has integration coverage.",
+        "Deployment bootstrap regression tests pass."
+      ]
+    },
+    {
+      "id": "T74",
+      "title": "Verify weekday decisions use Pacific time",
+      "status": "pending",
+      "depends_on": ["T73"],
+      "scope": [
+        "Audit and adjust weekday detection used by delivery scheduling and generated wrappers so day-of-week decisions are based on America/Los_Angeles.",
+        "Add regression coverage around UTC/Pacific boundary cases.",
+        "Keep non-scheduling newsletter date behavior unchanged unless explicitly required by the contract."
+      ],
+      "artifacts": [
+        "agent_contracts/T74_pacific_weekday_decisions.md",
+        "curator/jobs.py",
+        "scripts/bootstrap_server.py",
+        "tests/integration/"
+      ],
+      "contract_file": "agent_contracts/T74_pacific_weekday_decisions.md",
+      "test_command": "uv run pytest tests/integration/test_weekend_delivery_schedule.py tests/integration/test_deployment_bootstrap_assets.py -q",
+      "integration_test": "tests/integration/test_weekend_delivery_schedule.py",
+      "evaluator_checks": [
+        "Day-of-week scheduling uses America/Los_Angeles rather than UTC or server-local time.",
+        "Boundary tests cover UTC times that are still the previous Pacific day.",
+        "Existing Sunday skip and Saturday weekly behavior remain intact."
+      ],
+      "done_when": [
+        "Weekday scheduling decisions are Pacific-time based.",
+        "Boundary regression tests pass.",
+        "The generated wrapper and Python delivery scheduler agree on day classification."
+      ]
+    },
+    {
+      "id": "T75",
+      "title": "Add a manual weekly digest override to the daily pipeline wrapper",
+      "status": "pending",
+      "depends_on": ["T74"],
+      "scope": [
+        "Add an option to generated run_daily_pipeline.sh that lets an operator manually trigger the weekly seven-day digest flow.",
+        "Thread the override through the CLI/runtime path without changing default cron behavior.",
+        "Document the manual command and add regression coverage."
+      ],
+      "artifacts": [
+        "agent_contracts/T75_manual_weekly_digest_override.md",
+        "scripts/bootstrap_server.py",
+        "daily_pipeline.py",
+        "curator/jobs.py",
+        "README.md",
+        "tests/integration/"
+      ],
+      "contract_file": "agent_contracts/T75_manual_weekly_digest_override.md",
+      "test_command": "uv run pytest tests/integration/test_deployment_bootstrap_assets.py tests/integration/test_weekend_delivery_schedule.py tests/integration/test_daily_pipeline_dry_run_recipient.py -q",
+      "integration_test": "tests/integration/test_deployment_bootstrap_assets.py",
+      "evaluator_checks": [
+        "Manual weekly mode uses the seven-day weekly digest settings even when today is not Saturday.",
+        "Default cron invocation keeps the normal weekday/Saturday/Sunday schedule.",
+        "The generated wrapper forwards the manual option correctly."
+      ],
+      "done_when": [
+        "Operators can manually run a weekly digest from the generated wrapper.",
+        "Default scheduled behavior is unchanged.",
+        "The manual override is documented and tested."
       ]
     }
   ]

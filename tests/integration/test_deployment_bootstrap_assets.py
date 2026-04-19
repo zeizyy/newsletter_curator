@@ -92,6 +92,22 @@ def _write_fake_command(path: Path, source: str) -> None:
 
 def _write_fake_runtime(fake_bin: Path, log_path: Path) -> None:
     _write_fake_command(
+        fake_bin / "date",
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import os",
+                "import sys",
+                "if sys.argv[1:] == ['+%u']:",
+                "    print(os.getenv('FAKE_DATE_WEEKDAY', '2'))",
+                "    sys.exit(0)",
+                "print('Tue Apr 21 00:00:00 UTC 2026')",
+                "sys.exit(0)",
+                "",
+            ]
+        ),
+    )
+    _write_fake_command(
         fake_bin / "systemctl",
         "\n".join(
             [
@@ -529,6 +545,36 @@ def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(t
     assert command_lines[4:] == [
         "systemctl --user start newsletter-curator-admin",
     ]
+
+
+def test_generated_daily_wrapper_skips_entire_pipeline_on_sunday(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    _write_fake_runtime(fake_bin, command_log)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"])],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+            "FAKE_DATE_WEEKDAY": "7",
+            "FAKE_UV_EXIT_CODE": "7",
+            "FAKE_SYSTEMCTL_FAIL_STOP": "1",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "daily pipeline skipped: Sunday" in result.stdout
+    assert not command_log.exists()
 
 
 def test_generated_daily_wrapper_alert_receives_pipeline_output_file(tmp_path, repo_root):

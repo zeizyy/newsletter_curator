@@ -635,3 +635,12 @@ Add new entries below this line.
 - Outcome: Delivered newsletters now prepend a settings URL in plain text and render a header-level settings link in the email-safe HTML when a public host is configured, tracked links rewrite only the marked CTA while preserving a visible direct article fallback, and telemetry is skipped entirely when `tracking.base_url` plus `CURATOR_PUBLIC_BASE_URL` are both absent so delivery no longer emits dead localhost tracking links.
 - Open risks: The admin email-safe preview route still does not pass the new `settings_url`, so preview parity with delivered email remains incomplete even though the delivery contract now passes.
 - Next recommended task: `T43` Persist explicit servability status, blocked reasons, detector version, and classifier signals.
+
+### 2026-04-19 - T73 skipped the generated daily pipeline wrapper on Sunday
+- Context: Started the post-weekly-digest scheduling wave by making the generated cron wrapper no-op on Sunday, so the whole daily pipeline is skipped before API-key validation, admin-service pause, pipeline execution, or failure alerts.
+- Files changed: `agent_contracts/T73_skip_sunday_pipeline.md`, `agent_spec.md`, `agent_tasks.json`, `agent_progress.md`, `scripts/bootstrap_server.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run pytest tests/integration/test_weekend_delivery_schedule.py tests/integration/test_deployment_bootstrap_assets.py -q`; `git diff --check`
+- Outcome: `run_daily_pipeline.sh` now exits 0 with `daily pipeline skipped: Sunday` when `date +%u` reports Sunday, and the regression test verifies no `systemctl`, `daily_pipeline.py`, or alert invocation happens on that path. Existing non-Sunday success, failure-alert, and admin-resume wrapper tests still pass with a deterministic fake weekday.
+- Open risks: The Sunday check currently uses the system `date +%u` timezone; `T74` is queued to pin all weekday decisions to Pacific time.
+- Evaluator note: A post-implementation evaluator subagent was requested, but the account hit its usage limit before it could run. The generator completed a local contract review and the listed tests passed.
+- Next recommended task: `T74` Verify weekday decisions use Pacific time.
