@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import stat
 import subprocess
@@ -123,6 +124,47 @@ def _write_fake_runtime(fake_bin: Path, log_path: Path) -> None:
                 "with open(log_path, 'a', encoding='utf-8') as handle:",
                 "    handle.write('uv ' + ' '.join(sys.argv[1:]) + '\\n')",
                 "sys.exit(int(os.getenv('FAKE_UV_EXIT_CODE', '0')))",
+                "",
+            ]
+        ),
+    )
+
+
+def _write_fake_runtime_with_alert_capture(
+    fake_bin: Path,
+    log_path: Path,
+    alert_capture_path: Path,
+) -> None:
+    _write_fake_runtime(fake_bin, log_path)
+    _write_fake_command(
+        fake_bin / "uv",
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                f"log_path = {str(log_path)!r}",
+                f"alert_capture_path = {str(alert_capture_path)!r}",
+                "args = sys.argv[1:]",
+                "with open(log_path, 'a', encoding='utf-8') as handle:",
+                "    handle.write('uv ' + ' '.join(args) + '\\n')",
+                "if args[:3] == ['run', 'python', 'daily_pipeline.py']:",
+                "    print('pipeline stdout before failure')",
+                "    print('pipeline stderr before failure', file=sys.stderr)",
+                "    sys.exit(int(os.getenv('FAKE_UV_EXIT_CODE', '0')))",
+                "if args[:3] == ['run', 'python', 'scripts/send_pipeline_failure_alert.py']:",
+                "    output_file = args[args.index('--output-file') + 1]",
+                "    payload = {",
+                "        'source': args[args.index('--source') + 1],",
+                "        'exit_status': args[args.index('--exit-status') + 1],",
+                "        'output_file': output_file,",
+                "        'output': Path(output_file).read_text(encoding='utf-8'),",
+                "    }",
+                "    Path(alert_capture_path).write_text(json.dumps(payload), encoding='utf-8')",
+                "    sys.exit(int(os.getenv('FAKE_ALERT_EXIT_CODE', '0')))",
+                "sys.exit(0)",
                 "",
             ]
         ),
@@ -484,6 +526,55 @@ def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(t
         "uv run python scripts/send_pipeline_failure_alert.py "
         "--source run_daily_pipeline.sh --exit-status 7 --output-file "
     )
+    assert command_lines[4:] == [
+        "systemctl --user start newsletter-curator-admin",
+    ]
+
+
+def test_generated_daily_wrapper_alert_receives_pipeline_output_file(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    alert_capture_path = tmp_path / "alert-capture.json"
+    _write_fake_runtime_with_alert_capture(fake_bin, command_log, alert_capture_path)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"])],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "FAKE_UV_EXIT_CODE": "7",
+        },
+    )
+
+    assert result.returncode == 7
+    assert "pipeline stdout before failure" in result.stdout
+    assert "pipeline stderr before failure" in result.stdout
+
+    alert_payload = json.loads(alert_capture_path.read_text(encoding="utf-8"))
+    assert alert_payload["source"] == "run_daily_pipeline.sh"
+    assert alert_payload["exit_status"] == "7"
+    assert "pipeline stdout before failure" in alert_payload["output"]
+    assert "pipeline stderr before failure" in alert_payload["output"]
+    assert not Path(alert_payload["output_file"]).exists()
+
+    command_lines = command_log.read_text(encoding="utf-8").splitlines()
+    assert command_lines[:4] == [
+        "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
+        "uv run python daily_pipeline.py",
+        (
+            "uv run python scripts/send_pipeline_failure_alert.py "
+            f"--source run_daily_pipeline.sh --exit-status 7 --output-file {alert_payload['output_file']}"
+        ),
+    ]
     assert command_lines[4:] == [
         "systemctl --user start newsletter-curator-admin",
     ]
