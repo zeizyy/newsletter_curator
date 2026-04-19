@@ -16,6 +16,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Send only to this recipient instead of Buttondown or config recipients.",
     )
+    parser.add_argument(
+        "--weekly-digest",
+        action="store_true",
+        help="Manually send the weekly seven-day digest regardless of today's schedule.",
+    )
     return parser.parse_args(argv)
 
 
@@ -25,6 +30,7 @@ def main(argv: list[str] | None = None) -> None:
     repository = get_repository_from_config(config)
     service = delivery_main.get_gmail_service(config["paths"])
     dry_run_recipient = str(args.dry_run_recipient or "").strip() or None
+    issue_type_override = "weekly" if args.weekly_digest else None
     result = run_daily_orchestrator_job(
         config,
         service,
@@ -33,6 +39,7 @@ def main(argv: list[str] | None = None) -> None:
             cfg,
             svc,
             recipient_override=dry_run_recipient,
+            issue_type_override=issue_type_override,
         ),
     )
     print(json.dumps(result, indent=2, sort_keys=True))

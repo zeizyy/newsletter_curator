@@ -1853,7 +1853,7 @@
     {
       "id": "T75",
       "title": "Add a manual weekly digest override to the daily pipeline wrapper",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T74"],
       "scope": [
         "Add an option to generated run_daily_pipeline.sh that lets an operator manually trigger the weekly seven-day digest flow.",

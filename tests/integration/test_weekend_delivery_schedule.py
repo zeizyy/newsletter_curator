@@ -20,6 +20,12 @@ class FixedSundayDateTime(datetime):
         return cls(2026, 3, 29, 18, 0, 0, tzinfo=tz or UTC)
 
 
+class FixedMondayDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 30, 18, 0, 0, tzinfo=tz or UTC)
+
+
 class FixedUtcSundayPacificSaturdayDateTime(datetime):
     @classmethod
     def now(cls, tz=None):
@@ -131,6 +137,72 @@ def test_saturday_delivery_sends_weekly_digest_for_past_week(monkeypatch, tmp_pa
     assert stored_newsletter is not None
     assert stored_newsletter["subject"] == "Weekly Digest"
     assert stored_newsletter["metadata"]["issue_type"] == "weekly"
+
+
+def test_manual_weekly_digest_override_sends_past_week_outside_saturday(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    jobs = importlib.import_module("curator.jobs")
+    sources = importlib.import_module("curator.sources")
+    monkeypatch.delenv("CURATOR_IGNORE_DELIVERY_SCHEDULE", raising=False)
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "development": {"fake_inference": True},
+            "email": {
+                "digest_recipients": ["weekly@example.com"],
+                "digest_subject": "Daily Digest",
+                "weekly_digest_subject": "Weekly Digest",
+            },
+            "additional_sources": {"enabled": True, "hours": 24},
+            "limits": {
+                "select_top_stories": 5,
+                "final_top_stories": 5,
+                "source_quotas": {"gmail": 0, "additional_source": 5},
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedMondayDateTime)
+    monkeypatch.setattr(sources, "datetime", FixedMondayDateTime)
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    ingestion_run_id = create_completed_ingestion_run(repository, "additional_source")
+    _seed_story(
+        repository,
+        ingestion_run_id,
+        title="Manual weekly platform shift",
+        url="https://example.com/weekly/manual-in-window",
+        published_at="2026-03-24T18:00:00+00:00",
+    )
+    _seed_story(
+        repository,
+        ingestion_run_id,
+        title="Manual weekly stale platform shift",
+        url="https://example.com/weekly/manual-out-of-window",
+        published_at="2026-03-21T18:00:00+00:00",
+    )
+
+    sent_messages: list[dict] = []
+
+    def fake_send_email(service, to_address: str, subject: str, body: str, html_body: str | None = None):
+        sent_messages.append({"to": to_address, "subject": subject, "body": body})
+
+    monkeypatch.setattr(main, "send_email", fake_send_email)
+
+    result = main.run_job(
+        config,
+        FakeGmailService(messages=[]),
+        issue_type_override="weekly",
+    )
+
+    assert result["status"] == "completed"
+    assert result["issue_type"] == "weekly"
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["subject"] == "Weekly Digest"
+    assert "Manual weekly platform shift" in sent_messages[0]["body"]
+    assert "Manual weekly stale platform shift" not in sent_messages[0]["body"]
 
 
 def test_weekly_digest_caps_candidates_to_five_stories_per_day(monkeypatch, tmp_path):
