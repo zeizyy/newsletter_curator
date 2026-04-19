@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Lock
+from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 import requests
@@ -77,18 +78,21 @@ BUTTONDOWN_EXCLUDED_SUBSCRIBER_TYPES = (
     "unsubscribed",
 )
 WEEKLY_DIGEST_LOOKBACK_DAYS = 7
+PACIFIC_TIMEZONE = ZoneInfo("America/Los_Angeles")
 
 
 def current_newsletter_date() -> str:
-    return datetime.now(UTC).date().isoformat()
+    return current_delivery_datetime().date().isoformat()
 
 
 def current_delivery_datetime() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(UTC).astimezone(PACIFIC_TIMEZONE)
 
 
 def delivery_issue_type_for_datetime(value: datetime) -> str:
-    weekday = value.weekday()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    weekday = value.astimezone(PACIFIC_TIMEZONE).weekday()
     if weekday <= 4:
         return "daily"
     if weekday == 5:

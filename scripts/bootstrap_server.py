@@ -389,7 +389,7 @@ def build_daily_runner_script(*, repo_dir: Path, env_file: Path, uv_bin: str) ->
             f"source {quote(env_file)}",
             "set +a",
             "",
-            'current_weekday="$(date +%u)"',
+            'current_weekday="$(TZ=America/Los_Angeles date +%u)"',
             'if [[ "$current_weekday" == "7" ]]; then',
             '  echo "daily pipeline skipped: Sunday"',
             "  exit 0",

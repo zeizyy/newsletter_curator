@@ -1823,7 +1823,7 @@
     {
       "id": "T74",
       "title": "Verify weekday decisions use Pacific time",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["T73"],
       "scope": [
         "Audit and adjust weekday detection used by delivery scheduling and generated wrappers so day-of-week decisions are based on America/Los_Angeles.",

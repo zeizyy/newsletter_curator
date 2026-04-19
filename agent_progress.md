@@ -644,3 +644,12 @@ Add new entries below this line.
 - Open risks: The Sunday check currently uses the system `date +%u` timezone; `T74` is queued to pin all weekday decisions to Pacific time.
 - Evaluator note: A post-implementation evaluator subagent was requested, but the account hit its usage limit before it could run. The generator completed a local contract review and the listed tests passed.
 - Next recommended task: `T74` Verify weekday decisions use Pacific time.
+
+### 2026-04-19 - T74 pinned weekday decisions to Pacific time
+- Context: Aligned the Python delivery scheduler and generated daily wrapper so daily, Saturday weekly, and Sunday skipped decisions are based on `America/Los_Angeles` calendar days.
+- Files changed: `agent_contracts/T74_pacific_weekday_decisions.md`, `agent_tasks.json`, `agent_progress.md`, `curator/jobs.py`, `scripts/bootstrap_server.py`, `tests/integration/test_weekend_delivery_schedule.py`, `tests/integration/test_deployment_bootstrap_assets.py`
+- Tests run: `uv run pytest tests/integration/test_weekend_delivery_schedule.py tests/integration/test_deployment_bootstrap_assets.py -q`; `uv run pytest`; `git diff --check`
+- Outcome: `current_delivery_datetime()` now returns Pacific time, `current_newsletter_date()` follows the Pacific delivery date, `delivery_issue_type_for_datetime()` classifies after Pacific conversion, and the generated wrapper uses `TZ=America/Los_Angeles date +%u`. Boundary coverage now proves a UTC Sunday that is still Pacific Saturday runs as the weekly issue.
+- Open risks: None known for scheduling; non-scheduling UTC persistence and freshness windows remain unchanged.
+- Evaluator note: A separate evaluator subagent remains unavailable because the account hit its usage limit. The generator completed a local contract review and the full test suite passed.
+- Next recommended task: `T75` Add a manual weekly digest override to the daily pipeline wrapper.

@@ -20,6 +20,13 @@ class FixedSundayDateTime(datetime):
         return cls(2026, 3, 29, 18, 0, 0, tzinfo=tz or UTC)
 
 
+class FixedUtcSundayPacificSaturdayDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        current = cls(2026, 3, 29, 1, 0, 0, tzinfo=UTC)
+        return current.astimezone(tz) if tz else current
+
+
 def _seed_story(
     repository,
     ingestion_run_id: int,
@@ -190,6 +197,26 @@ def test_weekly_digest_caps_candidates_to_five_stories_per_day(monkeypatch, tmp_
     assert stored_newsletter["metadata"]["uncapped_eligible_links"] == 6
     assert stored_newsletter["metadata"]["eligible_links"] == 5
     assert stored_newsletter["metadata"]["weekly_max_stories_per_day"] == 5
+
+
+def test_delivery_weekday_decisions_use_pacific_time_at_utc_boundary(monkeypatch):
+    jobs = importlib.import_module("curator.jobs")
+    monkeypatch.setattr(jobs, "datetime", FixedUtcSundayPacificSaturdayDateTime)
+
+    delivery_now = jobs.current_delivery_datetime()
+
+    assert delivery_now.tzinfo == jobs.PACIFIC_TIMEZONE
+    assert delivery_now.isoformat() == "2026-03-28T18:00:00-07:00"
+    assert jobs.current_newsletter_date() == "2026-03-28"
+    assert jobs.delivery_issue_type_for_datetime(
+        datetime(2026, 3, 29, 1, 0, 0, tzinfo=UTC)
+    ) == "weekly"
+    assert jobs.delivery_issue_type_for_datetime(
+        datetime(2026, 3, 31, 6, 30, 0, tzinfo=UTC)
+    ) == "daily"
+    assert jobs.delivery_issue_type_for_datetime(
+        datetime(2026, 3, 30, 7, 30, 0, tzinfo=UTC)
+    ) == "daily"
 
 
 def test_sunday_delivery_is_skipped_without_alert(monkeypatch, tmp_path):
