@@ -269,7 +269,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
 
     daily_script_text = daily_script.read_text(encoding="utf-8")
     assert "TZ=America/Los_Angeles date +%u" in daily_script_text
-    assert 'if [[ "$arg" == "--weekly-digest" ]]; then' in daily_script_text
+    assert '[[ "$arg" == "--lookback_days" ]]' in daily_script_text
     assert 'error: OPENAI_API_KEY is empty after loading' in daily_script_text
     assert 'error: BUTTONDOWN_API_KEY is empty after loading' in daily_script_text
     assert 'systemctl --user stop "$CURATOR_ADMIN_SERVICE_NAME"' in daily_script_text
@@ -584,7 +584,7 @@ def test_generated_daily_wrapper_skips_entire_pipeline_on_sunday(tmp_path, repo_
     assert not command_log.exists()
 
 
-def test_generated_daily_wrapper_allows_manual_weekly_digest_on_sunday(tmp_path, repo_root):
+def test_generated_daily_wrapper_allows_manual_lookback_on_sunday(tmp_path, repo_root):
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
     command_log = tmp_path / "commands.log"
@@ -597,7 +597,7 @@ def test_generated_daily_wrapper_allows_manual_weekly_digest_on_sunday(tmp_path,
     )
 
     result = subprocess.run(
-        [str(paths["daily_script"]), "--weekly-digest"],
+        [str(paths["daily_script"]), "--lookback_days", "7"],
         capture_output=True,
         text=True,
         env={
@@ -614,7 +614,7 @@ def test_generated_daily_wrapper_allows_manual_weekly_digest_on_sunday(tmp_path,
     assert command_log.read_text(encoding="utf-8").splitlines() == [
         "systemctl --user stop newsletter-curator-admin",
         "systemctl --user is-active --quiet newsletter-curator-admin",
-        "uv run python daily_pipeline.py --weekly-digest",
+        "uv run python daily_pipeline.py --lookback_days 7",
         "systemctl --user start newsletter-curator-admin",
     ]
 

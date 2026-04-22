@@ -7,6 +7,18 @@ import main as delivery_main
 from curator.jobs import get_repository_from_config, run_daily_orchestrator_job
 
 
+def apply_lookback_days(config: dict, lookback_days: int | None) -> dict:
+    if lookback_days is None:
+        return config
+    if lookback_days < 1:
+        raise ValueError("--lookback_days must be at least 1")
+
+    config.setdefault("gmail", {})["query_time_window"] = f"newer_than:{lookback_days}d"
+    config.setdefault("additional_sources", {})["hours"] = lookback_days * 24
+    config.setdefault("delivery", {})["lookback_days"] = lookback_days
+    return config
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the full daily pipeline, optionally overriding recipients for a dry run."
@@ -17,9 +29,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Send only to this recipient instead of Buttondown or config recipients.",
     )
     parser.add_argument(
-        "--weekly-digest",
-        action="store_true",
-        help="Manually send the weekly seven-day digest regardless of today's schedule.",
+        "--lookback_days",
+        "--lookback-days",
+        type=int,
+        default=None,
+        help=(
+            "Override the Gmail and additional-source lookback window in days. "
+            "Use 7 to manually send the weekly digest regardless of today's schedule."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -27,10 +44,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     config = delivery_main.load_config()
+    lookback_days = args.lookback_days
+    config = apply_lookback_days(config, lookback_days)
     repository = get_repository_from_config(config)
     service = delivery_main.get_gmail_service(config["paths"])
     dry_run_recipient = str(args.dry_run_recipient or "").strip() or None
-    issue_type_override = "weekly" if args.weekly_digest else None
+    issue_type_override = None
+    if lookback_days is not None:
+        issue_type_override = "weekly" if lookback_days == 7 else "daily"
     result = run_daily_orchestrator_job(
         config,
         service,
