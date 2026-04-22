@@ -141,8 +141,18 @@ def _write_fake_runtime(fake_bin: Path, log_path: Path) -> None:
                 "import os",
                 "import sys",
                 f"log_path = {str(log_path)!r}",
+                "args = sys.argv[1:]",
                 "with open(log_path, 'a', encoding='utf-8') as handle:",
-                "    handle.write('uv ' + ' '.join(sys.argv[1:]) + '\\n')",
+                "    handle.write('uv ' + ' '.join(args) + '\\n')",
+                "if args[:3] == ['run', 'python', 'daily_pipeline.py']:",
+                "    exit_codes = [code for code in os.getenv('FAKE_UV_EXIT_CODES', '').split(',') if code]",
+                "    if exit_codes:",
+                "        with open(log_path, encoding='utf-8') as handle:",
+                "            attempt_count = sum(",
+                "                1 for line in handle if line.startswith('uv run python daily_pipeline.py')",
+                "            )",
+                "        index = min(max(attempt_count - 1, 0), len(exit_codes) - 1)",
+                "        sys.exit(int(exit_codes[index]))",
                 "sys.exit(int(os.getenv('FAKE_UV_EXIT_CODE', '0')))",
                 "",
             ]
@@ -173,6 +183,14 @@ def _write_fake_runtime_with_alert_capture(
                 "if args[:3] == ['run', 'python', 'daily_pipeline.py']:",
                 "    print('pipeline stdout before failure')",
                 "    print('pipeline stderr before failure', file=sys.stderr)",
+                "    exit_codes = [code for code in os.getenv('FAKE_UV_EXIT_CODES', '').split(',') if code]",
+                "    if exit_codes:",
+                "        with open(log_path, encoding='utf-8') as handle:",
+                "            attempt_count = sum(",
+                "                1 for line in handle if line.startswith('uv run python daily_pipeline.py')",
+                "            )",
+                "        index = min(max(attempt_count - 1, 0), len(exit_codes) - 1)",
+                "        sys.exit(int(exit_codes[index]))",
                 "    sys.exit(int(os.getenv('FAKE_UV_EXIT_CODE', '0')))",
                 "if args[:3] == ['run', 'python', 'scripts/send_pipeline_failure_alert.py']:",
                 "    output_file = args[args.index('--output-file') + 1]",
@@ -279,6 +297,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "trap handle_terminate TERM" in daily_script_text
     assert "scripts/send_pipeline_failure_alert.py" in daily_script_text
     assert "pipeline_status=${PIPESTATUS[0]}" in daily_script_text
+    assert "run_pipeline_attempt 1" in daily_script_text
+    assert "run_pipeline_attempt 2" in daily_script_text
 
     cron_text = cron_file.read_text(encoding="utf-8")
     assert f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}" in cron_text
@@ -544,11 +564,47 @@ def test_generated_daily_wrapper_restarts_admin_service_after_pipeline_failure(t
         "systemctl --user is-active --quiet newsletter-curator-admin",
         "uv run python daily_pipeline.py",
     ]
-    assert command_lines[3].startswith(
+    assert command_lines[3] == "uv run python daily_pipeline.py"
+    assert command_lines[4].startswith(
         "uv run python scripts/send_pipeline_failure_alert.py "
         "--source run_daily_pipeline.sh --exit-status 7 --output-file "
     )
-    assert command_lines[4:] == [
+    assert command_lines[5:] == [
+        "systemctl --user start newsletter-curator-admin",
+    ]
+
+
+def test_generated_daily_wrapper_succeeds_when_retry_succeeds(tmp_path, repo_root):
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    command_log = tmp_path / "commands.log"
+    _write_fake_runtime(fake_bin, command_log)
+    _, paths = _run_bootstrap(
+        tmp_path,
+        repo_root,
+        extra_env={"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
+        uv_bin="uv",
+    )
+
+    result = subprocess.run(
+        [str(paths["daily_script"])],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "FAKE_UV_EXIT_CODES": "7,0",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "daily pipeline attempt 1/2" in result.stdout
+    assert "daily pipeline attempt 2/2" in result.stdout
+    assert "retrying once" in result.stderr
+    assert command_log.read_text(encoding="utf-8").splitlines() == [
+        "systemctl --user stop newsletter-curator-admin",
+        "systemctl --user is-active --quiet newsletter-curator-admin",
+        "uv run python daily_pipeline.py",
+        "uv run python daily_pipeline.py",
         "systemctl --user start newsletter-curator-admin",
     ]
 
@@ -654,16 +710,17 @@ def test_generated_daily_wrapper_alert_receives_pipeline_output_file(tmp_path, r
     assert not Path(alert_payload["output_file"]).exists()
 
     command_lines = command_log.read_text(encoding="utf-8").splitlines()
-    assert command_lines[:4] == [
+    assert command_lines[:5] == [
         "systemctl --user stop newsletter-curator-admin",
         "systemctl --user is-active --quiet newsletter-curator-admin",
+        "uv run python daily_pipeline.py",
         "uv run python daily_pipeline.py",
         (
             "uv run python scripts/send_pipeline_failure_alert.py "
             f"--source run_daily_pipeline.sh --exit-status 7 --output-file {alert_payload['output_file']}"
         ),
     ]
-    assert command_lines[4:] == [
+    assert command_lines[5:] == [
         "systemctl --user start newsletter-curator-admin",
     ]
 
