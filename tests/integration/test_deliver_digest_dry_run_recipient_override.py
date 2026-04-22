@@ -254,6 +254,70 @@ def test_cached_delivery_retries_transient_send_failure(monkeypatch, tmp_path, c
     assert any(entry["event"] == "delivery_recipient_send_completed" for entry in events)
 
 
+def test_cached_delivery_continues_when_sent_lookup_breaks(monkeypatch, tmp_path, capsys):
+    main = importlib.import_module("main")
+    gmail = importlib.import_module("curator.gmail")
+    jobs = importlib.import_module("curator.jobs")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "email": {
+                "digest_recipients": ["cached@example.com"],
+                "digest_subject": "Cached Daily Digest",
+            },
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(jobs, "datetime", FixedDateTime)
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    _seed_cached_newsletter(repository, "2026-03-24")
+
+    original_message_exists_in_sent = gmail.message_exists_in_sent
+    lookup_attempts = 0
+    sent_messages: list[str] = []
+
+    def flaky_message_exists_in_sent(service, *, message_id_header: str) -> bool:
+        nonlocal lookup_attempts
+        lookup_attempts += 1
+        if lookup_attempts == 1:
+            raise BrokenPipeError("broken pipe")
+        return original_message_exists_in_sent(service, message_id_header=message_id_header)
+
+    def capture_send_email(
+        service,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        *,
+        message_id_header: str = "",
+    ):
+        sent_messages.append(to_address)
+
+    monkeypatch.setattr(gmail, "message_exists_in_sent", flaky_message_exists_in_sent)
+    monkeypatch.setattr(main, "send_email", capture_send_email)
+
+    result = main.run_job(config, FakeGmailService(messages=[]))
+    captured = capsys.readouterr()
+    events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
+
+    assert result["status"] == "completed"
+    assert result["sent_recipients"] == 1
+    assert result["failed_recipient_count"] == 0
+    assert sent_messages == ["cached@example.com"]
+    assert any(
+        entry["event"] == "delivery_recipient_sent_lookup_failed"
+        and entry["recipient"] == "cached@example.com"
+        and entry["error_type"] == "BrokenPipeError"
+        for entry in events
+    )
+    assert any(entry["event"] == "delivery_recipient_send_completed" for entry in events)
+
+
 def test_cached_delivery_reports_partial_failure_and_continues(monkeypatch, tmp_path, capsys):
     main = importlib.import_module("main")
     gmail = importlib.import_module("curator.gmail")
