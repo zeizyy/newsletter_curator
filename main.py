@@ -153,6 +153,8 @@ def run_job(
     *,
     recipient_override: str | None = None,
     issue_type_override: str | None = None,
+    use_cached_newsletter: bool = True,
+    persist_newsletter: bool = True,
 ) -> dict:
     return _run_delivery(
         config,
@@ -160,6 +162,8 @@ def run_job(
         send_email_fn=send_email,
         recipient_override=recipient_override,
         issue_type_override=issue_type_override,
+        use_cached_newsletter=use_cached_newsletter,
+        persist_newsletter=persist_newsletter,
     )
 
 
@@ -198,6 +202,8 @@ def _run_delivery(
     send_email_fn,
     recipient_override: str | None = None,
     issue_type_override: str | None = None,
+    use_cached_newsletter: bool = True,
+    persist_newsletter: bool = True,
 ) -> dict:
     from curator.jobs import (
         DEFAULT_AUDIENCE_KEY,
@@ -342,8 +348,8 @@ def _run_delivery(
             delivery_format="email",
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
-            use_cached_newsletter=True,
-            persist_newsletter=True,
+            use_cached_newsletter=use_cached_newsletter,
+            persist_newsletter=persist_newsletter,
             audience_key=DEFAULT_AUDIENCE_KEY,
         )
         return {
@@ -362,8 +368,8 @@ def _run_delivery(
             delivery_format=group["delivery_format"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
-            use_cached_newsletter=True,
-            persist_newsletter=True,
+            use_cached_newsletter=use_cached_newsletter,
+            persist_newsletter=persist_newsletter,
             audience_key=group["audience_key"],
         )
         group_status = str(profile_result.get("status", "")).strip() or "unknown"

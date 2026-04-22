@@ -49,8 +49,9 @@ def main(argv: list[str] | None = None) -> None:
     repository = get_repository_from_config(config)
     service = delivery_main.get_gmail_service(config["paths"])
     dry_run_recipient = str(args.dry_run_recipient or "").strip() or None
+    explicit_lookback = lookback_days is not None
     issue_type_override = None
-    if lookback_days is not None:
+    if explicit_lookback:
         issue_type_override = "weekly" if lookback_days == 7 else "daily"
     result = run_daily_orchestrator_job(
         config,
@@ -61,6 +62,8 @@ def main(argv: list[str] | None = None) -> None:
             svc,
             recipient_override=dry_run_recipient,
             issue_type_override=issue_type_override,
+            use_cached_newsletter=not explicit_lookback,
+            persist_newsletter=not explicit_lookback,
         ),
     )
     print(json.dumps(result, indent=2, sort_keys=True))
