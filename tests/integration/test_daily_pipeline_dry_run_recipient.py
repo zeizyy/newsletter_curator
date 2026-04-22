@@ -44,7 +44,50 @@ def test_daily_pipeline_passes_dry_run_recipient_to_delivery_runner(monkeypatch)
     }
 
 
-def test_daily_pipeline_passes_weekly_digest_override_to_delivery_runner(monkeypatch):
+def test_daily_pipeline_passes_lookback_days_to_delivery_runner(monkeypatch):
+    daily_pipeline = importlib.import_module("daily_pipeline")
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(daily_pipeline.delivery_main, "load_config", lambda: {"paths": {}})
+    monkeypatch.setattr(daily_pipeline, "get_repository_from_config", lambda config: object())
+    monkeypatch.setattr(daily_pipeline.delivery_main, "get_gmail_service", lambda paths: object())
+
+    def fake_run_job(config, service, *, recipient_override=None, issue_type_override=None):
+        return {
+            "recipient_override": recipient_override,
+            "issue_type_override": issue_type_override,
+        }
+
+    def fake_run_daily_orchestrator_job(
+        config,
+        service,
+        *,
+        repository=None,
+        source_fetcher=None,
+        article_fetcher=None,
+        collect_gmail_links_fn=None,
+        delivery_runner_fn=None,
+    ):
+        captured["config"] = config
+        captured["delivery_result"] = delivery_runner_fn(config, service)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(daily_pipeline.delivery_main, "run_job", fake_run_job)
+    monkeypatch.setattr(daily_pipeline, "run_daily_orchestrator_job", fake_run_daily_orchestrator_job)
+
+    daily_pipeline.main(["--lookback_days", "3", "--dry-run-recipient", "me@example.com"])
+
+    assert captured["delivery_result"] == {
+        "recipient_override": "me@example.com",
+        "issue_type_override": "daily",
+    }
+    assert captured["config"]["gmail"]["query_time_window"] == "newer_than:3d"
+    assert captured["config"]["additional_sources"]["hours"] == 72
+    assert captured["config"]["delivery"]["lookback_days"] == 3
+
+
+def test_daily_pipeline_uses_weekly_issue_for_seven_day_lookback(monkeypatch):
     daily_pipeline = importlib.import_module("daily_pipeline")
 
     captured: dict[str, object] = {}
@@ -75,7 +118,7 @@ def test_daily_pipeline_passes_weekly_digest_override_to_delivery_runner(monkeyp
     monkeypatch.setattr(daily_pipeline.delivery_main, "run_job", fake_run_job)
     monkeypatch.setattr(daily_pipeline, "run_daily_orchestrator_job", fake_run_daily_orchestrator_job)
 
-    daily_pipeline.main(["--weekly-digest", "--dry-run-recipient", "me@example.com"])
+    daily_pipeline.main(["--lookback_days", "7", "--dry-run-recipient", "me@example.com"])
 
     assert captured["delivery_result"] == {
         "recipient_override": "me@example.com",

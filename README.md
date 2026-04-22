@@ -506,13 +506,13 @@ The public origin for subscriber links, settings links, and tracked URLs is not 
 
 Delivery sends the daily issue on Monday through Friday. Saturday delivery automatically uses the weekly subject and a seven-day story window, capped to five candidate stories per publication day before final ranking. Sunday delivery is skipped without sending an alert.
 
-To manually send the weekly seven-day digest outside the normal Saturday schedule, run the generated wrapper with:
+To manually send a digest with an explicit lookback window outside the normal schedule, run the generated wrapper with:
 
 ```bash
-deploy/generated/run_daily_pipeline.sh --weekly-digest
+deploy/generated/run_daily_pipeline.sh --lookback_days 7
 ```
 
-That manual mode uses the same weekly subject, seven-day story window, and weekly candidate cap as the scheduled Saturday digest.
+`--lookback_days 7` uses the same weekly subject, seven-day story window, and weekly candidate cap as the scheduled Saturday digest. Other values override the Gmail and additional-source lookback windows while sending a daily issue.
 
 ### Persona Behavior
 `persona.text` now affects only the final delivery ranking step.
