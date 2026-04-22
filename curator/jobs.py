@@ -1856,6 +1856,20 @@ def run_delivery_job(
                         error_status_code=event.get("error_status_code"),
                         error_code=str(event.get("error_code", "")).strip(),
                     )
+                elif event_name == "sent_lookup_failed":
+                    emit_event(
+                        "delivery_recipient_sent_lookup_failed",
+                        audience_key=audience_key,
+                        daily_newsletter_id=daily_newsletter_id,
+                        delivery_format=delivery_format,
+                        recipient=recipient,
+                        message_id_header=message_id_header,
+                        attempt=int(event.get("attempt", 0) or 0),
+                        error=str(event.get("error", "")).strip(),
+                        error_type=str(event.get("error_type", "")).strip(),
+                        error_status_code=event.get("error_status_code"),
+                        error_code=str(event.get("error_code", "")).strip(),
+                    )
                 elif event_name == "skipped_existing":
                     emit_event(
                         "delivery_recipient_send_skipped_existing",

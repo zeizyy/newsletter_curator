@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from datetime import UTC, datetime, timedelta
 
-from curator.jobs import get_repository_from_config
+from curator.jobs import current_newsletter_date, get_repository_from_config
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
 
@@ -77,7 +77,7 @@ def test_legacy_delivery_still_reuses_cached_newsletter(monkeypatch, tmp_path):
 
     config = main.load_config()
     repository = get_repository_from_config(config)
-    _seed_cached_newsletter(repository, datetime.now(UTC).date().isoformat())
+    _seed_cached_newsletter(repository, current_newsletter_date())
 
     sent_messages: list[dict] = []
 
@@ -135,7 +135,7 @@ def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):
 
     config = main.load_config()
     repository = get_repository_from_config(config)
-    _seed_cached_newsletter(repository, datetime.now(UTC).date().isoformat())
+    _seed_cached_newsletter(repository, current_newsletter_date())
     macro_one = repository.upsert_subscriber("macro-one@example.com")
     repository.upsert_subscriber_profile(
         int(macro_one["id"]),

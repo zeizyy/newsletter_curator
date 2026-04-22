@@ -120,6 +120,18 @@ def message_exists_in_sent(service, *, message_id_header: str) -> bool:
     )
 
 
+def _sent_message_lookup_error_event(exc: Exception, *, attempt: int) -> dict:
+    error_details = _delivery_send_error_details(exc)
+    return {
+        "event": "sent_lookup_failed",
+        "attempt": attempt,
+        "error": error_details["error"],
+        "error_type": error_details["error_type"],
+        "error_status_code": error_details["error_status_code"],
+        "error_code": error_details["error_code"],
+    }
+
+
 def _delivery_send_error_status_code(exc: Exception) -> int | None:
     response = getattr(exc, "resp", None)
     status = getattr(response, "status", None)
@@ -236,22 +248,31 @@ def send_email_with_retry_and_dedupe(
     events: list[dict] = []
     attempt = 0
     while attempt < max_attempts:
-        if service is not None and message_exists_in_sent(service, message_id_header=message_id_header):
-            return {
-                "status": "sent",
-                "recipient": to_address,
-                "message_id_header": message_id_header,
-                "attempts": attempt,
-                "error": "",
-                "retryable": False,
-                "events": events
-                + [
-                    {
-                        "event": "skipped_existing",
-                        "attempt": attempt + 1,
-                    }
-                ],
-            }
+        if service is not None:
+            try:
+                existing_message_sent = message_exists_in_sent(
+                    service,
+                    message_id_header=message_id_header,
+                )
+            except Exception as exc:
+                events.append(_sent_message_lookup_error_event(exc, attempt=attempt + 1))
+                existing_message_sent = False
+            if existing_message_sent:
+                return {
+                    "status": "sent",
+                    "recipient": to_address,
+                    "message_id_header": message_id_header,
+                    "attempts": attempt,
+                    "error": "",
+                    "retryable": False,
+                    "events": events
+                    + [
+                        {
+                            "event": "skipped_existing",
+                            "attempt": attempt + 1,
+                        }
+                    ],
+                }
         attempt += 1
         try:
             send_kwargs = {}
@@ -272,7 +293,15 @@ def send_email_with_retry_and_dedupe(
             last_error = error_details["error"]
             retryable = is_retryable_delivery_send_error(exc)
             if service is not None and is_ambiguous_delivery_send_error(exc):
-                if message_exists_in_sent(service, message_id_header=message_id_header):
+                try:
+                    existing_message_sent = message_exists_in_sent(
+                        service,
+                        message_id_header=message_id_header,
+                    )
+                except Exception as lookup_exc:
+                    events.append(_sent_message_lookup_error_event(lookup_exc, attempt=attempt))
+                    existing_message_sent = False
+                if existing_message_sent:
                     return {
                         "status": "sent",
                         "recipient": to_address,

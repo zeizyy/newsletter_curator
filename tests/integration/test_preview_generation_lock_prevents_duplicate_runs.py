@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import threading
 
-from curator.jobs import current_newsletter_date, get_repository_from_config
+from curator.jobs import get_repository_from_config
 from tests.helpers import write_temp_config
 
 
@@ -80,7 +80,7 @@ def test_preview_generation_lock_prevents_duplicate_runs(monkeypatch, tmp_path):
     assert call_count["value"] == 1
 
     for _ in range(20):
-        generation = repository.get_preview_generation(current_newsletter_date())
+        generation = repository.get_preview_generation(admin_app.current_newsletter_date())
         if generation is not None and generation["status"] == "completed":
             break
     assert generation is not None
