@@ -14,10 +14,20 @@ def test_daily_pipeline_passes_dry_run_recipient_to_delivery_runner(monkeypatch)
     monkeypatch.setattr(daily_pipeline, "get_repository_from_config", lambda config: object())
     monkeypatch.setattr(daily_pipeline.delivery_main, "get_gmail_service", lambda paths: object())
 
-    def fake_run_job(config, service, *, recipient_override=None, issue_type_override=None):
+    def fake_run_job(
+        config,
+        service,
+        *,
+        recipient_override=None,
+        issue_type_override=None,
+        use_cached_newsletter=True,
+        persist_newsletter=True,
+    ):
         return {
             "recipient_override": recipient_override,
             "issue_type_override": issue_type_override,
+            "use_cached_newsletter": use_cached_newsletter,
+            "persist_newsletter": persist_newsletter,
         }
 
     def fake_run_daily_orchestrator_job(
@@ -41,6 +51,8 @@ def test_daily_pipeline_passes_dry_run_recipient_to_delivery_runner(monkeypatch)
     assert captured["delivery_result"] == {
         "recipient_override": "me@example.com",
         "issue_type_override": None,
+        "use_cached_newsletter": True,
+        "persist_newsletter": True,
     }
 
 
@@ -53,10 +65,20 @@ def test_daily_pipeline_passes_lookback_days_to_delivery_runner(monkeypatch):
     monkeypatch.setattr(daily_pipeline, "get_repository_from_config", lambda config: object())
     monkeypatch.setattr(daily_pipeline.delivery_main, "get_gmail_service", lambda paths: object())
 
-    def fake_run_job(config, service, *, recipient_override=None, issue_type_override=None):
+    def fake_run_job(
+        config,
+        service,
+        *,
+        recipient_override=None,
+        issue_type_override=None,
+        use_cached_newsletter=True,
+        persist_newsletter=True,
+    ):
         return {
             "recipient_override": recipient_override,
             "issue_type_override": issue_type_override,
+            "use_cached_newsletter": use_cached_newsletter,
+            "persist_newsletter": persist_newsletter,
         }
 
     def fake_run_daily_orchestrator_job(
@@ -81,6 +103,8 @@ def test_daily_pipeline_passes_lookback_days_to_delivery_runner(monkeypatch):
     assert captured["delivery_result"] == {
         "recipient_override": "me@example.com",
         "issue_type_override": "daily",
+        "use_cached_newsletter": False,
+        "persist_newsletter": False,
     }
     assert captured["config"]["gmail"]["query_time_window"] == "newer_than:3d"
     assert captured["config"]["additional_sources"]["hours"] == 72
@@ -96,10 +120,20 @@ def test_daily_pipeline_uses_weekly_issue_for_seven_day_lookback(monkeypatch):
     monkeypatch.setattr(daily_pipeline, "get_repository_from_config", lambda config: object())
     monkeypatch.setattr(daily_pipeline.delivery_main, "get_gmail_service", lambda paths: object())
 
-    def fake_run_job(config, service, *, recipient_override=None, issue_type_override=None):
+    def fake_run_job(
+        config,
+        service,
+        *,
+        recipient_override=None,
+        issue_type_override=None,
+        use_cached_newsletter=True,
+        persist_newsletter=True,
+    ):
         return {
             "recipient_override": recipient_override,
             "issue_type_override": issue_type_override,
+            "use_cached_newsletter": use_cached_newsletter,
+            "persist_newsletter": persist_newsletter,
         }
 
     def fake_run_daily_orchestrator_job(
@@ -123,6 +157,8 @@ def test_daily_pipeline_uses_weekly_issue_for_seven_day_lookback(monkeypatch):
     assert captured["delivery_result"] == {
         "recipient_override": "me@example.com",
         "issue_type_override": "weekly",
+        "use_cached_newsletter": False,
+        "persist_newsletter": False,
     }
 
 
@@ -144,7 +180,13 @@ def test_daily_pipeline_exits_nonzero_for_delivery_stage_failure(monkeypatch):
     monkeypatch.setattr(
         daily_pipeline.delivery_main,
         "run_job",
-        lambda config, service, *, recipient_override=None, issue_type_override=None: {},
+        lambda config,
+        service,
+        *,
+        recipient_override=None,
+        issue_type_override=None,
+        use_cached_newsletter=True,
+        persist_newsletter=True: {},
     )
 
     def fake_run_daily_orchestrator_job(
