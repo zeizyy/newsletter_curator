@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
@@ -123,3 +124,86 @@ def test_repository_schema_bootstrap_after_reset(tmp_path):
         "summary_model",
         "summarized_at",
     }.issubset(snapshot_columns)
+
+
+def test_repository_migration_backfills_gmail_email_sent_at(tmp_path):
+    db_path = temp_db_path(tmp_path)
+    email_header = "Mon, 23 Mar 2026 12:34:56 +0000"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(source_type, source_name)
+            );
+
+            CREATE TABLE fetched_stories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_key TEXT NOT NULL UNIQUE,
+                source_id INTEGER NOT NULL,
+                ingestion_run_id INTEGER,
+                source_type TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                subject TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL,
+                canonical_url TEXT NOT NULL,
+                anchor_text TEXT NOT NULL DEFAULT '',
+                context TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                published_at TEXT,
+                summary TEXT NOT NULL DEFAULT '',
+                raw_payload_json TEXT NOT NULL DEFAULT '{}',
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO sources (id, source_type, source_name, created_at, updated_at)
+            VALUES (1, 'gmail', 'Macro Letter', '2026-03-23T00:00:00+00:00', '2026-03-23T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO fetched_stories (
+                story_key,
+                source_id,
+                source_type,
+                source_name,
+                subject,
+                url,
+                canonical_url,
+                published_at,
+                raw_payload_json,
+                first_seen_at,
+                last_seen_at
+            )
+            VALUES (?, 1, 'gmail', 'Macro Letter', 'Old byline', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "gmail-story",
+                "https://example.com/story",
+                "https://example.com/story",
+                "2026-03-21T12:15:00+00:00",
+                json.dumps({"date": email_header}),
+                "2026-03-23T12:35:00+00:00",
+                "2026-03-23T12:35:00+00:00",
+            ),
+        )
+
+    repository = SQLiteRepository(db_path)
+    repository.initialize()
+
+    stories = repository.list_stories(
+        source_type="gmail",
+        published_after="2026-03-23T00:00:00+00:00",
+    )
+
+    assert len(stories) == 1
+    assert stories[0]["published_at"] == "2026-03-21T12:15:00+00:00"
+    assert stories[0]["email_sent_at"] == "2026-03-23T12:34:56+00:00"

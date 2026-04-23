@@ -4,6 +4,7 @@ import importlib
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 
+from curator.gmail import collect_repository_gmail_links
 from curator.jobs import get_repository_from_config, run_fetch_gmail_job
 from tests.fakes import FakeArticleFetcher, FakeGmailService, FakeOpenAI, make_gmail_message
 from tests.helpers import write_temp_config
@@ -104,9 +105,12 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
     )
 
 
-def test_gmail_ingest_prefers_article_timestamp_over_email_timestamp(monkeypatch, repo_root, tmp_path):
+def test_gmail_ingest_filters_by_email_timestamp_but_keeps_article_timestamp(
+    monkeypatch, repo_root, tmp_path
+):
     now_utc = datetime.now(UTC)
     email_timestamp = now_utc - timedelta(hours=2)
+    expected_email_sent_at = email_timestamp.replace(microsecond=0).isoformat()
     article_timestamp = "2026-03-21T12:15:00+00:00"
 
     fixture_html = (repo_root / "tests" / "fixtures" / "newsletter_sample.html").read_text(
@@ -156,7 +160,31 @@ def test_gmail_ingest_prefers_article_timestamp_over_email_timestamp(monkeypatch
     result = run_fetch_gmail_job(config, ingest_service, article_fetcher=fake_article_fetcher)
     repository = get_repository_from_config(config)
     stories = repository.list_stories(source_type="gmail")
+    repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Old Wire",
+            "subject": "Old additional source story",
+            "url": "https://example.com/additional/old",
+            "anchor_text": "Old additional source story",
+            "context": "Old additional source context.",
+            "category": "Markets / stocks / macro / economy",
+            "published_at": article_timestamp,
+        }
+    )
 
     assert result["status"] == "completed"
     assert len(stories) == 2
     assert {story["published_at"] for story in stories} == {article_timestamp}
+    assert {story["email_sent_at"] for story in stories} == {expected_email_sent_at}
+
+    gmail_links = collect_repository_gmail_links(config, repository=repository)
+    assert len(gmail_links) == 2
+    assert {link["published_at"] for link in gmail_links} == {article_timestamp}
+    assert {link["email_sent_at"] for link in gmail_links} == {expected_email_sent_at}
+
+    additional_links = repository.list_stories(
+        source_type="additional_source",
+        published_after=(now_utc - timedelta(days=1)).isoformat(),
+    )
+    assert additional_links == []

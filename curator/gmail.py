@@ -482,6 +482,7 @@ def collect_live_gmail_links(
         from_header = get_header_value_fn(headers, "From")
         source_name = normalize_gmail_source_name(from_header)
         date_header = get_header_value_fn(headers, "Date")
+        email_sent_at = parse_email_datetime(date_header)
 
         _text_bodies, html_bodies = extract_bodies_fn(payload)
         links = []
@@ -497,7 +498,8 @@ def collect_live_gmail_links(
                     "source_name": source_name,
                     "source_type": "gmail",
                     "date": date_header,
-                    "published_at": parse_email_datetime(date_header),
+                    "email_sent_at": email_sent_at,
+                    "published_at": email_sent_at,
                     "url": link["url"],
                     "anchor_text": link["anchor_text"],
                     "context": link["context"],
@@ -564,7 +566,8 @@ def collect_repository_gmail_links(config: dict, *, repository) -> list[dict]:
                 "from": source_name or "gmail",
                 "source_name": source_name or "gmail",
                 "source_type": "gmail",
-                "date": str(story.get("published_at", "")).strip(),
+                "date": str(story.get("email_sent_at", "") or story.get("published_at", "")).strip(),
+                "email_sent_at": str(story.get("email_sent_at", "") or "").strip(),
                 "published_at": str(story.get("published_at", "")).strip(),
                 "url": str(story.get("url", "")).strip(),
                 "anchor_text": str(story.get("anchor_text", "")).strip(),
