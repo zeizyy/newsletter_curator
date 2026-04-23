@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import email.utils
 import hashlib
 import json
 import secrets
@@ -54,6 +55,21 @@ class SchemaResetRequiredError(RuntimeError):
 def story_key(source_type: str, source_name: str, url: str) -> str:
     raw = f"{source_type.strip()}|{source_name.strip()}|{canonicalize_url(url)}"
     return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def normalize_email_datetime(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = email.utils.parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        parsed = None
+    if parsed is None:
+        return raw
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).isoformat()
 
 
 @dataclass
@@ -154,6 +170,7 @@ class SQLiteRepository:
                 "context",
                 "category",
                 "published_at",
+                "email_sent_at",
                 "summary",
                 "raw_payload_json",
                 "first_seen_at",
@@ -254,6 +271,36 @@ class SQLiteRepository:
         self._migrate_daily_newsletters_audience_keys(connection)
         self._migrate_daily_newsletters_issue_types(connection)
         self._migrate_subscriber_profiles_delivery_format(connection)
+        self._migrate_fetched_stories_email_sent_at(connection)
+
+    def _migrate_fetched_stories_email_sent_at(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "fetched_stories")
+        if not columns or "email_sent_at" in columns:
+            return
+        connection.execute("ALTER TABLE fetched_stories ADD COLUMN email_sent_at TEXT")
+        rows = connection.execute(
+            """
+            SELECT id, raw_payload_json
+            FROM fetched_stories
+            WHERE source_type = 'gmail'
+            """
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(str(row["raw_payload_json"] or "{}"))
+            except json.JSONDecodeError:
+                payload = {}
+            if not isinstance(payload, dict):
+                continue
+            email_sent_at = normalize_email_datetime(
+                str(payload.get("email_sent_at") or payload.get("date") or "")
+            )
+            if not email_sent_at:
+                continue
+            connection.execute(
+                "UPDATE fetched_stories SET email_sent_at = ? WHERE id = ?",
+                (email_sent_at, row["id"]),
+            )
 
     def _migrate_daily_newsletters_audience_keys(self, connection: sqlite3.Connection) -> None:
         columns = self._table_columns(connection, "daily_newsletters")
@@ -658,6 +705,7 @@ class SQLiteRepository:
                 context TEXT NOT NULL DEFAULT '',
                 category TEXT NOT NULL DEFAULT '',
                 published_at TEXT,
+                email_sent_at TEXT,
                 summary TEXT NOT NULL DEFAULT '',
                 raw_payload_json TEXT NOT NULL DEFAULT '{}',
                 first_seen_at TEXT NOT NULL,
@@ -667,6 +715,7 @@ class SQLiteRepository:
             CREATE INDEX IF NOT EXISTS idx_fetched_stories_source_type ON fetched_stories(source_type);
             CREATE INDEX IF NOT EXISTS idx_fetched_stories_source_name ON fetched_stories(source_name);
             CREATE INDEX IF NOT EXISTS idx_fetched_stories_published_at ON fetched_stories(published_at);
+            CREATE INDEX IF NOT EXISTS idx_fetched_stories_email_sent_at ON fetched_stories(email_sent_at);
 
             CREATE TABLE IF NOT EXISTS article_snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2307,6 +2356,9 @@ class SQLiteRepository:
         source_id = self.upsert_source(source_type=source_type, source_name=source_name)
         now = utc_now()
         raw_payload = json.dumps(story, sort_keys=True)
+        email_sent_at = str(story.get("email_sent_at", "")).strip()
+        if not email_sent_at and source_type == "gmail":
+            email_sent_at = normalize_email_datetime(str(story.get("date", "")).strip())
 
         with self.connect() as connection:
             connection.execute(
@@ -2324,12 +2376,13 @@ class SQLiteRepository:
                     context,
                     category,
                     published_at,
+                    email_sent_at,
                     summary,
                     raw_payload_json,
                     first_seen_at,
                     last_seen_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(story_key)
                 DO UPDATE SET
                     source_id = excluded.source_id,
@@ -2340,6 +2393,7 @@ class SQLiteRepository:
                     context = excluded.context,
                     category = excluded.category,
                     published_at = excluded.published_at,
+                    email_sent_at = excluded.email_sent_at,
                     summary = excluded.summary,
                     raw_payload_json = excluded.raw_payload_json,
                     last_seen_at = excluded.last_seen_at
@@ -2357,6 +2411,7 @@ class SQLiteRepository:
                     str(story.get("context", "")).strip(),
                     str(story.get("category", "")).strip(),
                     str(story.get("published_at", story.get("date", ""))).strip(),
+                    email_sent_at,
                     str(story.get("summary", "")).strip(),
                     raw_payload,
                     now,
@@ -2543,7 +2598,10 @@ class SQLiteRepository:
             conditions.append("source_name = ?")
             params.append(source_name)
         if published_after:
-            conditions.append("published_at >= ?")
+            if source_type == "gmail":
+                conditions.append("COALESCE(NULLIF(email_sent_at, ''), published_at) >= ?")
+            else:
+                conditions.append("published_at >= ?")
             params.append(published_after)
         if not include_paywalled:
             conditions.append("(snap.paywall_detected IS NULL OR snap.paywall_detected = 0)")
@@ -2563,6 +2621,7 @@ class SQLiteRepository:
                 fs.context,
                 fs.category,
                 fs.published_at,
+                fs.email_sent_at,
                 fs.summary,
                 fs.first_seen_at,
                 fs.last_seen_at,
@@ -2579,7 +2638,12 @@ class SQLiteRepository:
             FROM fetched_stories fs
             LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
             {where_clause}
-            ORDER BY COALESCE(fs.published_at, fs.first_seen_at) DESC, fs.id DESC
+            ORDER BY
+                CASE
+                    WHEN fs.source_type = 'gmail' THEN COALESCE(NULLIF(fs.email_sent_at, ''), fs.published_at, fs.first_seen_at)
+                    ELSE COALESCE(fs.published_at, fs.first_seen_at)
+                END DESC,
+                fs.id DESC
         """
         with self.connect() as connection:
             rows = connection.execute(query, params).fetchall()
