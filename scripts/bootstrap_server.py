@@ -71,7 +71,7 @@ def parse_args() -> argparse.Namespace:
         help="Systemd service name to reload after installing the Caddy config.",
     )
     parser.add_argument("--cron-timezone", default="")
-    parser.add_argument("--daily-schedule", default="0 13 * * *")
+    parser.add_argument("--daily-schedule", default="30 13 * * *")
     parser.add_argument("--cron-log-file", type=Path, default=None)
     parser.add_argument("--debug-log-file", type=Path, default=None)
     parser.add_argument("--logrotate-file", type=Path, default=None)
