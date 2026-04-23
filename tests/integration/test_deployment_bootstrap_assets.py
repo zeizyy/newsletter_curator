@@ -304,7 +304,7 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert f"XDG_RUNTIME_DIR=/run/user/{os.getuid()}" in cron_text
     assert f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{os.getuid()}/bus" in cron_text
     assert "CRON_TZ=" not in cron_text
-    assert "0 13 * * *" in cron_text
+    assert "30 13 * * *" in cron_text
     assert str(daily_script) in cron_text
     assert str(fetch_gmail_script) not in cron_text
     assert str(fetch_sources_script) not in cron_text
