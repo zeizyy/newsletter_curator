@@ -50,6 +50,15 @@ DEFAULT_CONFIG = {
         "max_feed_workers": 5,
     },
     "openai": {"reasoning_model": "gpt-5-mini", "summary_model": "gpt-5-mini"},
+    "daily_news_agent": {
+        "model": "gpt-5-mini",
+        "max_history_messages": 8,
+        "max_message_chars": 1600,
+        "max_output_tokens": 900,
+        "mcp_window_hours": 48,
+        "snippet_limit": 8,
+        "detail_char_limit": 3500,
+    },
     "limits": {
         "max_links_per_email": 15,
         "select_top_stories": 20,

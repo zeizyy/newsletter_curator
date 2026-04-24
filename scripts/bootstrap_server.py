@@ -175,6 +175,8 @@ def build_env_file(
             "CURATOR_GUNICORN_THREADS=4",
             "CURATOR_GUNICORN_TIMEOUT=120",
             "CURATOR_GUNICORN_GRACEFUL_TIMEOUT=30",
+            "CURATOR_DAILY_NEWS_AGENT_MODE=real",
+            "CURATOR_DAILY_NEWS_AGENT_MOCK=0",
             f"OPENAI_API_KEY={openai_api_key}",
             f"BUTTONDOWN_API_KEY={buttondown_api_key}",
             f"CURATOR_PUBLIC_BASE_URL={public_base_url}",

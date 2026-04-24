@@ -182,11 +182,20 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
         )
         tools_response = _read_message(process)
         tools = tools_response["result"]["tools"]
-        assert len(tools) == 1
-        assert tools[0]["name"] == "list_recent_stories"
-        assert tools[0]["annotations"]["readOnlyHint"] is True
-        assert tools[0]["inputSchema"]["properties"]["hours"]["maximum"] == 168
-        assert tools[0]["inputSchema"]["properties"]["source_type"]["type"] == "string"
+        tool_by_name = {tool["name"]: tool for tool in tools}
+        assert set(tool_by_name) == {
+            "list_recent_stories",
+            "search_recent_stories",
+            "get_story_details",
+        }
+        assert tool_by_name["list_recent_stories"]["annotations"]["readOnlyHint"] is True
+        assert tool_by_name["list_recent_stories"]["inputSchema"]["properties"]["hours"]["maximum"] == 168
+        assert (
+            tool_by_name["list_recent_stories"]["inputSchema"]["properties"]["source_type"]["type"]
+            == "string"
+        )
+        assert tool_by_name["search_recent_stories"]["inputSchema"]["required"] == ["query"]
+        assert tool_by_name["get_story_details"]["inputSchema"]["required"] == ["story_id"]
 
         _send_message(
             process,

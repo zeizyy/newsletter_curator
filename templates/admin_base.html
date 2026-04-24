@@ -857,6 +857,7 @@
           <a class="nav-pill {% if request.endpoint == 'config_editor' %}is-active{% endif %}" href="{{ url_for('config_editor') }}">Control Room</a>
           <a class="nav-pill {% if request.endpoint == 'operations_dashboard' %}is-active{% endif %}" href="{{ url_for('operations_dashboard') }}">Dashboard</a>
           <a class="nav-pill {% if request.endpoint == 'analytics_dashboard' %}is-active{% endif %}" href="{{ url_for('analytics_dashboard') }}">Analytics</a>
+          <a class="nav-pill {% if request.endpoint == 'daily_news_chat_page' %}is-active{% endif %}" href="{{ url_for('daily_news_chat_page') }}">Daily News</a>
           <a class="nav-pill {% if request.endpoint in ['newsletter_history', 'newsletter_history_detail'] %}is-active{% endif %}" href="{{ url_for('newsletter_history') }}">Archive</a>
           <a class="nav-pill {% if request.endpoint in ['repository_inventory', 'story_explorer'] %}is-active{% endif %}" href="{{ url_for('repository_inventory') }}">Inventory</a>
           {% endblock %}

@@ -253,6 +253,8 @@ def test_deployment_bootstrap_assets(tmp_path, repo_root):
     assert "CURATOR_GUNICORN_THREADS=4" in env_text
     assert "CURATOR_GUNICORN_TIMEOUT=120" in env_text
     assert "CURATOR_GUNICORN_GRACEFUL_TIMEOUT=30" in env_text
+    assert "CURATOR_DAILY_NEWS_AGENT_MODE=real" in env_text
+    assert "CURATOR_DAILY_NEWS_AGENT_MOCK=0" in env_text
     assert "OPENAI_API_KEY=test-openai-key" in env_text
     assert "BUTTONDOWN_API_KEY=test-buttondown-key" in env_text
     assert "CURATOR_PUBLIC_BASE_URL=https://curator.example.com" in env_text
