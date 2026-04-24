@@ -206,8 +206,7 @@ def test_http_mcp_route_requires_token_and_returns_405_without_sse(monkeypatch, 
             "MCP-Protocol-Version": "2025-11-25",
         },
     )
-    assert get_response.status_code == 200
-    assert get_response.headers["Content-Type"].startswith("text/event-stream")
+    assert get_response.status_code == 405
 
     notification_response = client.post(
         "/mcp",
@@ -218,4 +217,4 @@ def test_http_mcp_route_requires_token_and_returns_405_without_sse(monkeypatch, 
     assert notification_response.get_data(as_text=True) == ""
 
     delete_response = client.delete("/mcp", headers=_headers("mcp-secret"))
-    assert delete_response.status_code == 204
+    assert delete_response.status_code == 405
