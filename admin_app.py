@@ -1591,14 +1591,10 @@ def remote_mcp():
         return error_response
 
     if request.method == "GET":
-        response = Response(": streamable-http-ready\n\n", mimetype="text/event-stream")
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Connection"] = "keep-alive"
-        response.headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
-        return response
+        return ("", 405)
 
     if request.method == "DELETE":
-        return ("", 204)
+        return ("", 405)
 
     try:
         message = request.get_json(force=True)
