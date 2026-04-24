@@ -259,6 +259,19 @@ class SQLiteRepository:
                 "user_agent",
                 "ip_address",
             },
+            "agent_chat_sessions": {
+                "id",
+                "created_at",
+                "updated_at",
+            },
+            "agent_chat_messages": {
+                "id",
+                "session_id",
+                "role",
+                "content",
+                "metadata_json",
+                "created_at",
+            },
         }
         for table_name, expected in expected_columns.items():
             columns = self._table_columns(connection, table_name)
@@ -622,6 +635,8 @@ class SQLiteRepository:
             "newsletter_open_events",
             "tracked_links",
             "newsletter_telemetry",
+            "agent_chat_messages",
+            "agent_chat_sessions",
             "fetched_stories",
             "delivery_runs",
             "daily_newsletters",
@@ -821,6 +836,24 @@ class SQLiteRepository:
                 user_agent TEXT NOT NULL DEFAULT '',
                 ip_address TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS agent_chat_sessions (
+                id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL REFERENCES agent_chat_sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_chat_messages_session_id
+            ON agent_chat_messages(session_id, id);
             """
         )
 
@@ -2706,6 +2739,115 @@ class SQLiteRepository:
             "orphaned_sources_deleted": orphaned_sources_deleted,
         }
 
+    def create_agent_chat_session(self, session_id: str) -> dict:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_chat_sessions (id, created_at, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(id)
+                DO UPDATE SET updated_at = excluded.updated_at
+                """,
+                (session_id, now, now),
+            )
+            row = connection.execute(
+                """
+                SELECT id, created_at, updated_at
+                FROM agent_chat_sessions
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row is not None else {}
+
+    def get_agent_chat_session(self, session_id: str) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, created_at, updated_at
+                FROM agent_chat_sessions
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def append_agent_chat_message(
+        self,
+        session_id: str,
+        *,
+        role: str,
+        content: str,
+        metadata: dict | None = None,
+    ) -> dict:
+        self.create_agent_chat_session(session_id)
+        now = utc_now()
+        payload = json.dumps(metadata or {}, sort_keys=True)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_chat_messages (
+                    session_id,
+                    role,
+                    content,
+                    metadata_json,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, role, content, payload, now),
+            )
+            connection.execute(
+                """
+                UPDATE agent_chat_sessions
+                SET updated_at = ?
+                WHERE id = ?
+                """,
+                (now, session_id),
+            )
+            row = connection.execute(
+                """
+                SELECT id, session_id, role, content, metadata_json, created_at
+                FROM agent_chat_messages
+                WHERE id = last_insert_rowid()
+                """,
+            ).fetchone()
+        return self._normalize_agent_chat_message(row) if row is not None else {}
+
+    def list_agent_chat_messages(self, session_id: str, *, limit: int | None = None) -> list[dict]:
+        query = """
+            SELECT id, session_id, role, content, metadata_json, created_at
+            FROM agent_chat_messages
+            WHERE session_id = ?
+            ORDER BY id ASC
+        """
+        params: list[object] = [session_id]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        with self.connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [self._normalize_agent_chat_message(row) for row in rows]
+
+    def _normalize_agent_chat_message(self, row: sqlite3.Row) -> dict:
+        try:
+            metadata = json.loads(str(row["metadata_json"] or "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return {
+            "id": int(row["id"]),
+            "session_id": str(row["session_id"] or ""),
+            "role": str(row["role"] or ""),
+            "content": str(row["content"] or ""),
+            "metadata": metadata,
+            "created_at": str(row["created_at"] or ""),
+        }
+
     def get_table_counts(self) -> dict[str, int]:
         tables = [
             "schema_migrations",
@@ -2721,6 +2863,8 @@ class SQLiteRepository:
             "fetched_stories",
             "article_snapshots",
             "user_source_selections",
+            "agent_chat_sessions",
+            "agent_chat_messages",
         ]
         counts = {}
         with self.connect() as connection:

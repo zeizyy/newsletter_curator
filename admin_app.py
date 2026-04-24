@@ -1,18 +1,21 @@
 import datetime as dt
 import base64
 from email.utils import parseaddr
+import ipaddress
 import json
 import os
 from pathlib import Path
+import secrets
 import threading
 from urllib.parse import urlsplit
 
-from flask import Flask, abort, make_response, redirect, render_template, request, url_for
+from flask import Flask, Response, abort, make_response, redirect, render_template, request, stream_with_context, url_for
 import requests
 from werkzeug.middleware.proxy_fix import ProxyFix
 import yaml
 
 from curator import config as config_module
+from curator.daily_news_agent import DailyNewsAgentService, MockDailyNewsAgentService
 from curator.debug_logs import (
     DEBUG_LOG_TOKEN_HEADER,
     configured_debug_log_path,
@@ -1154,6 +1157,71 @@ def render_admin_template(template_name: str, **context):
     )
 
 
+def daily_news_agent_mcp_url() -> str:
+    return f"{subscriber_public_base_url()}{MCP_ENDPOINT_PATH}"
+
+
+def create_daily_news_chat_session(repository) -> dict:
+    session_id = secrets.token_urlsafe(18)
+    return repository.create_agent_chat_session(session_id)
+
+
+def sse_payload(payload: dict) -> str:
+    return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n"
+
+
+def sse_error_response(message: str, *, status: int = 200) -> Response:
+    response = Response(
+        sse_payload({"type": "error", "message": message}),
+        status=status,
+        mimetype="text/event-stream",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+def daily_news_agent_preflight_error(*, mcp_url: str, mcp_token: str) -> str:
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        return "OPENAI_API_KEY is not configured for the Daily News agent."
+    if not mcp_token:
+        return "CURATOR_MCP_TOKEN must be configured for the Daily News agent MCP server."
+
+    parsed = urlsplit(mcp_url)
+    hostname = (parsed.hostname or "").strip().lower()
+    if not hostname:
+        return f"Daily News MCP URL is invalid: {mcp_url}"
+
+    if hostname == "localhost" or hostname.endswith(".local"):
+        return (
+            "Daily News MCP must be reachable from OpenAI over a public URL. "
+            f"Current MCP URL uses local host '{hostname}'. Set CURATOR_PUBLIC_BASE_URL to a public HTTPS origin."
+        )
+
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        ip = None
+
+    if ip is not None and (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_unspecified
+    ):
+        return (
+            "Daily News MCP must be reachable from OpenAI over a public URL. "
+            f"Current MCP URL uses non-public host '{hostname}'. Set CURATOR_PUBLIC_BASE_URL to a public HTTPS origin."
+        )
+    return ""
+
+
+def daily_news_agent_mock_enabled() -> bool:
+    mode = os.getenv("CURATOR_DAILY_NEWS_AGENT_MODE", "").strip().lower()
+    return mode in {"mock", "local", "fixture"} or parse_bool(os.getenv("CURATOR_DAILY_NEWS_AGENT_MOCK", ""))
+
+
 def is_safe_local_redirect_target(target: str) -> bool:
     candidate = str(target or "").strip()
     if not candidate.startswith("/"):
@@ -1523,10 +1591,14 @@ def remote_mcp():
         return error_response
 
     if request.method == "GET":
-        return ("", 405)
+        response = Response(": streamable-http-ready\n\n", mimetype="text/event-stream")
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Connection"] = "keep-alive"
+        response.headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
+        return response
 
     if request.method == "DELETE":
-        return ("", 405)
+        return ("", 204)
 
     try:
         message = request.get_json(force=True)
@@ -1990,6 +2062,106 @@ def track_newsletter_click(click_token: str):
     if click is None:
         abort(404)
     return redirect(click["target_url"], code=302)
+
+
+@app.route("/daily-news", methods=["GET"])
+def daily_news_chat_page():
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    return make_response(
+        render_admin_template(
+            "daily_news_chat.html",
+            config_path=CONFIG_PATH,
+        )
+    )
+
+
+@app.route("/api/daily-news/session", methods=["POST"])
+def create_daily_news_session():
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        return {"error": "Repository could not be opened."}, 503
+    session = create_daily_news_chat_session(repository)
+    return {"session_id": session["id"], "messages": []}
+
+
+@app.route("/api/daily-news/session/<session_id>", methods=["GET"])
+def get_daily_news_session(session_id: str):
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        return {"error": "Repository could not be opened."}, 503
+    session = repository.get_agent_chat_session(session_id)
+    if session is None:
+        return {"error": "Session not found."}, 404
+    return {"session_id": session_id, "messages": repository.list_agent_chat_messages(session_id)}
+
+
+@app.route("/api/daily-news/stream", methods=["POST"])
+def stream_daily_news_chat():
+    _admin_token, redirect_response = require_admin_browser_auth()
+    if redirect_response is not None:
+        return redirect_response
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        return {"error": "Repository could not be opened."}, 503
+    try:
+        payload = request.get_json(force=True) or {}
+    except Exception:
+        return {"error": "Invalid JSON body."}, 400
+    session_id = str(payload.get("session_id", "")).strip()
+    user_message = str(payload.get("message", "")).strip()
+    if not session_id:
+        return {"error": "session_id is required."}, 400
+    if not user_message:
+        return {"error": "message is required."}, 400
+    session = repository.get_agent_chat_session(session_id)
+    if session is None:
+        return {"error": "Session not found."}, 404
+
+    mcp_token = configured_mcp_token()
+    authorization = f"Bearer {mcp_token}" if mcp_token else ""
+    mcp_url = daily_news_agent_mcp_url()
+    use_mock_agent = daily_news_agent_mock_enabled()
+    if not use_mock_agent:
+        preflight_error = daily_news_agent_preflight_error(mcp_url=mcp_url, mcp_token=mcp_token)
+        if preflight_error:
+            return sse_error_response(preflight_error)
+
+    repository.append_agent_chat_message(session_id, role="user", content=user_message)
+    history = repository.list_agent_chat_messages(session_id)
+    service_class = MockDailyNewsAgentService if use_mock_agent else DailyNewsAgentService
+    service = service_class(
+        load_merged_config(),
+        server_url=mcp_url,
+        authorization=authorization,
+    )
+
+    @stream_with_context
+    def generate():
+        try:
+            for event in service.stream_reply(history=history, user_message=user_message):
+                if event.get("type") == "done":
+                    repository.append_agent_chat_message(
+                        session_id,
+                        role="assistant",
+                        content=str(event.get("message", "")),
+                        metadata=event.get("metadata", {}),
+                    )
+                yield sse_payload(event)
+        except Exception as exc:
+            yield sse_payload({"type": "error", "message": str(exc)})
+
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
 
 
 @app.route("/stories", methods=["GET"])

@@ -41,7 +41,7 @@ def _headers(token: str, *, origin: str | None = None) -> dict[str, str]:
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/json, text/event-stream",
-        "MCP-Protocol-Version": "2025-11-25",
+        "MCP-Protocol-Version": "2025-06-18",
     }
     if origin is not None:
         headers["Origin"] = origin
@@ -66,21 +66,22 @@ def test_http_mcp_route_lists_recent_stories(monkeypatch, tmp_path):
     initialize_response = client.post(
         "/mcp",
         json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {"name": "pytest", "version": "0.0.0"},
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "0.0.0"},
+                },
             },
-        },
         headers=_headers("mcp-secret", origin="https://curator.example.com"),
     )
     assert initialize_response.status_code == 200
     initialize_payload = initialize_response.get_json()
     assert initialize_payload["result"]["serverInfo"]["name"] == "newsletter-curator-story-feed"
     assert initialize_response.headers["MCP-Protocol-Version"] == "2025-11-25"
+    assert initialize_payload["result"]["protocolVersion"] == "2025-06-18"
 
     tools_response = client.post(
         "/mcp",
@@ -89,7 +90,8 @@ def test_http_mcp_route_lists_recent_stories(monkeypatch, tmp_path):
     )
     assert tools_response.status_code == 200
     tools_payload = tools_response.get_json()
-    assert tools_payload["result"]["tools"][0]["name"] == "list_recent_stories"
+    tool_names = {tool["name"] for tool in tools_payload["result"]["tools"]}
+    assert tool_names == {"list_recent_stories", "search_recent_stories", "get_story_details"}
 
     call_response = client.post(
         "/mcp",
@@ -107,6 +109,42 @@ def test_http_mcp_route_lists_recent_stories(monkeypatch, tmp_path):
     assert structured["story_count"] == 1
     assert structured["stories"][0]["id"] == story_id
     assert structured["stories"][0]["source_type"] == "gmail"
+
+    search_response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "search_recent_stories",
+                "arguments": {"query": "remote mcp", "limit": 3},
+            },
+        },
+        headers=_headers("mcp-secret"),
+    )
+    assert search_response.status_code == 200
+    search_payload = search_response.get_json()["result"]["structuredContent"]
+    assert search_payload["story_count"] == 1
+    assert search_payload["stories"][0]["id"] == story_id
+
+    details_response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "get_story_details",
+                "arguments": {"story_id": story_id, "max_article_chars": 200},
+            },
+        },
+        headers=_headers("mcp-secret"),
+    )
+    assert details_response.status_code == 200
+    details_payload = details_response.get_json()["result"]["structuredContent"]
+    assert details_payload["id"] == story_id
+    assert details_payload["article_excerpt"] == "Private article text."
 
 
 def test_http_mcp_route_rejects_invalid_origin_and_unsupported_protocol(monkeypatch, tmp_path):
@@ -168,7 +206,8 @@ def test_http_mcp_route_requires_token_and_returns_405_without_sse(monkeypatch, 
             "MCP-Protocol-Version": "2025-11-25",
         },
     )
-    assert get_response.status_code == 405
+    assert get_response.status_code == 200
+    assert get_response.headers["Content-Type"].startswith("text/event-stream")
 
     notification_response = client.post(
         "/mcp",
@@ -177,3 +216,6 @@ def test_http_mcp_route_requires_token_and_returns_405_without_sse(monkeypatch, 
     )
     assert notification_response.status_code == 202
     assert notification_response.get_data(as_text=True) == ""
+
+    delete_response = client.delete("/mcp", headers=_headers("mcp-secret"))
+    assert delete_response.status_code == 204

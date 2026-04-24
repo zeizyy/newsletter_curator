@@ -1,0 +1,408 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Daily News{% endblock %}
+{% block eyebrow %}Daily News Agent{% endblock %}
+{% block page_title %}Daily News Agent{% endblock %}
+{% block page_lead %}{% endblock %}
+{% block page_meta %}{% endblock %}
+
+{% block head_extra %}
+  <style>
+    .daily-news-surface {
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(239, 248, 244, 0.9)),
+        var(--panel);
+    }
+
+    .chat-shell {
+      display: grid;
+      gap: 14px;
+    }
+
+    .chat-feed {
+      display: grid;
+      align-content: start;
+      gap: 16px;
+      min-height: min(58vh, 640px);
+      max-height: 68vh;
+      overflow-y: auto;
+      padding: clamp(16px, 2.4vw, 28px);
+      border-radius: 20px;
+      border: 1px solid rgba(42, 76, 89, 0.14);
+      background:
+        linear-gradient(180deg, rgba(246, 251, 248, 0.96), rgba(232, 242, 239, 0.9)),
+        #f6fbf8;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+      scrollbar-color: rgba(44, 82, 91, 0.32) transparent;
+    }
+
+    .chat-row {
+      display: flex;
+      align-items: flex-start;
+      animation: message-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .chat-row.user {
+      justify-content: flex-end;
+    }
+
+    .chat-bubble {
+      width: fit-content;
+      max-width: min(760px, calc(100% - 42px));
+      padding: 15px 17px;
+      border-radius: 18px;
+      border: 1px solid rgba(35, 61, 74, 0.12);
+      background: #ffffff;
+      color: #172a2d;
+      box-shadow: 0 16px 34px rgba(23, 42, 45, 0.08);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.58;
+      font-size: 15px;
+    }
+
+    .chat-row.user .chat-bubble {
+      max-width: min(680px, calc(100% - 42px));
+      background: linear-gradient(135deg, #163b57, #0d7f69);
+      color: #f7fffd;
+      border-color: rgba(13, 127, 105, 0.28);
+      box-shadow: 0 16px 34px rgba(18, 63, 87, 0.18);
+    }
+
+    .chat-row.assistant .chat-bubble {
+      border-left: 4px solid #d6a23f;
+    }
+
+    .chat-row.assistant .chat-bubble:empty::after {
+      content: "";
+      display: inline-block;
+      width: 42px;
+      height: 14px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #dfeae7, #f7fbfa, #dfeae7);
+      background-size: 200% 100%;
+      animation: loading-sheen 900ms linear infinite;
+    }
+
+    .chat-meta {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(35, 61, 74, 0.1);
+      font-size: 12px;
+      font-weight: 700;
+      color: #486266;
+    }
+
+    .chat-row.user .chat-meta {
+      border-top-color: rgba(255, 255, 255, 0.2);
+      color: rgba(247, 255, 253, 0.82);
+    }
+
+    .composer-panel {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(42, 76, 89, 0.14);
+      background: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 16px 32px rgba(23, 42, 45, 0.07);
+      backdrop-filter: blur(12px);
+    }
+
+    .composer {
+      display: grid;
+      gap: 10px;
+    }
+
+    .composer textarea {
+      min-height: 92px;
+      resize: vertical;
+      border-color: rgba(42, 76, 89, 0.18);
+      background: #ffffff;
+      color: #172a2d;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+    }
+
+    .composer textarea::placeholder {
+      color: #6c8284;
+    }
+
+    .composer-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .status-line {
+      min-height: 24px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #496164;
+    }
+
+    .status-line:not(:empty)::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: #d6a23f;
+      box-shadow: 0 0 0 4px rgba(214, 162, 63, 0.16);
+      animation: status-pulse 900ms ease-in-out infinite alternate;
+    }
+
+    @keyframes message-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes status-pulse {
+      from { opacity: 0.5; transform: scale(0.88); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes loading-sheen {
+      from { background-position: 200% 0; }
+      to { background-position: -200% 0; }
+    }
+
+    @media (max-width: 720px) {
+      .chat-feed {
+        min-height: 52vh;
+        max-height: 62vh;
+        padding: 14px;
+      }
+
+      .chat-bubble,
+      .chat-row.user .chat-bubble {
+        max-width: calc(100% - 10px);
+        font-size: 14px;
+      }
+
+      .composer-actions {
+        align-items: stretch;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .chat-row,
+      .status-line:not(:empty)::before,
+      .chat-row.assistant .chat-bubble:empty::after {
+        animation: none;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="surface surface-section daily-news-surface">
+    <div class="section-head">
+      <div>
+        <div class="section-kicker">Agent Chat</div>
+        <h2>Ask the stored daily news corpus</h2>
+      </div>
+      <div class="section-copy">The agent prefers repository stories through MCP, then expands with web search only when the stored corpus is thin.</div>
+    </div>
+    <div class="chat-shell">
+      <div id="chat-feed" class="chat-feed">
+        <div class="state-shell is-info">
+          <div class="section-kicker">Ready</div>
+          <div class="state-head">
+            <div>
+              <h2 class="state-title">Session-scoped news QA</h2>
+              <p class="state-copy">Ask for today’s themes, compare story clusters, or drill into a company. The chat keeps short-term session memory only.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="composer-panel">
+        <div class="status-line" id="status-line"></div>
+        <div class="composer">
+          <textarea id="chat-input" placeholder="Ask about today’s AI, markets, product launches, or a specific company."></textarea>
+          <div class="composer-actions">
+            <a class="button-link ghost" id="new-session" href="#">New Session</a>
+            <button id="send-button" type="button">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const sessionKey = "curator_daily_news_session_id";
+    const feed = document.getElementById("chat-feed");
+    const input = document.getElementById("chat-input");
+    const sendButton = document.getElementById("send-button");
+    const statusLine = document.getElementById("status-line");
+    const newSessionButton = document.getElementById("new-session");
+    let activeSessionId = "";
+    let pendingAssistantBody = null;
+
+    function setBusy(isBusy) {
+      sendButton.disabled = isBusy;
+      input.disabled = isBusy;
+      newSessionButton.classList.toggle("secondary-button", isBusy);
+    }
+
+    function renderMessage(message) {
+      const row = document.createElement("div");
+      row.className = `chat-row ${message.role}`;
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.textContent = message.content || "";
+      row.appendChild(bubble);
+      if (message.metadata && Object.keys(message.metadata).length) {
+        const meta = document.createElement("div");
+        meta.className = "chat-meta";
+        const usage = message.metadata.usage || {};
+        const parts = [];
+        if (message.metadata.used_mcp) parts.push("repository");
+        if (message.metadata.used_web_search) parts.push("web search");
+        if (usage.total_tokens) parts.push(`${usage.total_tokens} tokens`);
+        meta.textContent = parts.join(" • ");
+        bubble.appendChild(meta);
+      }
+      feed.appendChild(row);
+      feed.scrollTop = feed.scrollHeight;
+      return bubble;
+    }
+
+    function clearFeed() {
+      feed.innerHTML = "";
+    }
+
+    async function createSession() {
+      const response = await fetch("/api/daily-news/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await response.json();
+      activeSessionId = data.session_id || "";
+      sessionStorage.setItem(sessionKey, activeSessionId);
+      clearFeed();
+      statusLine.textContent = "";
+    }
+
+    async function loadSession(sessionId) {
+      const response = await fetch(`/api/daily-news/session/${encodeURIComponent(sessionId)}`);
+      if (!response.ok) {
+        await createSession();
+        return;
+      }
+      const data = await response.json();
+      clearFeed();
+      for (const message of data.messages || []) {
+        renderMessage(message);
+      }
+      activeSessionId = data.session_id || "";
+      sessionStorage.setItem(sessionKey, activeSessionId);
+    }
+
+    function ensurePendingAssistant() {
+      if (pendingAssistantBody) return pendingAssistantBody;
+      pendingAssistantBody = renderMessage({ role: "assistant", content: "" });
+      return pendingAssistantBody;
+    }
+
+    async function sendMessage() {
+      const message = input.value.trim();
+      if (!message) return;
+      if (!activeSessionId) {
+        await createSession();
+      }
+      renderMessage({ role: "user", content: message });
+      input.value = "";
+      pendingAssistantBody = null;
+      statusLine.textContent = "Thinking";
+      setBusy(true);
+
+      const response = await fetch("/api/daily-news/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: activeSessionId, message })
+      });
+      if (!response.ok || !response.body) {
+        statusLine.textContent = "Request failed";
+        setBusy(false);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+        for (const chunk of chunks) {
+          const line = chunk.split("\n").find(part => part.startsWith("data: "));
+          if (!line) continue;
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === "status") {
+            statusLine.textContent = payload.message || "";
+          } else if (payload.type === "delta") {
+            const bubble = ensurePendingAssistant();
+            bubble.firstChild ? bubble.firstChild.textContent += payload.delta : bubble.textContent += payload.delta;
+            feed.scrollTop = feed.scrollHeight;
+          } else if (payload.type === "done") {
+            if (!pendingAssistantBody) {
+              pendingAssistantBody = renderMessage({ role: "assistant", content: payload.message || "" });
+            } else {
+              pendingAssistantBody.textContent = payload.message || "";
+              if (payload.metadata && Object.keys(payload.metadata).length) {
+                const meta = document.createElement("div");
+                meta.className = "chat-meta";
+                const usage = payload.metadata.usage || {};
+                const parts = [];
+                if (payload.metadata.used_mcp) parts.push("repository");
+                if (payload.metadata.used_web_search) parts.push("web search");
+                if (usage.total_tokens) parts.push(`${usage.total_tokens} tokens`);
+                meta.textContent = parts.join(" • ");
+                pendingAssistantBody.appendChild(meta);
+              }
+            }
+            pendingAssistantBody = null;
+            statusLine.textContent = "";
+          } else if (payload.type === "error") {
+            statusLine.textContent = payload.message || "Request failed";
+          }
+        }
+      }
+
+      setBusy(false);
+      await loadSession(activeSessionId);
+    }
+
+    sendButton.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        sendMessage();
+      }
+    });
+    newSessionButton.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await createSession();
+    });
+
+    (async () => {
+      const existingSessionId = sessionStorage.getItem(sessionKey) || "";
+      if (existingSessionId) {
+        await loadSession(existingSessionId);
+      } else {
+        await createSession();
+      }
+    })();
+  </script>
+{% endblock %}
