@@ -68,15 +68,50 @@ def _story_schema() -> dict:
 
 
 def build_recent_stories_tool() -> dict:
+    snippet_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "id",
+            "title",
+            "url",
+            "source_name",
+            "source_type",
+            "published_at",
+            "effective_timestamp",
+            "category",
+            "paywall_detected",
+            "paywall_reason",
+            "summary_headline",
+            "summary_body",
+            "context",
+        ],
+        "properties": {
+            "id": {"type": "integer"},
+            "title": {"type": "string"},
+            "url": {"type": "string"},
+            "source_name": {"type": "string"},
+            "source_type": {"type": "string"},
+            "published_at": {"type": ["string", "null"]},
+            "effective_timestamp": {"type": "string"},
+            "category": {"type": "string"},
+            "paywall_detected": {"type": "boolean"},
+            "paywall_reason": {"type": ["string", "null"]},
+            "summary_headline": {"type": "string"},
+            "summary_body": {"type": "string"},
+            "context": {"type": "string"},
+        },
+    }
     return {
         "name": RECENT_STORIES_TOOL,
-        "title": "Recent Repository Stories",
-        "description": "Returns stored newsletter story metadata from the repository without fetching or summarizing anything new.",
+        "title": "List Recent Story Snippets",
+        "description": "Lists recent repository stories for the requested date range and returns lightweight snippets plus metadata only. Use this for broad requests like top news, top stories, headlines, or what happened today.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "hours": {"type": "integer", "minimum": MIN_WINDOW_HOURS, "maximum": MAX_WINDOW_HOURS},
                 "source_type": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_SEARCH_LIMIT},
             },
             "additionalProperties": False,
         },
@@ -88,7 +123,7 @@ def build_recent_stories_tool() -> dict:
                 "generated_at": {"type": "string"},
                 "window_hours": {"type": "integer"},
                 "story_count": {"type": "integer"},
-                "stories": {"type": "array", "items": _story_schema()},
+                "stories": {"type": "array", "items": snippet_schema},
             },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -106,7 +141,10 @@ def build_search_recent_stories_tool() -> dict:
             "source_name",
             "source_type",
             "published_at",
+            "effective_timestamp",
             "category",
+            "paywall_detected",
+            "paywall_reason",
             "summary_headline",
             "summary_body",
             "context",
@@ -118,7 +156,10 @@ def build_search_recent_stories_tool() -> dict:
             "source_name": {"type": "string"},
             "source_type": {"type": "string"},
             "published_at": {"type": ["string", "null"]},
+            "effective_timestamp": {"type": "string"},
             "category": {"type": "string"},
+            "paywall_detected": {"type": "boolean"},
+            "paywall_reason": {"type": ["string", "null"]},
             "summary_headline": {"type": "string"},
             "summary_body": {"type": "string"},
             "context": {"type": "string"},
@@ -127,7 +168,7 @@ def build_search_recent_stories_tool() -> dict:
     return {
         "name": SEARCH_RECENT_STORIES_TOOL,
         "title": "Search Recent Story Snippets",
-        "description": "Searches recent repository stories and returns lightweight snippets first so the agent can decide whether it needs deeper detail.",
+        "description": "Searches recent repository stories for a specific topic, entity, company, person, product, or event and returns lightweight snippets first. Use this for focused lookups like OpenAI, Nvidia, the Fed, Ukraine, or a named story theme. Do not use this for broad roundup requests like top news, top stories, headlines, what happened today, or latest news because those are not literal search keywords.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -159,7 +200,7 @@ def build_story_details_tool() -> dict:
     return {
         "name": GET_STORY_DETAILS_TOOL,
         "title": "Get Story Details",
-        "description": "Returns one stored story with a bounded article excerpt. Use after searching snippets when deeper detail is required.",
+        "description": "Returns one stored story with a bounded article excerpt. Use this only after you have already identified a specific story from snippets and need deeper detail for that one story.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -205,17 +246,23 @@ def build_story_details_tool() -> dict:
     }
 
 
-def parse_list_recent_stories_arguments(arguments: object) -> tuple[int, str | None]:
+def parse_list_recent_stories_arguments(arguments: object) -> tuple[int, str | None, int]:
     if arguments in (None, {}):
-        return RECENT_STORY_WINDOW_HOURS, None
+        return RECENT_STORY_WINDOW_HOURS, None, DEFAULT_SEARCH_LIMIT
     if not isinstance(arguments, dict):
         raise ValueError("list_recent_stories arguments must be an object.")
-    unexpected = sorted(set(arguments) - {"hours", "source_type"})
+    unexpected = sorted(set(arguments) - {"hours", "source_type", "limit"})
     if unexpected:
         raise ValueError(f"Unsupported list_recent_stories arguments: {', '.join(unexpected)}")
+    limit = arguments.get("limit", DEFAULT_SEARCH_LIMIT)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        raise ValueError("limit must be an integer.")
+    if limit < 1 or limit > MAX_SEARCH_LIMIT:
+        raise ValueError(f"limit must be between 1 and {MAX_SEARCH_LIMIT}.")
     return (
         _parse_hours(arguments.get("hours"), default=RECENT_STORY_WINDOW_HOURS),
         _parse_optional_string(arguments.get("source_type"), field_name="source_type"),
+        limit,
     )
 
 
@@ -258,6 +305,23 @@ def parse_story_details_arguments(arguments: object) -> tuple[int, int]:
     return story_id, max_article_chars
 
 
+def list_recent_stories(
+    config: dict,
+    *,
+    window_hours: int,
+    source_type: str | None,
+    limit: int,
+) -> dict:
+    payload = list_recent_story_feed(config, window_hours=window_hours, source_type=source_type)
+    stories = [_normalize_story_snippet(story) for story in payload["stories"][:limit]]
+    return {
+        "generated_at": payload["generated_at"],
+        "window_hours": window_hours,
+        "story_count": len(stories),
+        "stories": stories,
+    }
+
+
 def search_recent_stories(
     config: dict,
     *,
@@ -291,7 +355,10 @@ def get_story_details(config: dict, *, story_id: int, max_article_chars: int) ->
         "source_name": str(story.get("source_name", "") or ""),
         "source_type": str(story.get("source_type", "") or ""),
         "published_at": story.get("published_at"),
+        "effective_timestamp": str(story.get("effective_timestamp", "") or ""),
         "category": str(story.get("category", "") or ""),
+        "paywall_detected": bool(story.get("paywall_detected", False)),
+        "paywall_reason": story.get("paywall_reason"),
         "summary_headline": str(story.get("summary_headline", "") or ""),
         "summary_body": str(story.get("summary_body", "") or str(story.get("summary", "") or "")),
         "context": str(story.get("context", "") or ""),
@@ -353,7 +420,10 @@ def _normalize_story_snippet(story: dict) -> dict:
         "source_name": str(story.get("source_name", "") or ""),
         "source_type": str(story.get("source_type", "") or ""),
         "published_at": story.get("published_at"),
+        "effective_timestamp": str(story.get("effective_timestamp", "") or ""),
         "category": str(story.get("category", "") or ""),
+        "paywall_detected": bool(story.get("paywall_detected", False)),
+        "paywall_reason": story.get("paywall_reason"),
         "summary_headline": str(story.get("summary_headline", "") or ""),
         "summary_body": str(story.get("summary_body", "") or str(story.get("summary", "") or "")),
         "context": str(story.get("context", "") or ""),

@@ -12,6 +12,7 @@ from .repository_tools import (
     build_search_recent_stories_tool,
     build_story_details_tool,
     get_story_details,
+    list_recent_stories,
     list_recent_story_feed,
     parse_list_recent_stories_arguments,
     parse_search_recent_stories_arguments,
@@ -77,8 +78,8 @@ def handle_request(message: dict, *, config_path: str | None = None) -> dict | N
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                 "instructions": (
-                    "Use search_recent_stories for snippet-first retrieval, then get_story_details only when deeper detail is needed. "
-                    "Use list_recent_stories when you need the broader repository view. This server is read-only."
+                    "Use list_recent_stories for broad repository views or date-range roundups, and use get_story_details only when deeper detail is needed for one story. "
+                    "search_recent_stories remains available for focused query-based retrieval. This server is read-only."
                 ),
             },
         )
@@ -96,8 +97,13 @@ def handle_request(message: dict, *, config_path: str | None = None) -> dict | N
         tool_name = str(params.get("name", ""))
         try:
             if tool_name == RECENT_STORIES_TOOL:
-                hours, source_type = parse_list_recent_stories_arguments(params.get("arguments"))
-                payload = list_recent_story_feed(config, window_hours=hours, source_type=source_type)
+                hours, source_type, limit = parse_list_recent_stories_arguments(params.get("arguments"))
+                payload = list_recent_stories(
+                    config,
+                    window_hours=hours,
+                    source_type=source_type,
+                    limit=limit,
+                )
             elif tool_name == SEARCH_RECENT_STORIES_TOOL:
                 query, hours, source_type, limit = parse_search_recent_stories_arguments(
                     params.get("arguments")

@@ -32,9 +32,9 @@ class FakeToolCallingOpenAI:
                             content="",
                             tool_calls=[
                                 _tool_call(
-                                    "call-search",
-                                    "search_recent_stories",
-                                    '{"query":"chips","hours":48,"limit":3}',
+                                    "call-list",
+                                    "list_recent_stories",
+                                    '{"hours":48,"limit":3}',
                                 )
                             ],
                         )
