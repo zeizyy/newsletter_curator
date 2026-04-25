@@ -343,7 +343,7 @@ class DailyNewsAgentService:
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
-                max_tokens=self._settings["max_output_tokens"],
+                max_completion_tokens=self._settings["max_output_tokens"],
             )
             usage = getattr(response, "usage", None)
             if usage is not None:

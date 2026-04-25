@@ -19,9 +19,11 @@ class FakeToolCallingOpenAI:
     def __init__(self):
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
         self.calls = 0
+        self.request_kwargs: list[dict] = []
 
     def create(self, **kwargs):
         self.calls += 1
+        self.request_kwargs.append(kwargs)
         if self.calls == 1:
             return SimpleNamespace(
                 choices=[
@@ -126,3 +128,7 @@ def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     assert done_event["metadata"]["used_mcp"] is False
     assert done_event["metadata"]["used_local_tool"] is True
     assert done_event["metadata"]["usage"]["total_tokens"] == 58
+    first_request = fake_openai.request_kwargs[0]
+    assert "max_completion_tokens" in first_request
+    assert first_request["max_completion_tokens"] == 400
+    assert "max_tokens" not in first_request
