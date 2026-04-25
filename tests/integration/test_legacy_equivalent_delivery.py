@@ -108,7 +108,13 @@ def test_legacy_equivalent_delivery(monkeypatch, repo_root, tmp_path):
     delivery_service = FakeGmailService(messages=[])
     monkeypatch.setattr(main, "get_gmail_service", lambda paths: delivery_service)
     monkeypatch.setattr(main, "OpenAI", lambda: fake_openai)
+    original_run_job = main.run_job
+
+    def run_job_with_daily_issue_type(config, service, **kwargs):
+        return original_run_job(config, service, issue_type_override="daily", **kwargs)
+
     monkeypatch.setattr(main, "send_email", fake_send_email)
+    monkeypatch.setattr(main, "run_job", run_job_with_daily_issue_type)
 
     main.main()
 

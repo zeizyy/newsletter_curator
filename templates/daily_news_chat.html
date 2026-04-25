@@ -547,13 +547,10 @@
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("
-
-");
+        const chunks = buffer.split("\n\n");
         buffer = chunks.pop() || "";
         for (const chunk of chunks) {
-          const line = chunk.split("
-").find(part => part.startsWith("data: "));
+          const line = chunk.split("\n").find(part => part.startsWith("data: "));
           if (!line) continue;
           const payload = JSON.parse(line.slice(6));
           if (payload.type === "status") {

@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 import importlib
+from datetime import UTC, datetime
+
+
+class FixedMondayDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 3, 30, 18, 0, 0, tzinfo=tz or UTC)
+
 
 from curator.jobs import get_repository_from_config
 from tests.fakes import FakeOpenAI
@@ -33,6 +41,7 @@ def test_admin_preview_renders_digest(monkeypatch, tmp_path):
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "current_newsletter_date", lambda: "2026-03-24")
     monkeypatch.setattr(jobs, "current_newsletter_date", lambda: "2026-03-24")
+    monkeypatch.setattr(jobs, "datetime", FixedMondayDateTime)
     monkeypatch.setenv("CURATOR_ADMIN_ENABLE_PREVIEW", "1")
     config = main.load_config()
 

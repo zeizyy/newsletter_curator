@@ -69,7 +69,7 @@ def test_offline_canned_repository_mode(monkeypatch, repo_root, tmp_path):
     counts = repository.get_table_counts()
     service = FakeGmailService(messages=[])
 
-    main.run_job(config, service)
+    main.run_job(config, service, issue_type_override="daily")
 
     assert fetch_result["status"] == "completed"
     assert counts["fetched_stories"] == 2

@@ -193,7 +193,7 @@ def test_full_two_job_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
     delivery_service = FakeGmailService(messages=[])
-    result = main.run_job(config, delivery_service)
+    result = main.run_job(config, delivery_service, issue_type_override="daily")
     latest_delivery_run = repository.get_latest_delivery_run()
 
     assert fetch_gmail_result["status"] == "completed"

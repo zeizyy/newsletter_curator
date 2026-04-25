@@ -109,7 +109,7 @@ def test_smoke_offline_pipeline(monkeypatch, repo_root, tmp_path):
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
     delivery_service = FakeGmailService(messages=[])
-    main.run_job(config, delivery_service)
+    main.run_job(config, delivery_service, issue_type_override="daily")
 
     artifact_path = tmp_path / "artifacts" / "01_integration_example.com.json"
     assert artifact_path.exists()

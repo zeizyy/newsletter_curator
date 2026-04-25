@@ -90,7 +90,7 @@ def test_gmail_ingest_then_delivery_from_db(monkeypatch, repo_root, tmp_path):
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
     delivery_service = FakeGmailService(messages=[])
-    main.run_job(config, delivery_service)
+    main.run_job(config, delivery_service, issue_type_override="daily")
 
     assert fetch_result["status"] == "completed"
     assert counts["fetched_stories"] == 2
