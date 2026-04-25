@@ -68,44 +68,19 @@ def _story_schema() -> dict:
 
 
 def build_recent_stories_tool() -> dict:
-    snippet_schema = {
+    title_schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": [
-            "id",
-            "title",
-            "url",
-            "source_name",
-            "source_type",
-            "published_at",
-            "effective_timestamp",
-            "category",
-            "paywall_detected",
-            "paywall_reason",
-            "summary_headline",
-            "summary_body",
-            "context",
-        ],
+        "required": ["id", "title"],
         "properties": {
             "id": {"type": "integer"},
             "title": {"type": "string"},
-            "url": {"type": "string"},
-            "source_name": {"type": "string"},
-            "source_type": {"type": "string"},
-            "published_at": {"type": ["string", "null"]},
-            "effective_timestamp": {"type": "string"},
-            "category": {"type": "string"},
-            "paywall_detected": {"type": "boolean"},
-            "paywall_reason": {"type": ["string", "null"]},
-            "summary_headline": {"type": "string"},
-            "summary_body": {"type": "string"},
-            "context": {"type": "string"},
         },
     }
     return {
         "name": RECENT_STORIES_TOOL,
-        "title": "List Recent Story Snippets",
-        "description": "Lists recent repository stories for the requested date range and returns lightweight snippets plus metadata only. Use this for broad requests like top news, top stories, headlines, or what happened today.",
+        "title": "List Recent Story Headlines",
+        "description": "Lists recent repository story headlines for the requested date range. Use this for broad requests like top news, top stories, headlines, or what happened today.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -118,12 +93,11 @@ def build_recent_stories_tool() -> dict:
         "outputSchema": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["generated_at", "window_hours", "story_count", "stories"],
+            "required": ["window_hours", "story_count", "stories"],
             "properties": {
-                "generated_at": {"type": "string"},
                 "window_hours": {"type": "integer"},
                 "story_count": {"type": "integer"},
-                "stories": {"type": "array", "items": snippet_schema},
+                "stories": {"type": "array", "items": title_schema},
             },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -313,9 +287,8 @@ def list_recent_stories(
     limit: int,
 ) -> dict:
     payload = list_recent_story_feed(config, window_hours=window_hours, source_type=source_type)
-    stories = [_normalize_story_snippet(story) for story in payload["stories"][:limit]]
+    stories = [_normalize_story_headline(story) for story in payload["stories"][:limit]]
     return {
-        "generated_at": payload["generated_at"],
         "window_hours": window_hours,
         "story_count": len(stories),
         "stories": stories,
@@ -427,6 +400,13 @@ def _normalize_story_snippet(story: dict) -> dict:
         "summary_headline": str(story.get("summary_headline", "") or ""),
         "summary_body": str(story.get("summary_body", "") or str(story.get("summary", "") or "")),
         "context": str(story.get("context", "") or ""),
+    }
+
+
+def _normalize_story_headline(story: dict) -> dict:
+    return {
+        "id": int(story.get("id", 0) or 0),
+        "title": _story_title(story),
     }
 
 

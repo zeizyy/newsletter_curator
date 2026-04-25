@@ -222,21 +222,20 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
     result = call_response["result"]
     assert result.get("isError") is not True
     payload = result["structuredContent"]
+    assert sorted(payload) == ["stories", "story_count", "window_hours"]
     assert payload["window_hours"] == 24
     assert payload["story_count"] == 2
-    assert [story["id"] for story in payload["stories"]] == [fallback_story_id, recent_story_id]
+    assert payload["stories"] == [
+        {"id": fallback_story_id, "title": "Cloud budgets"},
+        {"id": recent_story_id, "title": "Rates reset"},
+    ]
 
     first_story = payload["stories"][0]
-    assert first_story["published_at"] is None
-    assert first_story["effective_timestamp"] == very_recent
-    assert first_story["paywall_detected"] is True
-    assert first_story["paywall_reason"] == "metered"
+    assert first_story == {"id": fallback_story_id, "title": "Cloud budgets"}
     assert "article_text" not in first_story
 
     second_story = payload["stories"][1]
-    assert second_story["published_at"] == recent
-    assert second_story["summary_headline"] == "Rates reset"
-    assert second_story["summary_body"] == "Software multiples moved after the rates reset."
+    assert second_story == {"id": recent_story_id, "title": "Rates reset"}
 
     rendered_text = result["content"][0]["text"]
     assert json.loads(rendered_text)["story_count"] == 2
@@ -246,14 +245,13 @@ def test_mcp_server_lists_recent_repository_stories_without_mutating_db(tmp_path
     assert hours_filtered_result.get("isError") is not True
     hours_filtered_payload = hours_filtered_result["structuredContent"]
     assert hours_filtered_payload["window_hours"] == 1
-    assert [story["id"] for story in hours_filtered_payload["stories"]] == [fallback_story_id]
+    assert hours_filtered_payload["stories"] == [{"id": fallback_story_id, "title": "Cloud budgets"}]
 
     source_filtered_result = source_filtered_response["result"]
     assert source_filtered_result.get("isError") is not True
     source_filtered_payload = source_filtered_result["structuredContent"]
     assert source_filtered_payload["story_count"] == 1
-    assert [story["id"] for story in source_filtered_payload["stories"]] == [fallback_story_id]
-    assert source_filtered_payload["stories"][0]["source_type"] == "gmail"
+    assert source_filtered_payload["stories"] == [{"id": fallback_story_id, "title": "Cloud budgets"}]
 
     invalid_result = invalid_response["result"]
     assert invalid_result["isError"] is True

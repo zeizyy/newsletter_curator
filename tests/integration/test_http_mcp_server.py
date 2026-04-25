@@ -106,9 +106,9 @@ def test_http_mcp_route_lists_recent_stories(monkeypatch, tmp_path):
     assert call_response.status_code == 200
     call_payload = call_response.get_json()
     structured = call_payload["result"]["structuredContent"]
+    assert sorted(structured) == ["stories", "story_count", "window_hours"]
     assert structured["story_count"] == 1
-    assert structured["stories"][0]["id"] == story_id
-    assert structured["stories"][0]["source_type"] == "gmail"
+    assert structured["stories"] == [{"id": story_id, "title": "Remote MCP story"}]
 
     search_response = client.post(
         "/mcp",
