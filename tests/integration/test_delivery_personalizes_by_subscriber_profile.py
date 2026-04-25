@@ -93,7 +93,7 @@ def test_legacy_delivery_still_reuses_cached_newsletter(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    result = main.run_job(config, FakeGmailService(messages=[]))
+    result = main.run_job(config, FakeGmailService(messages=[]), issue_type_override="daily")
 
     assert result["status"] == "completed"
     assert result["cached_newsletter"] is True
@@ -218,7 +218,7 @@ def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    result = main.run_job(config, FakeGmailService(messages=[]))
+    result = main.run_job(config, FakeGmailService(messages=[]), issue_type_override="daily")
 
     assert result["status"] == "completed"
     assert result["personalized_delivery"] is True

@@ -155,7 +155,7 @@ def test_admin_source_selection_filters_delivery(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "fetch_article_text", fail_live_article_fetch)
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    main.run_job(config, service)
+    main.run_job(config, service, issue_type_override="daily")
 
     assert len(sent_messages) == 1
     payload = sent_messages[0]

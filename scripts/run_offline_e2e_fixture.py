@@ -337,7 +337,11 @@ def main() -> int:
                     repository=repository,
                     source_fetcher=source_fetcher,
                     article_fetcher=article_fetcher,
-                    delivery_runner_fn=delivery_main.run_job,
+                    delivery_runner_fn=lambda cfg, svc: delivery_main.run_job(
+                        cfg,
+                        svc,
+                        issue_type_override="daily",
+                    ),
                 )
         finally:
             delivery_main.send_email = original_send_email

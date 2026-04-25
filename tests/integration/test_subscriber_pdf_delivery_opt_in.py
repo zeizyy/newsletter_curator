@@ -232,7 +232,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
 
     monkeypatch.setattr(main, "send_email", fake_send_email)
 
-    result = main.run_job(config, FakeGmailService(messages=[]))
+    result = main.run_job(config, FakeGmailService(messages=[]), issue_type_override="daily")
     captured = capsys.readouterr()
     events = [json.loads(line) for line in captured.out.splitlines() if line.strip()]
 
