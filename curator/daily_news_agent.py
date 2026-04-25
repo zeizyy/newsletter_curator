@@ -94,6 +94,22 @@ def _build_function_tool(tool_definition: dict) -> dict:
     }
 
 
+def _serialize_debug_value(value: object, *, max_chars: int = 4000) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    try:
+        normalized = json.loads(json.dumps(value, sort_keys=True, default=str))
+    except TypeError:
+        normalized = str(value)
+    serialized = json.dumps(normalized, sort_keys=True)
+    if len(serialized) <= max_chars:
+        return normalized
+    return {
+        "truncated": True,
+        "preview": serialized[: max_chars - 1].rstrip() + "…",
+    }
+
+
 def build_agent_tools(*, server_url: str, authorization: str, settings: dict) -> list[dict]:
     del server_url, authorization, settings
     return [
@@ -209,6 +225,7 @@ class MockDailyNewsAgentService:
         *,
         history: list[dict],
         user_message: str,
+        debug: bool = False,
     ) -> Iterator[dict]:
         yield {"type": "status", "message": "Loading repository tools"}
         yield {"type": "status", "message": "Repository tools ready"}
@@ -255,21 +272,32 @@ class MockDailyNewsAgentService:
         for chunk in [message[index : index + 80] for index in range(0, len(message), 80)]:
             yield {"type": "delta", "delta": chunk}
 
+        metadata = {
+            "used_mcp": False,
+            "used_local_tool": True,
+            "used_web_search": False,
+            "usage": {
+                "input_tokens": len(user_message.split()) + 25,
+                "output_tokens": max(1, len(message.split())),
+                "total_tokens": len(user_message.split()) + len(message.split()) + 25,
+            },
+            "mock_agent": True,
+            "user_message": _trim_text(user_message, max_chars=self._settings["max_message_chars"]),
+        }
+        if debug:
+            metadata["debug_mode"] = True
+            metadata["reasoning_trace_available"] = False
+            metadata["debug_trace"] = [
+                {
+                    "type": "note",
+                    "message": "Mock mode does not expose the live model trace. Showing observable mock behavior only.",
+                }
+            ]
+
         yield {
             "type": "done",
             "message": message,
-            "metadata": {
-                "used_mcp": False,
-                "used_local_tool": True,
-                "used_web_search": False,
-                "usage": {
-                    "input_tokens": len(user_message.split()) + 25,
-                    "output_tokens": max(1, len(message.split())),
-                    "total_tokens": len(user_message.split()) + len(message.split()) + 25,
-                },
-                "mock_agent": True,
-                "user_message": _trim_text(user_message, max_chars=self._settings["max_message_chars"]),
-            },
+            "metadata": metadata,
         }
 
 
@@ -286,6 +314,12 @@ class DailyNewsAgentService:
         if next_status and next_status != last_status:
             return next_status, {"type": "status", "message": next_status}
         return last_status, None
+
+    def _append_debug_trace(self, trace: list[dict], entry: dict, *, debug: bool) -> dict | None:
+        if not debug:
+            return None
+        trace.append(entry)
+        return {"type": "debug", "event": entry}
 
     def _handle_local_tool_call(self, tool_name: str, arguments: dict) -> dict:
         if tool_name == "search_recent_stories":
@@ -311,18 +345,31 @@ class DailyNewsAgentService:
         *,
         history: list[dict],
         user_message: str,
+        debug: bool = False,
     ) -> Iterator[dict]:
         client = self._client_factory()
         used_local_tool = False
         used_web_search = False
         last_status = ""
         usage_payload = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        debug_trace: list[dict] = []
 
         input_messages = _history_to_input(
             history,
             max_history_messages=self._settings["max_history_messages"],
             max_message_chars=self._settings["max_message_chars"],
         )
+        if debug:
+            note_event = self._append_debug_trace(
+                debug_trace,
+                {
+                    "type": "note",
+                    "message": "Hidden model reasoning is not available from the API. This debug panel shows the observable tool trace only.",
+                },
+                debug=debug,
+            )
+            if note_event is not None:
+                yield note_event
         last_status, status_event = self._emit_status("tools.loading", last_status)
         if status_event is not None:
             yield status_event
@@ -337,7 +384,7 @@ class DailyNewsAgentService:
             authorization=self._authorization,
             settings=self._settings,
         )
-        for _round in range(6):
+        for round_index in range(6):
             response = client.chat.completions.create(
                 model=self._settings["model"],
                 messages=messages,
@@ -373,6 +420,18 @@ class DailyNewsAgentService:
             messages.append(assistant_message)
 
             if not tool_calls:
+                if debug and content:
+                    debug_event = self._append_debug_trace(
+                        debug_trace,
+                        {
+                            "type": "assistant_output",
+                            "round": round_index + 1,
+                            "content": _trim_text(content, max_chars=1200),
+                        },
+                        debug=debug,
+                    )
+                    if debug_event is not None:
+                        yield debug_event
                 message = content
                 break
 
@@ -385,6 +444,18 @@ class DailyNewsAgentService:
                     arguments = json.loads(str(tool_call.function.arguments or "{}"))
                     if not isinstance(arguments, dict):
                         raise ValueError("Tool arguments must decode to an object.")
+                    debug_event = self._append_debug_trace(
+                        debug_trace,
+                        {
+                            "type": "tool_call",
+                            "round": round_index + 1,
+                            "tool_name": tool_name,
+                            "arguments": _serialize_debug_value(arguments),
+                        },
+                        debug=debug,
+                    )
+                    if debug_event is not None:
+                        yield debug_event
                     tool_result = self._handle_local_tool_call(tool_name, arguments)
                 except Exception as exc:
                     tool_result = {"error": str(exc)}
@@ -395,6 +466,18 @@ class DailyNewsAgentService:
                         "content": json.dumps(tool_result, sort_keys=True),
                     }
                 )
+                debug_event = self._append_debug_trace(
+                    debug_trace,
+                    {
+                        "type": "tool_result",
+                        "round": round_index + 1,
+                        "tool_name": tool_name,
+                        "result": _serialize_debug_value(tool_result),
+                    },
+                    debug=debug,
+                )
+                if debug_event is not None:
+                    yield debug_event
                 used_local_tool = True
                 last_status, status_event = self._emit_status(f"tool.{tool_name}.done", last_status)
                 if status_event is not None:
@@ -406,14 +489,20 @@ class DailyNewsAgentService:
         for chunk in [message[index : index + 80] for index in range(0, len(message), 80)]:
             yield {"type": "delta", "delta": chunk}
 
+        metadata = {
+            "used_mcp": False,
+            "used_local_tool": used_local_tool,
+            "used_web_search": used_web_search,
+            "usage": usage_payload,
+            "user_message": _trim_text(user_message, max_chars=self._settings["max_message_chars"]),
+        }
+        if debug:
+            metadata["debug_mode"] = True
+            metadata["reasoning_trace_available"] = False
+            metadata["debug_trace"] = debug_trace
+
         yield {
             "type": "done",
             "message": message,
-            "metadata": {
-                "used_mcp": False,
-                "used_local_tool": used_local_tool,
-                "used_web_search": used_web_search,
-                "usage": usage_payload,
-                "user_message": _trim_text(user_message, max_chars=self._settings["max_message_chars"]),
-            },
+            "metadata": metadata,
         }
