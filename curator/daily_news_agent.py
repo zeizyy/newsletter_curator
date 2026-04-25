@@ -18,7 +18,7 @@ from .repository_tools import (
 STATUS_BY_EVENT_TYPE = {
     "tools.loading": "Loading repository tools",
     "tools.ready": "Repository tools ready",
-    "tool.list_recent_stories.start": "Reading repository snippets",
+    "tool.list_recent_stories.start": "Reading repository headlines",
     "tool.list_recent_stories.done": "Repository context loaded",
     "tool.get_story_details.start": "Reading repository snippets",
     "tool.get_story_details.done": "Repository context loaded",
@@ -34,7 +34,7 @@ Rules:
 - The available repository tools read the same stored daily news data locally; do not treat them as external systems.
 - Choose tools based on the user's intent, not by matching every word in the user's message literally.
 - Use `list_recent_stories` to retrieve recent repository stories for a requested date range or broad roundup such as "top news", "top stories", "headlines", or "what happened today".
-- `list_recent_stories` returns snippets and metadata only. Use it first to identify the best candidate stories in the requested window.
+- `list_recent_stories` returns headlines only. Use it first for broad headline lists in the requested window.
 - Request deeper story detail only after you have identified a specific story that needs closer reading.
 - Keep token usage bounded. Do not request full story detail unless it is necessary for the answer.
 - When you rely on a repository story, cite it inline with the story title and URL if available.
@@ -111,6 +111,41 @@ def _serialize_debug_value(value: object, *, max_chars: int = 4000) -> object:
         "truncated": True,
         "preview": serialized[: max_chars - 1].rstrip() + "…",
     }
+
+
+def _debug_usage_payload(usage: object) -> dict:
+    if usage is None:
+        return {}
+    payload: dict[str, object] = {}
+    for field_name in (
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "prompt_tokens_details",
+        "completion_tokens_details",
+    ):
+        value = getattr(usage, field_name, None)
+        if value is not None:
+            payload[field_name] = _serialize_debug_value(value)
+    return payload
+
+
+def _debug_choice_payload(choice: object, choice_message: object, tool_calls: list, content: str) -> dict:
+    payload: dict[str, object] = {
+        "finish_reason": getattr(choice, "finish_reason", None),
+        "message_role": getattr(choice_message, "role", None),
+        "has_content": bool(content),
+        "content_chars": len(content),
+        "tool_call_count": len(tool_calls),
+        "tool_call_names": [str(tool_call.function.name) for tool_call in tool_calls],
+    }
+    for field_name in ("refusal", "audio"):
+        value = getattr(choice_message, field_name, None)
+        if value:
+            payload[field_name] = _serialize_debug_value(value)
+    if content:
+        payload["content_preview"] = _trim_text(content, max_chars=500)
+    return payload
 
 
 def build_agent_tools(*, server_url: str, authorization: str, settings: dict) -> list[dict]:
@@ -387,6 +422,24 @@ class DailyNewsAgentService:
             settings=self._settings,
         )
         for round_index in range(6):
+            debug_event = self._append_debug_trace(
+                debug_trace,
+                {
+                    "type": "model_request",
+                    "round": round_index + 1,
+                    "model": self._settings["model"],
+                    "max_completion_tokens": self._settings["max_output_tokens"],
+                    "message_count": len(messages),
+                    "tool_names": [
+                        str(tool.get("function", {}).get("name", ""))
+                        for tool in tools
+                        if isinstance(tool, dict)
+                    ],
+                },
+                debug=debug,
+            )
+            if debug_event is not None:
+                yield debug_event
             response = client.chat.completions.create(
                 model=self._settings["model"],
                 messages=messages,
@@ -401,8 +454,23 @@ class DailyNewsAgentService:
                 usage_payload["total_tokens"] += int(getattr(usage, "total_tokens", 0) or 0)
 
             choice_message = response.choices[0].message
+            choice = response.choices[0]
             tool_calls = list(getattr(choice_message, "tool_calls", None) or [])
             content = str(getattr(choice_message, "content", "") or "").strip()
+            debug_event = self._append_debug_trace(
+                debug_trace,
+                {
+                    "type": "model_response",
+                    "round": round_index + 1,
+                    "response_id": getattr(response, "id", None),
+                    "model": getattr(response, "model", None),
+                    "choice": _debug_choice_payload(choice, choice_message, tool_calls, content),
+                    "usage": _debug_usage_payload(usage),
+                },
+                debug=debug,
+            )
+            if debug_event is not None:
+                yield debug_event
 
             assistant_message: dict[str, Any] = {"role": "assistant"}
             if content:
@@ -429,6 +497,19 @@ class DailyNewsAgentService:
                             "type": "assistant_output",
                             "round": round_index + 1,
                             "content": _trim_text(content, max_chars=1200),
+                        },
+                        debug=debug,
+                    )
+                    if debug_event is not None:
+                        yield debug_event
+                elif debug:
+                    debug_event = self._append_debug_trace(
+                        debug_trace,
+                        {
+                            "type": "empty_assistant_output",
+                            "round": round_index + 1,
+                            "finish_reason": getattr(choice, "finish_reason", None),
+                            "message": "The model returned no visible content and no tool calls.",
                         },
                         debug=debug,
                     )
@@ -486,6 +567,18 @@ class DailyNewsAgentService:
                     yield status_event
 
         if not message:
+            debug_event = self._append_debug_trace(
+                debug_trace,
+                {
+                    "type": "fallback_answer",
+                    "message": "No visible assistant content was produced before the agent fallback was applied.",
+                    "round_limit": 6,
+                    "used_local_tool": used_local_tool,
+                },
+                debug=debug,
+            )
+            if debug_event is not None:
+                yield debug_event
             message = "I could not produce an answer from the available repository context."
 
         for chunk in [message[index : index + 80] for index in range(0, len(message), 80)]:

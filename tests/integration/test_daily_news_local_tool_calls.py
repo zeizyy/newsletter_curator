@@ -63,6 +63,7 @@ class FakeToolCallingOpenAI:
         return SimpleNamespace(
             choices=[
                 SimpleNamespace(
+                    finish_reason="stop",
                     message=SimpleNamespace(
                         content="AI chip capex accelerated. AI chip capex accelerates (https://example.com/chips).",
                         tool_calls=[],
@@ -70,6 +71,53 @@ class FakeToolCallingOpenAI:
                 )
             ],
             usage=SimpleNamespace(prompt_tokens=17, completion_tokens=8, total_tokens=25),
+        )
+
+
+class FakeEmptyAfterToolOpenAI:
+    def __init__(self):
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            return SimpleNamespace(
+                id="chatcmpl-tool",
+                model="gpt-5-mini",
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content="",
+                            tool_calls=[
+                                _tool_call(
+                                    "call-list",
+                                    "list_recent_stories",
+                                    '{"hours":24,"limit":2}',
+                                )
+                            ],
+                        ),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=21, completion_tokens=7, total_tokens=28),
+            )
+        return SimpleNamespace(
+            id="chatcmpl-empty",
+            model="gpt-5-mini",
+            choices=[
+                SimpleNamespace(
+                    finish_reason="length",
+                    message=SimpleNamespace(role="assistant", content="", tool_calls=[]),
+                )
+            ],
+            usage=SimpleNamespace(
+                prompt_tokens=31,
+                completion_tokens=400,
+                total_tokens=431,
+                completion_tokens_details=SimpleNamespace(reasoning_tokens=400),
+            ),
         )
 
 
@@ -118,7 +166,7 @@ def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     assert [event["message"] for event in events if event["type"] == "status"] == [
         "Loading repository tools",
         "Repository tools ready",
-        "Reading repository snippets",
+        "Reading repository headlines",
         "Repository context loaded",
         "Reading repository snippets",
         "Repository context loaded",
@@ -132,3 +180,61 @@ def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     assert "max_completion_tokens" in first_request
     assert first_request["max_completion_tokens"] == 400
     assert "max_tokens" not in first_request
+
+
+def test_daily_news_agent_debug_trace_explains_empty_model_output_after_tool(tmp_path):
+    config = {
+        "database": {"path": str(tmp_path / "curator.sqlite3")},
+        "daily_news_agent": {"max_output_tokens": 400, "snippet_limit": 2},
+        "openai": {"reasoning_model": "gpt-5-mini"},
+    }
+
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    published_at = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Chip Ledger",
+            "subject": "AI chip capex accelerates",
+            "url": "https://example.com/chips",
+            "anchor_text": "AI chip capex accelerates",
+            "context": "Chip budgets are expanding.",
+            "category": "Tech company news & strategy",
+            "published_at": published_at,
+            "summary": "Chip capex is accelerating.",
+        },
+        ingestion_run_id=run_id,
+    )
+
+    fake_openai = FakeEmptyAfterToolOpenAI()
+    service = DailyNewsAgentService(config, server_url="", authorization="", client_factory=lambda: fake_openai)
+    events = list(
+        service.stream_reply(
+            history=[{"role": "user", "content": "What happened today?"}],
+            user_message="What happened today?",
+            debug=True,
+        )
+    )
+
+    done_event = next(event for event in events if event["type"] == "done")
+    assert done_event["message"] == "I could not produce an answer from the available repository context."
+    trace = done_event["metadata"]["debug_trace"]
+    assert [event["type"] for event in trace].count("model_request") == 2
+
+    empty_response = next(
+        event
+        for event in trace
+        if event["type"] == "model_response" and event["round"] == 2
+    )
+    assert empty_response["response_id"] == "chatcmpl-empty"
+    assert empty_response["choice"]["finish_reason"] == "length"
+    assert empty_response["choice"]["has_content"] is False
+    assert empty_response["choice"]["tool_call_count"] == 0
+    assert empty_response["usage"]["completion_tokens"] == 400
+    assert "completion_tokens_details" in empty_response["usage"]
+
+    assert any(event["type"] == "empty_assistant_output" for event in trace)
+    fallback_event = next(event for event in trace if event["type"] == "fallback_answer")
+    assert fallback_event["used_local_tool"] is True
