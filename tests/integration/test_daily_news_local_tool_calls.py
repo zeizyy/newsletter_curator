@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -121,6 +122,46 @@ class FakeEmptyAfterToolOpenAI:
         )
 
 
+class FakeLargeToolResultOpenAI:
+    def __init__(self, story_id: int):
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        self.calls = 0
+        self.story_id = story_id
+        self.request_kwargs: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls += 1
+        self.request_kwargs.append(kwargs)
+        if self.calls == 1:
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            content="",
+                            tool_calls=[
+                                _tool_call(
+                                    "call-detail",
+                                    "get_story_details",
+                                    json.dumps({"story_id": self.story_id}),
+                                )
+                            ],
+                        ),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=9, completion_tokens=3, total_tokens=12),
+            )
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content="I can answer from the capped story summary.", tool_calls=[]),
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=12, completion_tokens=7, total_tokens=19),
+        )
+
+
 def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     config = {
         "database": {"path": str(tmp_path / "curator.sqlite3")},
@@ -180,6 +221,68 @@ def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     assert "max_completion_tokens" in first_request
     assert first_request["max_completion_tokens"] == 400
     assert "max_tokens" not in first_request
+    tool_messages = [message for message in fake_openai.request_kwargs[2]["messages"] if message["role"] == "tool"]
+    detail_tool_message = tool_messages[-1]
+    detail_payload = json.loads(detail_tool_message["content"])
+    assert detail_payload["summary_body"] == "Chip capex is accelerating."
+    assert "article_excerpt" not in detail_payload
+    assert "context" not in detail_payload
+
+
+def test_daily_news_agent_caps_tool_results_before_next_model_round(tmp_path):
+    config = {
+        "database": {"path": str(tmp_path / "curator.sqlite3")},
+        "daily_news_agent": {"max_output_tokens": 400, "tool_result_char_limit": 1000},
+        "openai": {"reasoning_model": "gpt-5-mini"},
+    }
+
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    published_at = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    story_id = repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Policy Wire",
+            "subject": "Long policy story",
+            "url": "https://example.com/policy",
+            "anchor_text": "Long policy story",
+            "context": "A compact context field should not be included in details.",
+            "category": "Politics & policy",
+            "published_at": published_at,
+            "summary": "Short fallback summary.",
+        },
+        ingestion_run_id=run_id,
+    )
+    repository.upsert_article_snapshot(
+        story_id,
+        "Full article text should not be sent to get_story_details.",
+        summary_headline="Long policy story",
+        summary_body="Long summary. " * 260,
+        summarized_at=published_at,
+    )
+
+    fake_openai = FakeLargeToolResultOpenAI(story_id)
+    service = DailyNewsAgentService(config, server_url="", authorization="", client_factory=lambda: fake_openai)
+    events = list(
+        service.stream_reply(
+            history=[{"role": "user", "content": "Tell me about the policy story."}],
+            user_message="Tell me about the policy story.",
+            debug=True,
+        )
+    )
+
+    next_round_tool_message = next(
+        message for message in fake_openai.request_kwargs[1]["messages"] if message["role"] == "tool"
+    )
+    tool_payload = json.loads(next_round_tool_message["content"])
+    assert tool_payload["tool_result_truncated"] is True
+    assert tool_payload["truncation_reason"]
+    assert "visible_prefix" in tool_payload
+
+    done_event = next(event for event in events if event["type"] == "done")
+    tool_result_event = next(event for event in done_event["metadata"]["debug_trace"] if event["type"] == "tool_result")
+    assert tool_result_event["truncated_for_model"] is True
 
 
 def test_daily_news_agent_debug_trace_explains_empty_model_output_after_tool(tmp_path):
@@ -219,7 +322,7 @@ def test_daily_news_agent_debug_trace_explains_empty_model_output_after_tool(tmp
     )
 
     done_event = next(event for event in events if event["type"] == "done")
-    assert done_event["message"] == "I could not produce an answer from the available repository context."
+    assert done_event["message"].startswith("I hit the answer token limit")
     trace = done_event["metadata"]["debug_trace"]
     assert [event["type"] for event in trace].count("model_request") == 2
 

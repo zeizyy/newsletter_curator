@@ -144,7 +144,9 @@ def test_http_mcp_route_lists_recent_stories(monkeypatch, tmp_path):
     assert details_response.status_code == 200
     details_payload = details_response.get_json()["result"]["structuredContent"]
     assert details_payload["id"] == story_id
-    assert details_payload["article_excerpt"] == "Private article text."
+    assert details_payload["summary_body"] == "Remote HTTP MCP served a stored story."
+    assert "article_excerpt" not in details_payload
+    assert "context" not in details_payload
 
 
 def test_http_mcp_route_rejects_invalid_origin_and_unsupported_protocol(monkeypatch, tmp_path):

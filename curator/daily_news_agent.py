@@ -7,6 +7,8 @@ from typing import Any
 from openai import OpenAI
 
 from .repository_tools import (
+    DEFAULT_TOOL_RESULT_CHAR_LIMIT,
+    MIN_TOOL_RESULT_CHAR_LIMIT,
     build_recent_stories_tool,
     build_story_details_tool,
     get_story_details,
@@ -37,6 +39,7 @@ Rules:
 - `list_recent_stories` returns headlines only. Use it first for broad headline lists in the requested window.
 - Request deeper story detail only after you have identified a specific story that needs closer reading.
 - Keep token usage bounded. Do not request full story detail unless it is necessary for the answer.
+- Tool results may be intentionally capped. If a tool result includes `tool_result_truncated: true`, continue from the visible summary and say when the answer is based on limited detail.
 - When you rely on a repository story, cite it inline with the story title and URL if available.
 - If the user asks about relative dates like today or yesterday, use exact dates in your answer when it improves clarity.
 """
@@ -61,6 +64,12 @@ def build_agent_settings(config: dict) -> dict:
         "repository_window_hours": _int_setting(agent_cfg, "mcp_window_hours", 48, 1),
         "snippet_limit": _int_setting(agent_cfg, "snippet_limit", 8, 1),
         "detail_char_limit": _int_setting(agent_cfg, "detail_char_limit", 3500, 500),
+        "tool_result_char_limit": _int_setting(
+            agent_cfg,
+            "tool_result_char_limit",
+            DEFAULT_TOOL_RESULT_CHAR_LIMIT,
+            MIN_TOOL_RESULT_CHAR_LIMIT,
+        ),
     }
 
 
@@ -146,6 +155,20 @@ def _debug_choice_payload(choice: object, choice_message: object, tool_calls: li
     if content:
         payload["content_preview"] = _trim_text(content, max_chars=500)
     return payload
+
+
+def _serialize_tool_result_for_model(tool_result: dict, *, max_chars: int) -> tuple[str, bool]:
+    content = json.dumps(tool_result, sort_keys=True)
+    if len(content) <= max_chars:
+        return content, False
+
+    truncated_payload = {
+        "tool_result_truncated": True,
+        "truncation_reason": "tool result exceeded the local agent cap before the next model round",
+        "original_char_count": len(content),
+        "visible_prefix": content[: max_chars - 1].rstrip() + "…",
+    }
+    return json.dumps(truncated_payload, sort_keys=True), True
 
 
 def build_agent_tools(*, server_url: str, authorization: str, settings: dict) -> list[dict]:
@@ -298,10 +321,6 @@ class MockDailyNewsAgentService:
                 source_text = f" ({source})" if source else ""
                 url_text = f" {url}" if url else ""
                 lines.append(f"- {title}{source_text}: {summary}{url_text}")
-            excerpt = str(detail.get("article_excerpt", "")).strip()
-            if excerpt:
-                lines.append("")
-                lines.append(f"Detail from {detail['title']}: {_trim_text(excerpt, max_chars=320)}")
             if len([item for item in history if item.get("role") == "user"]) > 1:
                 lines.append("")
                 lines.append("This answer uses the current turn plus the existing chat session context.")
@@ -390,6 +409,7 @@ class DailyNewsAgentService:
         last_status = ""
         usage_payload = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         debug_trace: list[dict] = []
+        token_limited_response = False
 
         input_messages = _history_to_input(
             history,
@@ -455,6 +475,8 @@ class DailyNewsAgentService:
 
             choice_message = response.choices[0].message
             choice = response.choices[0]
+            if getattr(choice, "finish_reason", None) == "length":
+                token_limited_response = True
             tool_calls = list(getattr(choice_message, "tool_calls", None) or [])
             content = str(getattr(choice_message, "content", "") or "").strip()
             debug_event = self._append_debug_trace(
@@ -542,11 +564,15 @@ class DailyNewsAgentService:
                     tool_result = self._handle_local_tool_call(tool_name, arguments)
                 except Exception as exc:
                     tool_result = {"error": str(exc)}
+                tool_content, tool_result_truncated = _serialize_tool_result_for_model(
+                    tool_result,
+                    max_chars=self._settings["tool_result_char_limit"],
+                )
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": str(tool_call.id),
-                        "content": json.dumps(tool_result, sort_keys=True),
+                        "content": tool_content,
                     }
                 )
                 debug_event = self._append_debug_trace(
@@ -555,6 +581,8 @@ class DailyNewsAgentService:
                         "type": "tool_result",
                         "round": round_index + 1,
                         "tool_name": tool_name,
+                        "truncated_for_model": tool_result_truncated,
+                        "model_content_chars": len(tool_content),
                         "result": _serialize_debug_value(tool_result),
                     },
                     debug=debug,
@@ -572,6 +600,7 @@ class DailyNewsAgentService:
                 {
                     "type": "fallback_answer",
                     "message": "No visible assistant content was produced before the agent fallback was applied.",
+                    "likely_token_limited": token_limited_response,
                     "round_limit": 6,
                     "used_local_tool": used_local_tool,
                 },
@@ -579,7 +608,13 @@ class DailyNewsAgentService:
             )
             if debug_event is not None:
                 yield debug_event
-            message = "I could not produce an answer from the available repository context."
+            if token_limited_response:
+                message = (
+                    "I hit the answer token limit after reading repository context, so I could not finish "
+                    "a clean response. Please ask for a narrower slice or retry with a shorter date range."
+                )
+            else:
+                message = "I could not produce an answer from the available repository context."
 
         for chunk in [message[index : index + 80] for index in range(0, len(message), 80)]:
             yield {"type": "delta", "delta": chunk}

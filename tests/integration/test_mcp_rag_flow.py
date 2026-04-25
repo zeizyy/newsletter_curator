@@ -123,9 +123,9 @@ def test_mcp_rag_flow_prefers_snippets_before_bounded_detail(monkeypatch, tmp_pa
     details_payload = details_response.get_json()["result"]["structuredContent"]
     assert details_payload["id"] == second_story_id
     assert details_payload["title"] == "Inference margins tighten"
-    assert details_payload["article_excerpt_truncated"] is True
-    assert len(details_payload["article_excerpt"]) <= 240
     assert "Accelerator demand is putting pressure on inference unit economics." == details_payload["summary_body"]
+    assert "article_excerpt" not in details_payload
+    assert "context" not in details_payload
 
     broad_search_response = client.post(
         "/mcp",
