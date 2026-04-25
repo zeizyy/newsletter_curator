@@ -23,7 +23,8 @@ class FakeDailyNewsAgentService:
             "type": "done",
             "message": "Repository says chip spending rose.",
             "metadata": {
-                "used_mcp": True,
+                "used_mcp": False,
+                "used_local_tool": True,
                 "used_web_search": False,
                 "usage": {"total_tokens": 42},
             },
@@ -42,8 +43,6 @@ def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "DailyNewsAgentService", FakeDailyNewsAgentService)
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
-    monkeypatch.setenv("CURATOR_PUBLIC_BASE_URL", "https://curator.example.com")
-    monkeypatch.setenv("CURATOR_MCP_TOKEN", "mcp-secret")
 
     config = main.load_config()
     repository = get_repository_from_config(config)
@@ -77,11 +76,12 @@ def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     assert history_response.status_code == 200
     history_payload = history_response.get_json()
     assert [message["role"] for message in history_payload["messages"]] == ["user", "assistant"]
-    assert history_payload["messages"][1]["metadata"]["used_mcp"] is True
+    assert history_payload["messages"][1]["metadata"]["used_mcp"] is False
+    assert history_payload["messages"][1]["metadata"]["used_local_tool"] is True
     assert history_payload["messages"][1]["metadata"]["usage"]["total_tokens"] == 42
 
 
-def test_daily_news_chat_reports_non_public_mcp_url(monkeypatch, tmp_path):
+def test_daily_news_chat_requires_openai_api_key(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
 
@@ -91,8 +91,7 @@ def test_daily_news_chat_reports_non_public_mcp_url(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
     monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
-    monkeypatch.setenv("CURATOR_MCP_TOKEN", "mcp-secret")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     config = main.load_config()
     repository = get_repository_from_config(config)
@@ -109,7 +108,7 @@ def test_daily_news_chat_reports_non_public_mcp_url(monkeypatch, tmp_path):
     assert stream_response.status_code == 200
     body = stream_response.get_data(as_text=True)
     assert '"type":"error"' in body
-    assert "Current MCP URL uses local host 'localhost'" in body
+    assert "OPENAI_API_KEY is not configured for the Daily News agent." in body
 
     history_response = client.get(f"/api/daily-news/session/{session_id}")
     history_payload = history_response.get_json()
@@ -170,5 +169,6 @@ def test_daily_news_chat_mock_mode_uses_local_repository(monkeypatch, tmp_path):
 
     history_payload = client.get(f"/api/daily-news/session/{session_id}").get_json()
     assert [message["role"] for message in history_payload["messages"]] == ["user", "assistant"]
-    assert history_payload["messages"][1]["metadata"]["used_mcp"] is True
+    assert history_payload["messages"][1]["metadata"]["used_mcp"] is False
+    assert history_payload["messages"][1]["metadata"]["used_local_tool"] is True
     assert history_payload["messages"][1]["metadata"]["mock_agent"] is True
