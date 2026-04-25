@@ -7,19 +7,19 @@ from typing import Any
 from openai import OpenAI
 
 from .repository_tools import (
-    build_search_recent_stories_tool,
+    build_recent_stories_tool,
     build_story_details_tool,
     get_story_details,
+    list_recent_stories,
     list_recent_story_feed,
-    search_recent_stories,
 )
 
 
 STATUS_BY_EVENT_TYPE = {
     "tools.loading": "Loading repository tools",
     "tools.ready": "Repository tools ready",
-    "tool.search_recent_stories.start": "Reading repository snippets",
-    "tool.search_recent_stories.done": "Repository context loaded",
+    "tool.list_recent_stories.start": "Reading repository snippets",
+    "tool.list_recent_stories.done": "Repository context loaded",
     "tool.get_story_details.start": "Reading repository snippets",
     "tool.get_story_details.done": "Repository context loaded",
 }
@@ -31,8 +31,11 @@ Your job is to answer questions about the daily news corpus with concise, source
 
 Rules:
 - Prefer repository facts from the local repository tools first.
-- Start with repository search/snippet tools before requesting deeper story detail.
 - The available repository tools read the same stored daily news data locally; do not treat them as external systems.
+- Choose tools based on the user's intent, not by matching every word in the user's message literally.
+- Use `list_recent_stories` to retrieve recent repository stories for a requested date range or broad roundup such as "top news", "top stories", "headlines", or "what happened today".
+- `list_recent_stories` returns snippets and metadata only. Use it first to identify the best candidate stories in the requested window.
+- Request deeper story detail only after you have identified a specific story that needs closer reading.
 - Keep token usage bounded. Do not request full story detail unless it is necessary for the answer.
 - When you rely on a repository story, cite it inline with the story title and URL if available.
 - If the user asks about relative dates like today or yesterday, use exact dates in your answer when it improves clarity.
@@ -113,7 +116,7 @@ def _serialize_debug_value(value: object, *, max_chars: int = 4000) -> object:
 def build_agent_tools(*, server_url: str, authorization: str, settings: dict) -> list[dict]:
     del server_url, authorization, settings
     return [
-        _build_function_tool(build_search_recent_stories_tool()),
+        _build_function_tool(build_recent_stories_tool()),
         _build_function_tool(build_story_details_tool()),
     ]
 
@@ -322,10 +325,9 @@ class DailyNewsAgentService:
         return {"type": "debug", "event": entry}
 
     def _handle_local_tool_call(self, tool_name: str, arguments: dict) -> dict:
-        if tool_name == "search_recent_stories":
-            return search_recent_stories(
+        if tool_name == "list_recent_stories":
+            return list_recent_stories(
                 self._config,
-                query=str(arguments.get("query", "")),
                 window_hours=int(arguments.get("hours", self._settings["repository_window_hours"])),
                 source_type=arguments.get("source_type"),
                 limit=int(arguments.get("limit", self._settings["snippet_limit"])),
