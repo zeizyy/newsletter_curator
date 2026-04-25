@@ -12,6 +12,8 @@ MAX_SEARCH_LIMIT = 12
 DEFAULT_SEARCH_LIMIT = 8
 DEFAULT_DETAIL_CHAR_LIMIT = 3500
 MAX_DETAIL_CHAR_LIMIT = 12000
+DEFAULT_TOOL_RESULT_CHAR_LIMIT = 7000
+MIN_TOOL_RESULT_CHAR_LIMIT = 1000
 
 
 def _story_schema() -> dict:
@@ -174,12 +176,17 @@ def build_story_details_tool() -> dict:
     return {
         "name": GET_STORY_DETAILS_TOOL,
         "title": "Get Story Details",
-        "description": "Returns one stored story with a bounded article excerpt. Use this only after you have already identified a specific story from snippets and need deeper detail for that one story.",
+        "description": "Returns one stored story with its summary and source metadata. Use this only after you have already identified a specific story from snippets and need detail for that one story.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "story_id": {"type": "integer"},
-                "max_article_chars": {"type": "integer", "minimum": 200, "maximum": MAX_DETAIL_CHAR_LIMIT},
+                "max_article_chars": {
+                    "type": "integer",
+                    "minimum": 200,
+                    "maximum": MAX_DETAIL_CHAR_LIMIT,
+                    "description": "Deprecated compatibility field; story detail responses return summaries only.",
+                },
             },
             "required": ["story_id"],
             "additionalProperties": False,
@@ -197,9 +204,6 @@ def build_story_details_tool() -> dict:
                 "category",
                 "summary_headline",
                 "summary_body",
-                "context",
-                "article_excerpt",
-                "article_excerpt_truncated",
             ],
             "properties": {
                 "id": {"type": "integer"},
@@ -211,9 +215,6 @@ def build_story_details_tool() -> dict:
                 "category": {"type": "string"},
                 "summary_headline": {"type": "string"},
                 "summary_body": {"type": "string"},
-                "context": {"type": "string"},
-                "article_excerpt": {"type": "string"},
-                "article_excerpt_truncated": {"type": "boolean"},
             },
         },
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
@@ -315,12 +316,12 @@ def search_recent_stories(
 
 
 def get_story_details(config: dict, *, story_id: int, max_article_chars: int) -> dict:
+    del max_article_chars
     repository = SQLiteRepository(resolve_database_path(config))
     repository.initialize()
     story = next((item for item in repository.list_stories() if int(item.get("id", 0) or 0) == story_id), None)
     if story is None:
         raise ValueError(f"Story {story_id} was not found.")
-    article_excerpt, truncated = _trim_text(str(story.get("article_text", "") or ""), max_article_chars)
     return {
         "id": int(story["id"]),
         "title": _story_title(story),
@@ -334,9 +335,6 @@ def get_story_details(config: dict, *, story_id: int, max_article_chars: int) ->
         "paywall_reason": story.get("paywall_reason"),
         "summary_headline": str(story.get("summary_headline", "") or ""),
         "summary_body": str(story.get("summary_body", "") or str(story.get("summary", "") or "")),
-        "context": str(story.get("context", "") or ""),
-        "article_excerpt": article_excerpt,
-        "article_excerpt_truncated": truncated,
     }
 
 
@@ -409,9 +407,3 @@ def _normalize_story_headline(story: dict) -> dict:
         "title": _story_title(story),
     }
 
-
-def _trim_text(value: str, max_chars: int) -> tuple[str, bool]:
-    normalized = str(value or "")
-    if len(normalized) <= max_chars:
-        return normalized, False
-    return normalized[: max_chars - 1].rstrip() + "…", True
