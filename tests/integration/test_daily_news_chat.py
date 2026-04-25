@@ -13,21 +13,30 @@ class FakeDailyNewsAgentService:
         self.server_url = server_url
         self.authorization = authorization
 
-    def stream_reply(self, *, history: list[dict], user_message: str):
+    def stream_reply(self, *, history: list[dict], user_message: str, debug: bool = False):
         assert history[-1]["role"] == "user"
         assert history[-1]["content"] == user_message
         yield {"type": "status", "message": "Reading repository snippets"}
+        if debug:
+            yield {"type": "debug", "event": {"type": "note", "message": "observable trace only"}}
         yield {"type": "delta", "delta": "Repository says "}
         yield {"type": "delta", "delta": "chip spending rose."}
+        metadata = {
+            "used_mcp": False,
+            "used_local_tool": True,
+            "used_web_search": False,
+            "usage": {"total_tokens": 42},
+        }
+        if debug:
+            metadata.update({
+                "debug_mode": True,
+                "reasoning_trace_available": False,
+                "debug_trace": [{"type": "note", "message": "observable trace only"}],
+            })
         yield {
             "type": "done",
             "message": "Repository says chip spending rose.",
-            "metadata": {
-                "used_mcp": False,
-                "used_local_tool": True,
-                "used_web_search": False,
-                "usage": {"total_tokens": 42},
-            },
+            "metadata": metadata,
         }
 
 
@@ -95,6 +104,48 @@ def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     assert history_payload["messages"][1]["metadata"]["used_local_tool"] is True
     assert history_payload["messages"][1]["metadata"]["usage"]["total_tokens"] == 42
     assert history_payload["messages"][1]["metadata"]["daily_tokens_used"] == 42
+
+
+def test_daily_news_chat_debug_mode_streams_and_persists_trace(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "DailyNewsAgentService", FakeDailyNewsAgentService)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    repository, _subscriber, subscriber_session = _create_logged_in_subscriber(
+        admin_app,
+        "reader@example.com",
+    )
+
+    client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, subscriber_session["token"])
+    session_id = client.post("/api/daily-news/session").get_json()["session_id"]
+
+    stream_response = client.post(
+        "/api/daily-news/stream",
+        json={"session_id": session_id, "message": "What happened in chips?", "debug": True},
+    )
+
+    assert stream_response.status_code == 200
+    body = stream_response.get_data(as_text=True)
+    assert '"type":"debug"' in body
+    assert 'observable trace only' in body
+
+    history_payload = client.get(f"/api/daily-news/session/{session_id}").get_json()
+    metadata = history_payload["messages"][1]["metadata"]
+    assert metadata["debug_mode"] is True
+    assert metadata["reasoning_trace_available"] is False
+    assert metadata["debug_trace"][0]["type"] == "note"
 
 
 def test_daily_news_chat_requires_openai_api_key(monkeypatch, tmp_path):

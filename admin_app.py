@@ -2118,6 +2118,7 @@ def stream_daily_news_chat():
         return {"error": "Invalid JSON body."}, 400
     session_id = str(payload.get("session_id", "")).strip()
     user_message = str(payload.get("message", "")).strip()
+    debug_mode = bool(payload.get("debug", False))
     if not session_id:
         return {"error": "session_id is required."}, 400
     if not user_message:
@@ -2152,7 +2153,7 @@ def stream_daily_news_chat():
     @stream_with_context
     def generate():
         try:
-            for event in service.stream_reply(history=history, user_message=user_message):
+            for event in service.stream_reply(history=history, user_message=user_message, debug=debug_mode):
                 if event.get("type") == "done":
                     metadata = event.get("metadata", {})
                     usage = metadata.get("usage", {}) if isinstance(metadata, dict) else {}
