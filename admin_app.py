@@ -1,13 +1,11 @@
 import datetime as dt
 import base64
 from email.utils import parseaddr
-import ipaddress
 import json
 import os
 from pathlib import Path
 import secrets
 import threading
-from urllib.parse import urlsplit
 
 from flask import Flask, Response, abort, make_response, redirect, render_template, request, stream_with_context, url_for
 import requests
@@ -1157,10 +1155,6 @@ def render_admin_template(template_name: str, **context):
     )
 
 
-def daily_news_agent_mcp_url() -> str:
-    return f"{subscriber_public_base_url()}{MCP_ENDPOINT_PATH}"
-
-
 def create_daily_news_chat_session(repository) -> dict:
     session_id = secrets.token_urlsafe(18)
     return repository.create_agent_chat_session(session_id)
@@ -1181,39 +1175,9 @@ def sse_error_response(message: str, *, status: int = 200) -> Response:
     return response
 
 
-def daily_news_agent_preflight_error(*, mcp_url: str, mcp_token: str) -> str:
+def daily_news_agent_preflight_error() -> str:
     if not os.getenv("OPENAI_API_KEY", "").strip():
         return "OPENAI_API_KEY is not configured for the Daily News agent."
-    if not mcp_token:
-        return "CURATOR_MCP_TOKEN must be configured for the Daily News agent MCP server."
-
-    parsed = urlsplit(mcp_url)
-    hostname = (parsed.hostname or "").strip().lower()
-    if not hostname:
-        return f"Daily News MCP URL is invalid: {mcp_url}"
-
-    if hostname == "localhost" or hostname.endswith(".local"):
-        return (
-            "Daily News MCP must be reachable from OpenAI over a public URL. "
-            f"Current MCP URL uses local host '{hostname}'. Set CURATOR_PUBLIC_BASE_URL to a public HTTPS origin."
-        )
-
-    try:
-        ip = ipaddress.ip_address(hostname)
-    except ValueError:
-        ip = None
-
-    if ip is not None and (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_unspecified
-    ):
-        return (
-            "Daily News MCP must be reachable from OpenAI over a public URL. "
-            f"Current MCP URL uses non-public host '{hostname}'. Set CURATOR_PUBLIC_BASE_URL to a public HTTPS origin."
-        )
     return ""
 
 
@@ -2121,12 +2085,9 @@ def stream_daily_news_chat():
     if session is None:
         return {"error": "Session not found."}, 404
 
-    mcp_token = configured_mcp_token()
-    authorization = f"Bearer {mcp_token}" if mcp_token else ""
-    mcp_url = daily_news_agent_mcp_url()
     use_mock_agent = daily_news_agent_mock_enabled()
     if not use_mock_agent:
-        preflight_error = daily_news_agent_preflight_error(mcp_url=mcp_url, mcp_token=mcp_token)
+        preflight_error = daily_news_agent_preflight_error()
         if preflight_error:
             return sse_error_response(preflight_error)
 
@@ -2135,8 +2096,8 @@ def stream_daily_news_chat():
     service_class = MockDailyNewsAgentService if use_mock_agent else DailyNewsAgentService
     service = service_class(
         load_merged_config(),
-        server_url=mcp_url,
-        authorization=authorization,
+        server_url="",
+        authorization="",
     )
 
     @stream_with_context

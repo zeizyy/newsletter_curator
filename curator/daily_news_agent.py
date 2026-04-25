@@ -6,17 +6,22 @@ from typing import Any
 
 from openai import OpenAI
 
-from .mcp_server import get_story_details, list_recent_story_feed
+from .repository_tools import (
+    build_search_recent_stories_tool,
+    build_story_details_tool,
+    get_story_details,
+    list_recent_story_feed,
+    search_recent_stories,
+)
 
 
 STATUS_BY_EVENT_TYPE = {
-    "response.mcp_list_tools.in_progress": "Loading repository tools",
-    "response.mcp_list_tools.completed": "Repository tools ready",
-    "response.mcp_call.in_progress": "Reading repository snippets",
-    "response.mcp_call.completed": "Repository context loaded",
-    "response.web_search_call.searching": "Expanding with web search",
-    "response.web_search_call.in_progress": "Running web search",
-    "response.web_search_call.completed": "Web search finished",
+    "tools.loading": "Loading repository tools",
+    "tools.ready": "Repository tools ready",
+    "tool.search_recent_stories.start": "Reading repository snippets",
+    "tool.search_recent_stories.done": "Repository context loaded",
+    "tool.get_story_details.start": "Reading repository snippets",
+    "tool.get_story_details.done": "Repository context loaded",
 }
 
 
@@ -25,12 +30,11 @@ SYSTEM_PROMPT = """You are the Daily News agent inside Newsletter Curator.
 Your job is to answer questions about the daily news corpus with concise, source-grounded responses.
 
 Rules:
-- Prefer repository facts from the remote MCP server first.
+- Prefer repository facts from the local repository tools first.
 - Start with repository search/snippet tools before requesting deeper story detail.
-- Only call web search when the repository does not contain enough coverage, or when the user explicitly asks for information outside the stored news set.
+- The available repository tools read the same stored daily news data locally; do not treat them as external systems.
 - Keep token usage bounded. Do not request full story detail unless it is necessary for the answer.
 - When you rely on a repository story, cite it inline with the story title and URL if available.
-- If web search was needed, clearly separate that from repository-backed claims.
 - If the user asks about relative dates like today or yesterday, use exact dates in your answer when it improves clarity.
 """
 
@@ -51,7 +55,7 @@ def build_agent_settings(config: dict) -> dict:
         "max_history_messages": _int_setting(agent_cfg, "max_history_messages", 8, 2),
         "max_message_chars": _int_setting(agent_cfg, "max_message_chars", 1600, 400),
         "max_output_tokens": _int_setting(agent_cfg, "max_output_tokens", 900, 200),
-        "mcp_window_hours": _int_setting(agent_cfg, "mcp_window_hours", 48, 1),
+        "repository_window_hours": _int_setting(agent_cfg, "mcp_window_hours", 48, 1),
         "snippet_limit": _int_setting(agent_cfg, "snippet_limit", 8, 1),
         "detail_char_limit": _int_setting(agent_cfg, "detail_char_limit", 3500, 500),
     }
@@ -79,25 +83,22 @@ def _history_to_input(history: list[dict], *, max_history_messages: int, max_mes
     return messages
 
 
-def _build_mcp_tool(*, server_url: str, authorization: str, settings: dict) -> dict:
+def _build_function_tool(tool_definition: dict) -> dict:
     return {
-        "type": "mcp",
-        "server_label": "daily_news",
-        "server_description": "Stored daily news repository exposed through Newsletter Curator MCP.",
-        "server_url": server_url,
-        "authorization": authorization,
-        "allowed_tools": ["search_recent_stories", "get_story_details"],
-        "headers": {
-            "MCP-Protocol-Version": "2025-11-25",
+        "type": "function",
+        "function": {
+            "name": str(tool_definition["name"]),
+            "description": str(tool_definition.get("description", "")),
+            "parameters": dict(tool_definition.get("inputSchema") or {"type": "object", "properties": {}}),
         },
-        "require_approval": "never",
     }
 
 
 def build_agent_tools(*, server_url: str, authorization: str, settings: dict) -> list[dict]:
+    del server_url, authorization, settings
     return [
-        _build_mcp_tool(server_url=server_url, authorization=authorization, settings=settings),
-        {"type": "web_search"},
+        _build_function_tool(build_search_recent_stories_tool()),
+        _build_function_tool(build_story_details_tool()),
     ]
 
 
@@ -215,7 +216,7 @@ class MockDailyNewsAgentService:
 
         payload = list_recent_story_feed(
             self._config,
-            window_hours=self._settings["mcp_window_hours"],
+            window_hours=self._settings["repository_window_hours"],
             source_type=None,
         )
         stories = _rank_mock_stories(
@@ -258,7 +259,8 @@ class MockDailyNewsAgentService:
             "type": "done",
             "message": message,
             "metadata": {
-                "used_mcp": True,
+                "used_mcp": False,
+                "used_local_tool": True,
                 "used_web_search": False,
                 "usage": {
                     "input_tokens": len(user_message.split()) + 25,
@@ -274,9 +276,35 @@ class MockDailyNewsAgentService:
 class DailyNewsAgentService:
     def __init__(self, config: dict, *, server_url: str, authorization: str, client_factory=OpenAI):
         self._client_factory = client_factory
+        self._config = config
         self._settings = build_agent_settings(config)
         self._server_url = server_url
         self._authorization = authorization
+
+    def _emit_status(self, event_type: str, last_status: str) -> tuple[str, dict | None]:
+        next_status = STATUS_BY_EVENT_TYPE.get(event_type, "")
+        if next_status and next_status != last_status:
+            return next_status, {"type": "status", "message": next_status}
+        return last_status, None
+
+    def _handle_local_tool_call(self, tool_name: str, arguments: dict) -> dict:
+        if tool_name == "search_recent_stories":
+            return search_recent_stories(
+                self._config,
+                query=str(arguments.get("query", "")),
+                window_hours=int(arguments.get("hours", self._settings["repository_window_hours"])),
+                source_type=arguments.get("source_type"),
+                limit=int(arguments.get("limit", self._settings["snippet_limit"])),
+            )
+        if tool_name == "get_story_details":
+            return get_story_details(
+                self._config,
+                story_id=int(arguments["story_id"]),
+                max_article_chars=int(
+                    arguments.get("max_article_chars", self._settings["detail_char_limit"])
+                ),
+            )
+        raise ValueError(f"Unknown local tool: {tool_name}")
 
     def stream_reply(
         self,
@@ -285,69 +313,105 @@ class DailyNewsAgentService:
         user_message: str,
     ) -> Iterator[dict]:
         client = self._client_factory()
-        used_mcp = False
+        used_local_tool = False
         used_web_search = False
-        response_text_parts: list[str] = []
         last_status = ""
+        usage_payload = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
         input_messages = _history_to_input(
             history,
             max_history_messages=self._settings["max_history_messages"],
             max_message_chars=self._settings["max_message_chars"],
         )
+        last_status, status_event = self._emit_status("tools.loading", last_status)
+        if status_event is not None:
+            yield status_event
+        last_status, status_event = self._emit_status("tools.ready", last_status)
+        if status_event is not None:
+            yield status_event
 
-        with client.responses.stream(
-            model=self._settings["model"],
-            instructions=SYSTEM_PROMPT,
-            input=input_messages,
-            tools=build_agent_tools(
-                server_url=self._server_url,
-                authorization=self._authorization,
-                settings=self._settings,
-            ),
-            max_output_tokens=self._settings["max_output_tokens"],
-            parallel_tool_calls=False,
-            truncation="auto",
-        ) as stream:
-            for event in stream:
-                event_type = str(getattr(event, "type", "") or "")
-                if event_type == "response.output_text.delta":
-                    delta = str(getattr(event, "delta", "") or "")
-                    if delta:
-                        response_text_parts.append(delta)
-                        yield {"type": "delta", "delta": delta}
-                    continue
+        messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, *input_messages]
+        message = ""
+        tools = build_agent_tools(
+            server_url=self._server_url,
+            authorization=self._authorization,
+            settings=self._settings,
+        )
+        for _round in range(6):
+            response = client.chat.completions.create(
+                model=self._settings["model"],
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                max_tokens=self._settings["max_output_tokens"],
+            )
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                usage_payload["input_tokens"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+                usage_payload["output_tokens"] += int(getattr(usage, "completion_tokens", 0) or 0)
+                usage_payload["total_tokens"] += int(getattr(usage, "total_tokens", 0) or 0)
 
-                if event_type.startswith("response.mcp_"):
-                    used_mcp = True
-                if event_type.startswith("response.web_search_"):
-                    used_web_search = True
+            choice_message = response.choices[0].message
+            tool_calls = list(getattr(choice_message, "tool_calls", None) or [])
+            content = str(getattr(choice_message, "content", "") or "").strip()
 
-                next_status = STATUS_BY_EVENT_TYPE.get(event_type, "")
-                if next_status and next_status != last_status:
-                    last_status = next_status
-                    yield {"type": "status", "message": next_status}
+            assistant_message: dict[str, Any] = {"role": "assistant"}
+            if content:
+                assistant_message["content"] = content
+            if tool_calls:
+                assistant_message["tool_calls"] = [
+                    {
+                        "id": str(tool_call.id),
+                        "type": "function",
+                        "function": {
+                            "name": str(tool_call.function.name),
+                            "arguments": str(tool_call.function.arguments),
+                        },
+                    }
+                    for tool_call in tool_calls
+                ]
+            messages.append(assistant_message)
 
-            final_response = stream.get_final_response()
+            if not tool_calls:
+                message = content
+                break
 
-        usage = getattr(final_response, "usage", None)
-        usage_payload = {}
-        if usage is not None:
-            usage_payload = {
-                "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
-                "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
-                "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
-            }
+            for tool_call in tool_calls:
+                tool_name = str(tool_call.function.name)
+                last_status, status_event = self._emit_status(f"tool.{tool_name}.start", last_status)
+                if status_event is not None:
+                    yield status_event
+                try:
+                    arguments = json.loads(str(tool_call.function.arguments or "{}"))
+                    if not isinstance(arguments, dict):
+                        raise ValueError("Tool arguments must decode to an object.")
+                    tool_result = self._handle_local_tool_call(tool_name, arguments)
+                except Exception as exc:
+                    tool_result = {"error": str(exc)}
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": str(tool_call.id),
+                        "content": json.dumps(tool_result, sort_keys=True),
+                    }
+                )
+                used_local_tool = True
+                last_status, status_event = self._emit_status(f"tool.{tool_name}.done", last_status)
+                if status_event is not None:
+                    yield status_event
 
-        message = "".join(response_text_parts).strip()
         if not message:
             message = "I could not produce an answer from the available repository context."
+
+        for chunk in [message[index : index + 80] for index in range(0, len(message), 80)]:
+            yield {"type": "delta", "delta": chunk}
 
         yield {
             "type": "done",
             "message": message,
             "metadata": {
-                "used_mcp": used_mcp,
+                "used_mcp": False,
+                "used_local_tool": used_local_tool,
                 "used_web_search": used_web_search,
                 "usage": usage_payload,
                 "user_message": _trim_text(user_message, max_chars=self._settings["max_message_chars"]),
