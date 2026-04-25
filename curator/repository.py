@@ -228,6 +228,13 @@ class SQLiteRepository:
                 "created_at",
                 "updated_at",
             },
+            "daily_news_agent_usage": {
+                "subscriber_id",
+                "usage_date",
+                "total_tokens",
+                "created_at",
+                "updated_at",
+            },
             "newsletter_telemetry": {
                 "id",
                 "daily_newsletter_id",
@@ -261,6 +268,7 @@ class SQLiteRepository:
             },
             "agent_chat_sessions": {
                 "id",
+                "subscriber_id",
                 "created_at",
                 "updated_at",
             },
@@ -285,6 +293,17 @@ class SQLiteRepository:
         self._migrate_daily_newsletters_issue_types(connection)
         self._migrate_subscriber_profiles_delivery_format(connection)
         self._migrate_fetched_stories_email_sent_at(connection)
+        self._migrate_agent_chat_sessions_subscriber_id(connection)
+
+    def _migrate_agent_chat_sessions_subscriber_id(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "agent_chat_sessions")
+        if columns and "subscriber_id" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE agent_chat_sessions
+                ADD COLUMN subscriber_id INTEGER REFERENCES subscribers(id) ON DELETE CASCADE
+                """
+            )
 
     def _migrate_fetched_stories_email_sent_at(self, connection: sqlite3.Connection) -> None:
         columns = self._table_columns(connection, "fetched_stories")
@@ -630,6 +649,7 @@ class SQLiteRepository:
             "subscriber_sessions",
             "subscriber_login_tokens",
             "subscriber_profiles",
+            "daily_news_agent_usage",
             "subscribers",
             "newsletter_click_events",
             "newsletter_open_events",
@@ -801,6 +821,15 @@ class SQLiteRepository:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS daily_news_agent_usage (
+                subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+                usage_date TEXT NOT NULL,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (subscriber_id, usage_date)
+            );
+
             CREATE TABLE IF NOT EXISTS newsletter_telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 daily_newsletter_id INTEGER NOT NULL UNIQUE REFERENCES daily_newsletters(id) ON DELETE CASCADE,
@@ -839,6 +868,7 @@ class SQLiteRepository:
 
             CREATE TABLE IF NOT EXISTS agent_chat_sessions (
                 id TEXT PRIMARY KEY,
+                subscriber_id INTEGER REFERENCES subscribers(id) ON DELETE CASCADE,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -2739,21 +2769,21 @@ class SQLiteRepository:
             "orphaned_sources_deleted": orphaned_sources_deleted,
         }
 
-    def create_agent_chat_session(self, session_id: str) -> dict:
+    def create_agent_chat_session(self, session_id: str, *, subscriber_id: int | None = None) -> dict:
         now = utc_now()
         with self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO agent_chat_sessions (id, created_at, updated_at)
-                VALUES (?, ?, ?)
+                INSERT INTO agent_chat_sessions (id, subscriber_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(id)
                 DO UPDATE SET updated_at = excluded.updated_at
                 """,
-                (session_id, now, now),
+                (session_id, subscriber_id, now, now),
             )
             row = connection.execute(
                 """
-                SELECT id, created_at, updated_at
+                SELECT id, subscriber_id, created_at, updated_at
                 FROM agent_chat_sessions
                 WHERE id = ?
                 LIMIT 1
@@ -2762,18 +2792,81 @@ class SQLiteRepository:
             ).fetchone()
         return dict(row) if row is not None else {}
 
-    def get_agent_chat_session(self, session_id: str) -> dict | None:
+    def get_agent_chat_session(self, session_id: str, *, subscriber_id: int | None = None) -> dict | None:
+        where = "WHERE id = ?"
+        params: list[object] = [session_id]
+        if subscriber_id is not None:
+            where += " AND subscriber_id = ?"
+            params.append(int(subscriber_id))
+        with self.connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT id, subscriber_id, created_at, updated_at
+                FROM agent_chat_sessions
+                {where}
+                LIMIT 1
+                """,
+                params,
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def get_daily_news_agent_usage(self, subscriber_id: int, usage_date: str | None = None) -> dict:
+        normalized_date = str(usage_date or datetime.now(UTC).date().isoformat()).strip()
         with self.connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, created_at, updated_at
-                FROM agent_chat_sessions
-                WHERE id = ?
+                SELECT subscriber_id, usage_date, total_tokens, created_at, updated_at
+                FROM daily_news_agent_usage
+                WHERE subscriber_id = ? AND usage_date = ?
                 LIMIT 1
                 """,
-                (session_id,),
+                (subscriber_id, normalized_date),
             ).fetchone()
-        return dict(row) if row is not None else None
+        if row is None:
+            return {
+                "subscriber_id": int(subscriber_id),
+                "usage_date": normalized_date,
+                "total_tokens": 0,
+                "created_at": "",
+                "updated_at": "",
+            }
+        return {
+            "subscriber_id": int(row["subscriber_id"]),
+            "usage_date": str(row["usage_date"] or ""),
+            "total_tokens": int(row["total_tokens"] or 0),
+            "created_at": str(row["created_at"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+        }
+
+    def record_daily_news_agent_usage(
+        self,
+        subscriber_id: int,
+        *,
+        total_tokens: int,
+        usage_date: str | None = None,
+    ) -> dict:
+        normalized_date = str(usage_date or datetime.now(UTC).date().isoformat()).strip()
+        tokens = max(0, int(total_tokens or 0))
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO daily_news_agent_usage (
+                    subscriber_id,
+                    usage_date,
+                    total_tokens,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(subscriber_id, usage_date)
+                DO UPDATE SET
+                    total_tokens = total_tokens + excluded.total_tokens,
+                    updated_at = excluded.updated_at
+                """,
+                (subscriber_id, normalized_date, tokens, now, now),
+            )
+        return self.get_daily_news_agent_usage(subscriber_id, normalized_date)
 
     def append_agent_chat_message(
         self,

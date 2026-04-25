@@ -5,6 +5,20 @@
 {% block page_title %}Daily News Agent{% endblock %}
 {% block page_lead %}{% endblock %}
 {% block page_meta %}{% endblock %}
+{% block command_rail %}
+  <section class="command-rail surface">
+    <div class="utility-label">Subscriber Rail</div>
+    <nav class="nav-pills">
+      <a class="nav-pill {% if request.endpoint == 'daily_news_chat_page' %}is-active{% endif %}" href="{{ url_for('daily_news_chat_page') }}">Daily News</a>
+      <a class="nav-pill {% if request.endpoint == 'subscriber_settings' %}is-active{% endif %}" href="{{ url_for('subscriber_settings') }}">Settings</a>
+    </nav>
+  </section>
+{% endblock %}
+{% block title_actions %}
+  <form method="post" action="{{ url_for('subscriber_logout') }}">
+    <button type="submit" class="signout-button">Sign out</button>
+  </form>
+{% endblock %}
 
 {% block head_extra %}
   <style>

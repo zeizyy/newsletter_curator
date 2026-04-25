@@ -31,6 +31,13 @@ class FakeDailyNewsAgentService:
         }
 
 
+def _create_logged_in_subscriber(admin_app_module, email_address: str):
+    repository = admin_app_module.load_repository(admin_app_module.load_merged_config())
+    subscriber = repository.upsert_subscriber(email_address)
+    session = repository.create_subscriber_session(int(subscriber["id"]))
+    return repository, subscriber, session
+
+
 def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     main = importlib.import_module("main")
     admin_app = importlib.import_module("admin_app")
@@ -47,20 +54,28 @@ def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     config = main.load_config()
     repository = get_repository_from_config(config)
     repository.initialize()
+    repository, _subscriber, subscriber_session = _create_logged_in_subscriber(
+        admin_app,
+        "reader@example.com",
+    )
 
     client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, subscriber_session["token"])
 
     page_response = client.get("/daily-news")
     assert page_response.status_code == 200
     page = page_response.get_data(as_text=True)
     assert "Daily News Agent" in page
     assert "Ask the stored daily news corpus" in page
+    assert "Subscriber Rail" in page
+    assert "Control Room" not in page
 
     session_response = client.post("/api/daily-news/session")
     assert session_response.status_code == 200
     session_payload = session_response.get_json()
     session_id = session_payload["session_id"]
     assert session_payload["messages"] == []
+    assert session_payload["usage"]["daily_token_limit"] == 50000
 
     stream_response = client.post(
         "/api/daily-news/stream",
@@ -79,6 +94,7 @@ def test_daily_news_chat_page_and_session_flow(monkeypatch, tmp_path):
     assert history_payload["messages"][1]["metadata"]["used_mcp"] is False
     assert history_payload["messages"][1]["metadata"]["used_local_tool"] is True
     assert history_payload["messages"][1]["metadata"]["usage"]["total_tokens"] == 42
+    assert history_payload["messages"][1]["metadata"]["daily_tokens_used"] == 42
 
 
 def test_daily_news_chat_requires_openai_api_key(monkeypatch, tmp_path):
@@ -96,8 +112,13 @@ def test_daily_news_chat_requires_openai_api_key(monkeypatch, tmp_path):
     config = main.load_config()
     repository = get_repository_from_config(config)
     repository.initialize()
+    repository, _subscriber, subscriber_session = _create_logged_in_subscriber(
+        admin_app,
+        "reader@example.com",
+    )
 
     client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, subscriber_session["token"])
     session_response = client.post("/api/daily-news/session")
     session_id = session_response.get_json()["session_id"]
 
@@ -154,6 +175,11 @@ def test_daily_news_chat_mock_mode_uses_local_repository(monkeypatch, tmp_path):
     )
 
     client = admin_app.app.test_client()
+    repository, _subscriber, subscriber_session = _create_logged_in_subscriber(
+        admin_app,
+        "reader@example.com",
+    )
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, subscriber_session["token"])
     session_id = client.post("/api/daily-news/session").get_json()["session_id"]
 
     stream_response = client.post(
@@ -172,3 +198,100 @@ def test_daily_news_chat_mock_mode_uses_local_repository(monkeypatch, tmp_path):
     assert history_payload["messages"][1]["metadata"]["used_mcp"] is False
     assert history_payload["messages"][1]["metadata"]["used_local_tool"] is True
     assert history_payload["messages"][1]["metadata"]["mock_agent"] is True
+
+
+def test_daily_news_chat_requires_subscriber_login(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    repository.initialize()
+
+    client = admin_app.app.test_client()
+
+    page_response = client.get("/daily-news")
+    assert page_response.status_code == 302
+    assert page_response.headers["Location"].endswith("/login")
+
+    session_response = client.post("/api/daily-news/session")
+    assert session_response.status_code == 302
+    assert session_response.headers["Location"].endswith("/login")
+
+
+def test_daily_news_chat_sessions_are_scoped_to_subscriber(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    repository, _first_subscriber, first_session = _create_logged_in_subscriber(
+        admin_app,
+        "first@example.com",
+    )
+    _repository, _second_subscriber, second_session = _create_logged_in_subscriber(
+        admin_app,
+        "second@example.com",
+    )
+
+    first_client = admin_app.app.test_client()
+    first_client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, first_session["token"])
+    session_id = first_client.post("/api/daily-news/session").get_json()["session_id"]
+
+    second_client = admin_app.app.test_client()
+    second_client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, second_session["token"])
+    history_response = second_client.get(f"/api/daily-news/session/{session_id}")
+
+    assert history_response.status_code == 404
+
+
+def test_daily_news_chat_enforces_daily_token_limit(monkeypatch, tmp_path):
+    main = importlib.import_module("main")
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
+            "daily_news_agent": {"daily_token_limit": 40},
+        },
+    )
+    monkeypatch.setattr(main, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("CURATOR_DAILY_NEWS_AGENT_MODE", "mock")
+
+    config = main.load_config()
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    repository, subscriber, subscriber_session = _create_logged_in_subscriber(
+        admin_app,
+        "reader@example.com",
+    )
+    repository.record_daily_news_agent_usage(int(subscriber["id"]), total_tokens=40)
+
+    client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, subscriber_session["token"])
+    session_id = client.post("/api/daily-news/session").get_json()["session_id"]
+
+    stream_response = client.post(
+        "/api/daily-news/stream",
+        json={"session_id": session_id, "message": "What happened in chips?"},
+    )
+
+    assert stream_response.status_code == 429
+    assert "token limit reached" in stream_response.get_data(as_text=True)
