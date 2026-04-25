@@ -53,6 +53,7 @@ ADMIN_TOKEN_COOKIE = "curator_admin_token"
 SUBSCRIBER_SESSION_COOKIE = "curator_subscriber_session"
 SUBSCRIBER_LOGIN_TOKEN_TTL_MINUTES = 20
 SUBSCRIBER_SESSION_TTL_DAYS = 30
+DEFAULT_DAILY_NEWS_AGENT_TOKEN_LIMIT = 50_000
 DEFAULT_SUBSCRIBER_SIGNUP_URL = "https://buttondown.com/zeizyynewsletter"
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 TRACKING_PIXEL_GIF = base64.b64decode("R0lGODlhAQABAPAAAAAAAAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
@@ -1156,9 +1157,17 @@ def render_admin_template(template_name: str, **context):
     )
 
 
-def create_daily_news_chat_session(repository) -> dict:
+def daily_news_agent_daily_token_limit(config: dict) -> int:
+    agent_cfg = config.get("daily_news_agent", {}) or {}
+    try:
+        return max(1, int(agent_cfg.get("daily_token_limit", DEFAULT_DAILY_NEWS_AGENT_TOKEN_LIMIT)))
+    except (TypeError, ValueError):
+        return DEFAULT_DAILY_NEWS_AGENT_TOKEN_LIMIT
+
+
+def create_daily_news_chat_session(repository, *, subscriber_id: int) -> dict:
     session_id = secrets.token_urlsafe(18)
-    return repository.create_agent_chat_session(session_id)
+    return repository.create_agent_chat_session(session_id, subscriber_id=subscriber_id)
 
 
 def sse_payload(payload: dict) -> str:
@@ -2027,7 +2036,13 @@ def track_newsletter_click(click_token: str):
 
 @app.route("/daily-news", methods=["GET"])
 def daily_news_chat_page():
-    _admin_token, redirect_response = require_admin_browser_auth()
+    repository = load_repository(load_merged_config())
+    if repository is None:
+        return render_subscriber_login_page(
+            errors=["Daily News agent is unavailable because the repository could not be opened."],
+            status_code=503,
+        )
+    _subscriber, redirect_response = require_subscriber_session(repository)
     if redirect_response is not None:
         return redirect_response
     return make_response(
@@ -2040,38 +2055,63 @@ def daily_news_chat_page():
 
 @app.route("/api/daily-news/session", methods=["POST"])
 def create_daily_news_session():
-    _admin_token, redirect_response = require_admin_browser_auth()
-    if redirect_response is not None:
-        return redirect_response
     repository = load_repository(load_merged_config())
     if repository is None:
         return {"error": "Repository could not be opened."}, 503
-    session = create_daily_news_chat_session(repository)
-    return {"session_id": session["id"], "messages": []}
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
+    config = load_merged_config()
+    token_limit = daily_news_agent_daily_token_limit(config)
+    usage = repository.get_daily_news_agent_usage(int(subscriber["id"]))
+    session = create_daily_news_chat_session(repository, subscriber_id=int(subscriber["id"]))
+    return {
+        "session_id": session["id"],
+        "messages": [],
+        "usage": {
+            "total_tokens": usage["total_tokens"],
+            "daily_token_limit": token_limit,
+            "remaining_tokens": max(0, token_limit - int(usage["total_tokens"])),
+            "usage_date": usage["usage_date"],
+        },
+    }
 
 
 @app.route("/api/daily-news/session/<session_id>", methods=["GET"])
 def get_daily_news_session(session_id: str):
-    _admin_token, redirect_response = require_admin_browser_auth()
-    if redirect_response is not None:
-        return redirect_response
     repository = load_repository(load_merged_config())
     if repository is None:
         return {"error": "Repository could not be opened."}, 503
-    session = repository.get_agent_chat_session(session_id)
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
+    session = repository.get_agent_chat_session(session_id, subscriber_id=int(subscriber["id"]))
     if session is None:
         return {"error": "Session not found."}, 404
-    return {"session_id": session_id, "messages": repository.list_agent_chat_messages(session_id)}
+    config = load_merged_config()
+    token_limit = daily_news_agent_daily_token_limit(config)
+    usage = repository.get_daily_news_agent_usage(int(subscriber["id"]))
+    return {
+        "session_id": session_id,
+        "messages": repository.list_agent_chat_messages(session_id),
+        "usage": {
+            "total_tokens": usage["total_tokens"],
+            "daily_token_limit": token_limit,
+            "remaining_tokens": max(0, token_limit - int(usage["total_tokens"])),
+            "usage_date": usage["usage_date"],
+        },
+    }
 
 
 @app.route("/api/daily-news/stream", methods=["POST"])
 def stream_daily_news_chat():
-    _admin_token, redirect_response = require_admin_browser_auth()
-    if redirect_response is not None:
-        return redirect_response
-    repository = load_repository(load_merged_config())
+    merged_config = load_merged_config()
+    repository = load_repository(merged_config)
     if repository is None:
         return {"error": "Repository could not be opened."}, 503
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
     try:
         payload = request.get_json(force=True) or {}
     except Exception:
@@ -2082,7 +2122,15 @@ def stream_daily_news_chat():
         return {"error": "session_id is required."}, 400
     if not user_message:
         return {"error": "message is required."}, 400
-    session = repository.get_agent_chat_session(session_id)
+    subscriber_id = int(subscriber["id"])
+    token_limit = daily_news_agent_daily_token_limit(merged_config)
+    usage_before = repository.get_daily_news_agent_usage(subscriber_id)
+    if int(usage_before["total_tokens"]) >= token_limit:
+        return sse_error_response(
+            "Daily News agent token limit reached for today. Try again tomorrow.",
+            status=429,
+        )
+    session = repository.get_agent_chat_session(session_id, subscriber_id=subscriber_id)
     if session is None:
         return {"error": "Session not found."}, 404
 
@@ -2096,7 +2144,7 @@ def stream_daily_news_chat():
     history = repository.list_agent_chat_messages(session_id)
     service_class = MockDailyNewsAgentService if use_mock_agent else DailyNewsAgentService
     service = service_class(
-        load_merged_config(),
+        merged_config,
         server_url="",
         authorization="",
     )
@@ -2106,12 +2154,32 @@ def stream_daily_news_chat():
         try:
             for event in service.stream_reply(history=history, user_message=user_message):
                 if event.get("type") == "done":
+                    metadata = event.get("metadata", {})
+                    usage = metadata.get("usage", {}) if isinstance(metadata, dict) else {}
+                    total_tokens = int(usage.get("total_tokens", 0) or 0) if isinstance(usage, dict) else 0
+                    if total_tokens:
+                        updated_usage = repository.record_daily_news_agent_usage(
+                            subscriber_id,
+                            total_tokens=total_tokens,
+                        )
+                        if isinstance(metadata, dict):
+                            metadata = {
+                                **metadata,
+                                "daily_token_limit": token_limit,
+                                "daily_tokens_used": updated_usage["total_tokens"],
+                                "daily_tokens_remaining": max(
+                                    0,
+                                    token_limit - int(updated_usage["total_tokens"]),
+                                ),
+                            }
                     repository.append_agent_chat_message(
                         session_id,
                         role="assistant",
                         content=str(event.get("message", "")),
-                        metadata=event.get("metadata", {}),
+                        metadata=metadata if isinstance(metadata, dict) else {},
                     )
+                    if isinstance(metadata, dict):
+                        event = {**event, "metadata": metadata}
                 yield sse_payload(event)
         except Exception as exc:
             yield sse_payload({"type": "error", "message": str(exc)})

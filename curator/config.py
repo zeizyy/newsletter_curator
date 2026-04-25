@@ -58,6 +58,7 @@ DEFAULT_CONFIG = {
         "mcp_window_hours": 48,
         "snippet_limit": 8,
         "detail_char_limit": 3500,
+        "daily_token_limit": 50000,
     },
     "limits": {
         "max_links_per_email": 15,
