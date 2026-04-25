@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import secrets
 import threading
+from urllib.parse import urlsplit
 
 from flask import Flask, Response, abort, make_response, redirect, render_template, request, stream_with_context, url_for
 import requests
