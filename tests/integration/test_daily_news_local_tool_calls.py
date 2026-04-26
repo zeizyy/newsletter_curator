@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from curator.daily_news_agent import DailyNewsAgentService
+from curator.daily_news_agent import DailyNewsAgentService, SYSTEM_PROMPT
 from curator.jobs import get_repository_from_config
 from tests.helpers import create_completed_ingestion_run
 
@@ -327,6 +327,18 @@ def test_daily_news_agent_forces_answer_after_max_tool_rounds(tmp_path):
     )
     assert forced_request["force_answer"] is True
     assert forced_request["tool_names"] == []
+
+
+def test_daily_news_agent_prompt_allows_general_knowledge_context():
+    assert "Tool routing:" in SYSTEM_PROMPT
+    assert "The default action is to answer directly without tools" in SYSTEM_PROMPT
+    assert "using only the latest user message" in SYSTEM_PROMPT
+    assert "must not call a tool for general background" in SYSTEM_PROMPT
+    assert 'even when the user says "this story"' in SYSTEM_PROMPT
+    assert "Terms inside a background question are not search queries" in SYSTEM_PROMPT
+    assert 'what does capex mean' in SYSTEM_PROMPT
+    assert "Calling a tool for a background/context question is an error" in SYSTEM_PROMPT
+    assert "If no tool-routing rule clearly applies, answer directly without tools" in SYSTEM_PROMPT
 
 
 def test_daily_news_agent_caps_tool_results_before_next_model_round(tmp_path):
