@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from openai import OpenAI
 
+from curator.config import load_config, merge_dicts
 from curator.daily_news_agent import DailyNewsAgentService
 from curator.jobs import get_repository_from_config
 from tests.helpers import create_completed_ingestion_run
@@ -20,16 +21,13 @@ def _require_openai_api_key() -> None:
 
 
 def _agent_eval_config(tmp_path) -> dict:
-    return {
-        "database": {"path": str(tmp_path / "curator.sqlite3")},
-        "daily_news_agent": {
-            "model": os.environ.get("CURATOR_AGENT_EVAL_MODEL", "gpt-5-mini"),
-            "max_output_tokens": int(os.environ.get("CURATOR_AGENT_EVAL_MAX_OUTPUT_TOKENS", "900")),
-            "snippet_limit": 3,
-            "detail_char_limit": 900,
+    config = load_config()
+    return merge_dicts(
+        config,
+        {
+            "database": {"path": str(tmp_path / "curator.sqlite3")},
         },
-        "openai": {"reasoning_model": "gpt-5-mini"},
-    }
+    )
 
 
 def _seed_chip_story(config: dict) -> dict:
