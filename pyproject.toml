@@ -23,3 +23,6 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "agent_eval: opt-in tests that call real model APIs",
+]
