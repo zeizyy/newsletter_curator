@@ -26,7 +26,7 @@ def test_daily_news_agent_uses_general_knowledge_for_background_followup(tmp_pat
         "database": {"path": str(tmp_path / "curator.sqlite3")},
         "daily_news_agent": {
             "model": os.environ.get("CURATOR_AGENT_EVAL_MODEL", "gpt-5-mini"),
-            "max_output_tokens": int(os.environ.get("CURATOR_AGENT_EVAL_MAX_OUTPUT_TOKENS", "1800")),
+            "max_output_tokens": int(os.environ.get("CURATOR_AGENT_EVAL_MAX_OUTPUT_TOKENS", "900")),
             "snippet_limit": 3,
             "detail_char_limit": 900,
         },
