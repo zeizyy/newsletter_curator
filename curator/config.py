@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
         "max_history_messages": 8,
         "max_message_chars": 1600,
         "max_output_tokens": 900,
+        "max_tool_rounds": 2,
         "mcp_window_hours": 48,
         "snippet_limit": 8,
         "detail_char_limit": 3500,
