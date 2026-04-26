@@ -61,6 +61,7 @@ def build_agent_settings(config: dict) -> dict:
         "max_history_messages": _int_setting(agent_cfg, "max_history_messages", 8, 2),
         "max_message_chars": _int_setting(agent_cfg, "max_message_chars", 1600, 400),
         "max_output_tokens": _int_setting(agent_cfg, "max_output_tokens", 900, 200),
+        "max_tool_rounds": _int_setting(agent_cfg, "max_tool_rounds", 2, 0),
         "repository_window_hours": _int_setting(agent_cfg, "mcp_window_hours", 48, 1),
         "snippet_limit": _int_setting(agent_cfg, "snippet_limit", 8, 1),
         "detail_char_limit": _int_setting(agent_cfg, "detail_char_limit", 3500, 500),
@@ -441,7 +442,10 @@ class DailyNewsAgentService:
             authorization=self._authorization,
             settings=self._settings,
         )
-        for round_index in range(6):
+        max_tool_rounds = self._settings["max_tool_rounds"]
+        max_model_rounds = max_tool_rounds + 1
+        for round_index in range(max_model_rounds):
+            tools_for_round = tools if round_index < max_tool_rounds else []
             debug_event = self._append_debug_trace(
                 debug_trace,
                 {
@@ -449,10 +453,11 @@ class DailyNewsAgentService:
                     "round": round_index + 1,
                     "model": self._settings["model"],
                     "max_completion_tokens": self._settings["max_output_tokens"],
+                    "force_answer": not tools_for_round,
                     "message_count": len(messages),
                     "tool_names": [
                         str(tool.get("function", {}).get("name", ""))
-                        for tool in tools
+                        for tool in tools_for_round
                         if isinstance(tool, dict)
                     ],
                 },
@@ -460,13 +465,15 @@ class DailyNewsAgentService:
             )
             if debug_event is not None:
                 yield debug_event
-            response = client.chat.completions.create(
-                model=self._settings["model"],
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                max_completion_tokens=self._settings["max_output_tokens"],
-            )
+            request_kwargs = {
+                "model": self._settings["model"],
+                "messages": messages,
+                "max_completion_tokens": self._settings["max_output_tokens"],
+            }
+            if tools_for_round:
+                request_kwargs["tools"] = tools_for_round
+                request_kwargs["tool_choice"] = "auto"
+            response = client.chat.completions.create(**request_kwargs)
             usage = getattr(response, "usage", None)
             if usage is not None:
                 usage_payload["input_tokens"] += int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -601,7 +608,8 @@ class DailyNewsAgentService:
                     "type": "fallback_answer",
                     "message": "No visible assistant content was produced before the agent fallback was applied.",
                     "likely_token_limited": token_limited_response,
-                    "round_limit": 6,
+                    "max_tool_rounds": max_tool_rounds,
+                    "round_limit": max_model_rounds,
                     "used_local_tool": used_local_tool,
                 },
                 debug=debug,

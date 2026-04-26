@@ -162,6 +162,54 @@ class FakeLargeToolResultOpenAI:
         )
 
 
+class FakeToolRoundLimitOpenAI:
+    def __init__(self):
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        self.calls = 0
+        self.request_kwargs: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls += 1
+        self.request_kwargs.append(kwargs)
+        if kwargs.get("tools"):
+            return SimpleNamespace(
+                id=f"chatcmpl-tool-{self.calls}",
+                model="gpt-5-mini",
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            role="assistant",
+                            content="",
+                            tool_calls=[
+                                _tool_call(
+                                    f"call-list-{self.calls}",
+                                    "list_recent_stories",
+                                    '{"hours":24,"limit":2}',
+                                )
+                            ],
+                        ),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=21, completion_tokens=7, total_tokens=28),
+            )
+        return SimpleNamespace(
+            id="chatcmpl-final",
+            model="gpt-5-mini",
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(
+                        role="assistant",
+                        content="Forced final answer from the loaded repository context.",
+                        tool_calls=[],
+                    ),
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=31, completion_tokens=9, total_tokens=40),
+        )
+
+
 def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     config = {
         "database": {"path": str(tmp_path / "curator.sqlite3")},
@@ -227,6 +275,58 @@ def test_daily_news_agent_uses_local_repository_tool_calls(tmp_path):
     assert detail_payload["summary_body"] == "Chip capex is accelerating."
     assert "article_excerpt" not in detail_payload
     assert "context" not in detail_payload
+
+
+def test_daily_news_agent_forces_answer_after_max_tool_rounds(tmp_path):
+    config = {
+        "database": {"path": str(tmp_path / "curator.sqlite3")},
+        "daily_news_agent": {"max_output_tokens": 400, "max_tool_rounds": 1, "snippet_limit": 2},
+        "openai": {"reasoning_model": "gpt-5-mini"},
+    }
+
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    published_at = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Chip Ledger",
+            "subject": "AI chip capex accelerates",
+            "url": "https://example.com/chips",
+            "anchor_text": "AI chip capex accelerates",
+            "context": "Chip budgets are expanding.",
+            "category": "Tech company news & strategy",
+            "published_at": published_at,
+            "summary": "Chip capex is accelerating.",
+        },
+        ingestion_run_id=run_id,
+    )
+
+    fake_openai = FakeToolRoundLimitOpenAI()
+    service = DailyNewsAgentService(config, server_url="", authorization="", client_factory=lambda: fake_openai)
+    events = list(
+        service.stream_reply(
+            history=[{"role": "user", "content": "What happened today?"}],
+            user_message="What happened today?",
+            debug=True,
+        )
+    )
+
+    assert fake_openai.calls == 2
+    assert fake_openai.request_kwargs[0]["tools"]
+    assert "tool_choice" in fake_openai.request_kwargs[0]
+    assert "tools" not in fake_openai.request_kwargs[1]
+    assert "tool_choice" not in fake_openai.request_kwargs[1]
+
+    done_event = next(event for event in events if event["type"] == "done")
+    assert done_event["message"] == "Forced final answer from the loaded repository context."
+    trace = done_event["metadata"]["debug_trace"]
+    forced_request = next(
+        event for event in trace if event["type"] == "model_request" and event["round"] == 2
+    )
+    assert forced_request["force_answer"] is True
+    assert forced_request["tool_names"] == []
 
 
 def test_daily_news_agent_caps_tool_results_before_next_model_round(tmp_path):
