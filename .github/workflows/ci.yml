@@ -51,6 +51,7 @@ jobs:
               - 'curator/daily_news_agent.py'
               - 'curator/repository_tools.py'
               - 'config.yaml'
+              - 'tests/evals/**'
 
       - name: Skip agent evals
         if: steps.changes.outputs.agent != 'true'
