@@ -29,3 +29,53 @@ jobs:
 
       - name: Run full test suite
         run: uv run pytest
+
+  agent-evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Detect agent-related changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            agent:
+              - 'curator/daily_news_agent.py'
+              - 'curator/repository_tools.py'
+              - 'config.yaml'
+
+      - name: Skip agent evals
+        if: steps.changes.outputs.agent != 'true'
+        run: echo "No agent-related changes detected; skipping real API agent evals."
+
+      - name: Require OpenAI API key
+        if: steps.changes.outputs.agent == 'true' && env.OPENAI_API_KEY == ''
+        run: |
+          echo "OPENAI_API_KEY secret is required for agent-related changes." >&2
+          exit 1
+
+      - name: Set up Python
+        if: steps.changes.outputs.agent == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        if: steps.changes.outputs.agent == 'true'
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        if: steps.changes.outputs.agent == 'true'
+        run: uv sync --frozen
+
+      - name: Run agent evals
+        if: steps.changes.outputs.agent == 'true'
+        run: uv run pytest tests/evals --run-agent-evals
