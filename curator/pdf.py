@@ -4,7 +4,7 @@ from io import BytesIO
 from typing import Iterable
 from xml.sax.saxutils import escape
 
-from .rendering import flatten_render_payload, format_story_timestamp
+from .rendering import entry_read_time_label, flatten_render_payload, format_story_timestamp
 from .summary_format import extract_structured_summary
 
 
@@ -69,6 +69,7 @@ def _story_payloads(render_payload) -> Iterable[dict]:
                 str(entry.get("display_timestamp", "") or "").strip()
                 or format_story_timestamp(str(entry.get("published_at", "") or ""))
             ),
+            "read_time_label": _pdf_safe_text(entry_read_time_label(entry)),
             "body_blocks": body_blocks,
             "key_takeaways": key_takeaways,
             "why_this_matters": why_this_matters,
@@ -176,6 +177,7 @@ def render_digest_pdf(
                     f"Story {index}",
                     story["source_name"],
                     story["display_timestamp"],
+                    story["read_time_label"],
                 ]
                 if value
             )

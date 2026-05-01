@@ -86,6 +86,8 @@ def test_pdf_story_rendering_does_not_duplicate_takeaways_or_draw_missing_glyphs
                 "summary_raw": summary_raw,
                 "source_name": "GPU Market Watch",
                 "published_at": "2026-04-30T14:00:00+00:00",
+                "read_time_minutes": 2,
+                "read_time_label": "2 min read",
                 "url": "https://example.com/gpu-rents",
             }
         ],
@@ -100,6 +102,7 @@ def test_pdf_story_rendering_does_not_duplicate_takeaways_or_draw_missing_glyphs
     assert "prior-gen H200" in pdf_text
     assert "GPT-5.5" in pdf_text
     assert "re-widened" in pdf_text
+    assert "2 min read" in pdf_text
     assert "\u2011" not in pdf_text
 
 
@@ -337,6 +340,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     second_title = "Model pricing shifted inference budgets"
     assert first_title in pdf_text
     assert second_title in pdf_text
+    assert "1 min read" in pdf_text
     assert pdf_text.index(first_title) < pdf_text.index(second_title)
 
     pdf_delivery_started = next(
