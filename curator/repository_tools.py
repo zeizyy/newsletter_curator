@@ -82,7 +82,7 @@ def build_recent_stories_tool() -> dict:
     return {
         "name": RECENT_STORIES_TOOL,
         "title": "List Recent Story Headlines",
-        "description": "Lists recent repository story headlines for the requested date range. Use only for repository headline requests, recent stories, top news, date-range roundups, or what happened today/yesterday. This is not a background, dictionary, explanation, or synthesis tool.",
+        "description": "Lists stored story headlines from a recent window. Use for repository headline or roundup requests: recent stories, top news, date ranges, today, or yesterday. Not for definitions, background, implications, or general synthesis.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -144,7 +144,7 @@ def build_search_recent_stories_tool() -> dict:
     return {
         "name": SEARCH_RECENT_STORIES_TOOL,
         "title": "Search Recent Story Snippets",
-        "description": "Searches stored daily news corpus stories for a specific topic, entity, company, person, product, or event and returns lightweight snippets first. Use only when the user asks whether that topic appears in the stored corpus or asks for repository-backed stories about it. Do not use to define terms, explain why something matters, provide background context, synthesize implications, or answer follow-up questions like 'what does X mean?'",
+        "description": "Searches stored story snippets by topic, entity, company, person, product, or event. Use when the user explicitly asks whether the stored corpus contains a topic or asks for repository-backed stories about it. Not for definitions, background, implications, or general synthesis.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -176,7 +176,7 @@ def build_story_details_tool() -> dict:
     return {
         "name": GET_STORY_DETAILS_TOOL,
         "title": "Get Story Details",
-        "description": "Returns one stored story with its summary and source metadata. Use only after a specific repository story has been identified and the user asks what that stored story/source/article says, asks for repository-backed details, asks for a citation, or asks to verify a claim against the stored story. Do not use to define terms, explain why something matters, provide background context, synthesize implications, or answer follow-up questions like 'what does X mean?'",
+        "description": "Returns one stored story with its summary and source metadata. Use only when a specific repository story is identified and the user asks what the stored story/source/article says, requests citation/source details, or asks to verify a claim against that story. Not for definitions, background, implications, or general synthesis.",
         "inputSchema": {
             "type": "object",
             "properties": {
