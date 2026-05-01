@@ -9,6 +9,7 @@ from io import BytesIO
 from pypdf import PdfReader
 
 from curator.jobs import get_repository_from_config
+from curator.pdf import render_digest_pdf
 from curator.repository import SQLiteRepository
 from tests.fakes import FakeGmailService
 from tests.helpers import create_completed_ingestion_run, write_temp_config
@@ -58,6 +59,48 @@ def _create_logged_in_subscriber(admin_app_module, email_address: str):
     subscriber = repository.upsert_subscriber(email_address)
     session = repository.create_subscriber_session(int(subscriber["id"]))
     return repository, subscriber, session
+
+
+def test_pdf_story_rendering_does_not_duplicate_takeaways_or_draw_missing_glyphs():
+    summary_raw = json.dumps(
+        {
+            "headline": "NVIDIA B200 spot rents surge",
+            "body": (
+                "Key takeaways - NVIDIA B200 rental price jumped to $4.95/hr from $2.31 "
+                "in early March. - The B200 premium over prior\u2011gen H200 doubled. "
+                "- GPT\u20115.5 demand widened the gap re\u2011widened in Q2 2026.\n\n"
+                "Why this matters to me Rising B200 rents mean higher inference costs."
+            ),
+            "key_takeaways": [
+                "NVIDIA B200 rental price jumped to $4.95/hr from $2.31 in early March.",
+                "The B200 premium over prior\u2011gen H200 doubled.",
+                "GPT\u20115.5 demand widened the gap re\u2011widened in Q2 2026.",
+            ],
+            "why_this_matters": "Rising B200 rents mean higher inference costs.",
+        }
+    )
+    pdf_bytes = render_digest_pdf(
+        [
+            {
+                "title": "NVIDIA B200 spot rents surge",
+                "summary_raw": summary_raw,
+                "source_name": "GPU Market Watch",
+                "published_at": "2026-04-30T14:00:00+00:00",
+                "url": "https://example.com/gpu-rents",
+            }
+        ],
+        subject="AI Signal Daily",
+        newsletter_date="April 30, 2026",
+    )
+
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf_bytes)).pages)
+
+    assert pdf_text.lower().count("key takeaways") == 1
+    assert "Key takeaways - NVIDIA" not in pdf_text
+    assert "prior-gen H200" in pdf_text
+    assert "GPT-5.5" in pdf_text
+    assert "re-widened" in pdf_text
+    assert "\u2011" not in pdf_text
 
 
 def test_legacy_subscriber_profile_migrates_delivery_format_without_schema_reset(tmp_path):
