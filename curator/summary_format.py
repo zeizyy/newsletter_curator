@@ -4,6 +4,14 @@ import json
 import re
 
 
+def _split_inline_takeaways(text: str) -> list[str]:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return []
+    parts = re.split(r"\s+-\s+", cleaned)
+    return [part.strip(" -\t") for part in parts if part.strip(" -\t")]
+
+
 def split_summary_sections(body: str) -> tuple[list[str], list[str], list[str]]:
     takeaways: list[str] = []
     why_matters: list[str] = []
@@ -20,14 +28,18 @@ def split_summary_sections(body: str) -> tuple[list[str], list[str], list[str]]:
         if not candidate:
             continue
 
-        inline_takeaways_match = re.match(r"^(?:key takeaways|takeaways)\s*:\s*(.+)$", candidate, re.IGNORECASE)
+        inline_takeaways_match = re.match(
+            r"^(?:key takeaways|takeaways)\s*(?::|-)\s*(.+)$",
+            candidate,
+            re.IGNORECASE,
+        )
         if inline_takeaways_match:
             active_section = "takeaways"
-            takeaways.append(inline_takeaways_match.group(1).strip())
+            takeaways.extend(_split_inline_takeaways(inline_takeaways_match.group(1).strip()))
             continue
 
         inline_why_match = re.match(
-            r"^(?:why this matters to me|why this matters)\s*:\s*(.+)$",
+            r"^(?:why this matters to me|why this matters)(?::|\s+-\s+|\s+)(.+)$",
             candidate,
             re.IGNORECASE,
         )
