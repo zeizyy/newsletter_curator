@@ -11,6 +11,7 @@ from .summary_format import extract_structured_summary
 from .telemetry import TRACKED_LINK_MARKER
 
 RenderPayload = list[dict] | dict[str, list[dict]]
+READING_WORDS_PER_MINUTE = 225
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
@@ -80,6 +81,30 @@ def format_story_timestamp(published_at: str) -> str:
     return f"{month} {day}, {hour}:{minute} {meridiem} PT"
 
 
+def estimate_article_read_time_minutes(article_text: str) -> int:
+    word_count = len(re.findall(r"\b[\w'-]+\b", str(article_text or "")))
+    if word_count == 0:
+        return 0
+    return max(1, (word_count + READING_WORDS_PER_MINUTE - 1) // READING_WORDS_PER_MINUTE)
+
+
+def format_read_time(minutes: int | str | None) -> str:
+    try:
+        normalized_minutes = int(minutes or 0)
+    except (TypeError, ValueError):
+        return ""
+    if normalized_minutes <= 0:
+        return ""
+    return f"{normalized_minutes} min read"
+
+
+def entry_read_time_label(entry: dict) -> str:
+    explicit_label = str(entry.get("read_time_label", "") or "").strip()
+    if explicit_label:
+        return explicit_label
+    return format_read_time(entry.get("read_time_minutes"))
+
+
 def format_digest_date(now: datetime | None = None) -> str:
     current = now or datetime.now(UTC)
     pacific = current.astimezone(PACIFIC_TIMEZONE)
@@ -114,6 +139,7 @@ def build_render_groups(summaries: list[tuple[int, dict, str]]) -> list[dict]:
     for _, item, summary_block in summaries:
         title, url, body = parse_summary_block(summary_block)
         normalized_entry = _normalize_render_entry(item, fallback_title=title, fallback_body=body)
+        read_time_minutes = estimate_article_read_time_minutes(str(item.get("article_text", "") or ""))
         render_items.append(
             {
                 "title": normalized_entry["title"],
@@ -128,6 +154,8 @@ def build_render_groups(summaries: list[tuple[int, dict, str]]) -> list[dict]:
                 "published_at": item.get("published_at", ""),
                 "display_timestamp": format_story_timestamp(str(item.get("published_at", ""))),
                 "timestamp_iso": normalize_story_timestamp_iso(str(item.get("published_at", ""))),
+                "read_time_minutes": read_time_minutes,
+                "read_time_label": format_read_time(read_time_minutes),
             }
         )
     return render_items
@@ -256,6 +284,7 @@ def _render_story_card(entry: dict) -> str:
     title = str(normalized_entry["title"])
     source_name = str(entry.get("source_name", "")).strip()
     timestamp = str(entry.get("display_timestamp", "")).strip()
+    read_time = entry_read_time_label(entry)
     takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
     why_text = str(normalized_entry["why_this_matters"]).strip()
     other = [str(item) for item in normalized_entry["other_paragraphs"]]
@@ -272,6 +301,11 @@ def _render_story_card(entry: dict) -> str:
     time_html = (
         f'<span class="story-time" data-story-timestamp="{html.escape(str(entry.get("timestamp_iso", "")).strip())}" data-story-timestamp-fallback="{html.escape(timestamp)}" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(12,122,91,0.08);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(timestamp)}</span>'
         if timestamp
+        else ""
+    )
+    read_time_html = (
+        f'<span class="story-read-time" style="display:inline-flex;align-items:center;min-height:28px;padding:0 12px;border-radius:999px;background:rgba(12,122,91,0.08);color:#5b6a78;font-size:12px;font-weight:700;letter-spacing:0.04em;">{html.escape(read_time)}</span>'
+        if read_time
         else ""
     )
     intro_html = "".join(
@@ -324,6 +358,7 @@ def _render_story_card(entry: dict) -> str:
         '<div class="story-meta" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px 0;">'
         f"{time_html}"
         f"{source_html}"
+        f"{read_time_html}"
         "</div>"
         f'<div class="story-title" style="font-family:Georgia,\'Times New Roman\',Times,serif;font-size:34px;font-weight:700;line-height:1.02;letter-spacing:-0.04em;color:#16222f;margin:0;max-width:24ch;overflow-wrap:anywhere;">{html.escape(title)}</div>'
         '<div class="story-body" style="font-size:15px;line-height:1.65;color:#223240;margin:16px 0 12px 0;max-width:40rem;">'
@@ -347,6 +382,7 @@ def _render_email_safe_story_card(entry: dict) -> str:
     title = str(normalized_entry["title"])
     source_name = str(entry.get("source_name", "")).strip()
     timestamp = str(entry.get("display_timestamp", "")).strip()
+    read_time = entry_read_time_label(entry)
     takeaways = [str(item) for item in normalized_entry["key_takeaways"]]
     why_text = str(normalized_entry["why_this_matters"]).strip()
     other = [str(item) for item in normalized_entry["other_paragraphs"]]
@@ -362,6 +398,8 @@ def _render_email_safe_story_card(entry: dict) -> str:
         metadata_parts.append(html.escape(timestamp))
     if source_name:
         metadata_parts.append(html.escape(source_name))
+    if read_time:
+        metadata_parts.append(html.escape(read_time))
     metadata_line = " | ".join(metadata_parts)
     metadata_html = (
         f'<div style="margin:0 0 10px 0;font-size:12px;line-height:1.5;color:#5b6a78;">{metadata_line}</div>'

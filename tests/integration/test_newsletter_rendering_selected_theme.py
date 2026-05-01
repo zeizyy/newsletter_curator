@@ -106,8 +106,19 @@ def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkey
     assert "Daily Briefing" not in html
     assert "stories selected" not in html
     assert "Read original" in html
+    assert "1 min read" in html
     assert 'target="_blank"' in html
     assert "Mar 24, 12:30 AM PT" in html
     assert "Financial Times" not in html
     assert 'role="presentation"' in html
     assert "max-width:640px" in html
+
+    stored_newsletter = repository.get_daily_newsletter("2026-03-24")
+    assert stored_newsletter is not None
+    render_groups = stored_newsletter["content"]["render_groups"]
+    assert render_groups[0]["read_time_minutes"] == 1
+    assert render_groups[0]["read_time_label"] == "1 min read"
+
+    web_html = rendering.render_digest_html(render_groups)
+    assert 'class="story-read-time"' in web_html
+    assert "1 min read" in web_html
