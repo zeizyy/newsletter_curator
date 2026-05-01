@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime, timedelta
+
 from .repository import SQLiteRepository
-from .story_feed import RECENT_STORY_WINDOW_HOURS, list_recent_story_feed, resolve_database_path
+from .story_feed import RECENT_STORY_WINDOW_HOURS, connect_readonly, list_recent_story_feed, resolve_database_path
 
 RECENT_STORIES_TOOL = "list_recent_stories"
 SEARCH_RECENT_STORIES_TOOL = "search_recent_stories"
@@ -304,14 +307,64 @@ def search_recent_stories(
     source_type: str | None,
     limit: int,
 ) -> dict:
-    payload = list_recent_story_feed(config, window_hours=window_hours, source_type=source_type)
-    matching = [_normalize_story_snippet(story) for story in payload["stories"] if _search_story_match(story, query)]
+    generated_at = datetime.now(UTC)
+    search_query = _build_fts_query(query)
+    if not search_query:
+        return {
+            "generated_at": generated_at.isoformat(),
+            "query": query,
+            "window_hours": window_hours,
+            "story_count": 0,
+            "stories": [],
+        }
+
+    cutoff = (generated_at - timedelta(hours=window_hours)).isoformat()
+    conditions = ["fetched_stories_fts MATCH ?", "COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) >= ?"]
+    params: list[object] = [search_query, cutoff]
+    normalized_source_type = str(source_type or "").strip()
+    if normalized_source_type:
+        conditions.append("fs.source_type = ?")
+        params.append(normalized_source_type)
+    params.append(limit)
+    where_clause = " AND ".join(conditions)
+    database_path = resolve_database_path(config)
+    with connect_readonly(database_path) as connection:
+        rows = connection.execute(
+            f"""
+            SELECT
+                fs.id,
+                fs.source_type,
+                fs.source_name,
+                fs.subject,
+                fs.url,
+                fs.anchor_text,
+                fs.context,
+                fs.category,
+                fs.published_at,
+                COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) AS effective_timestamp,
+                snap.paywall_detected,
+                snap.paywall_reason,
+                snap.summary_headline,
+                snap.summary_body
+            FROM fetched_stories_fts
+            JOIN fetched_stories fs ON fs.id = fetched_stories_fts.rowid
+            LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
+            WHERE {where_clause}
+            ORDER BY
+                bm25(fetched_stories_fts, 0.1, 1.0, 5.0, 4.0, 2.0, 1.5, 2.0, 4.5, 3.5) ASC,
+                COALESCE(NULLIF(fs.published_at, ''), fs.first_seen_at) DESC,
+                fs.id DESC
+            LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    matching = [_normalize_story_snippet(dict(row)) for row in rows]
     return {
-        "generated_at": payload["generated_at"],
+        "generated_at": generated_at.isoformat(),
         "query": query,
         "window_hours": window_hours,
-        "story_count": len(matching[:limit]),
-        "stories": matching[:limit],
+        "story_count": len(matching),
+        "stories": matching,
     }
 
 
@@ -357,21 +410,12 @@ def _parse_optional_string(value: object, *, field_name: str) -> str | None:
     return normalized or None
 
 
-def _search_story_match(story: dict, query: str) -> bool:
-    haystack = " ".join(
-        [
-            str(story.get("subject", "")),
-            str(story.get("anchor_text", "")),
-            str(story.get("context", "")),
-            str(story.get("category", "")),
-            str(story.get("summary", "")),
-            str(story.get("summary_headline", "")),
-            str(story.get("summary_body", "")),
-            str(story.get("source_name", "")),
-        ]
-    ).lower()
-    terms = [term for term in query.lower().split() if term]
-    return bool(terms) and all(term in haystack for term in terms)
+def _build_fts_query(query: str) -> str:
+    terms = []
+    for term in re.findall(r"[A-Za-z0-9]+", query.lower()):
+        if term and term not in terms:
+            terms.append(term)
+    return " AND ".join(f'"{term}"' for term in terms)
 
 
 def _story_title(story: dict) -> str:
