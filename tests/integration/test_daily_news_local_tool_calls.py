@@ -331,14 +331,16 @@ def test_daily_news_agent_forces_answer_after_max_tool_rounds(tmp_path):
 
 def test_daily_news_agent_prompt_allows_general_knowledge_context():
     assert "Tool routing:" in SYSTEM_PROMPT
-    assert "The default action is to answer directly without tools" in SYSTEM_PROMPT
-    assert "using only the latest user message" in SYSTEM_PROMPT
-    assert "must not call a tool for general background" in SYSTEM_PROMPT
-    assert 'even when the user says "this story"' in SYSTEM_PROMPT
-    assert "Terms inside a background question are not search queries" in SYSTEM_PROMPT
+    assert "Use tools only when the latest user message asks for stored repository facts" in SYSTEM_PROMPT
+    assert "Earlier turns may identify a story" in SYSTEM_PROMPT
+    assert "Answer directly for general knowledge" in SYSTEM_PROMPT
+    assert 'even when the user says "this story."' in SYSTEM_PROMPT
+    assert "Label the answer as general context when that distinction matters" in SYSTEM_PROMPT
+    assert "`list_recent_stories`: use for repository headline or roundup requests" in SYSTEM_PROMPT
+    assert "`get_story_details`: use only when a specific repository story is identifiable" in SYSTEM_PROMPT
     assert 'what does capex mean' in SYSTEM_PROMPT
-    assert "Calling a tool for a background/context question is an error" in SYSTEM_PROMPT
-    assert "If no tool-routing rule clearly applies, answer directly without tools" in SYSTEM_PROMPT
+    assert "If the user intent is unclear, answer directly and offer to check the repository" in SYSTEM_PROMPT
+    assert "Do not show internal story metadata" in SYSTEM_PROMPT
 
 
 def test_daily_news_agent_caps_tool_results_before_next_model_round(tmp_path):
