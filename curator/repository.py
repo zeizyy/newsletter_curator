@@ -644,6 +644,7 @@ class SQLiteRepository:
     def _drop_managed_tables(self, connection: sqlite3.Connection) -> None:
         for table_name in [
             "schema_migrations",
+            "fetched_stories_fts",
             "article_snapshots",
             "user_source_selections",
             "subscriber_sessions",
@@ -767,6 +768,177 @@ class SQLiteRepository:
                 summary_model TEXT NOT NULL DEFAULT '',
                 summarized_at TEXT
             );
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS fetched_stories_fts USING fts5(
+                source_type UNINDEXED,
+                source_name,
+                subject,
+                anchor_text,
+                context,
+                category,
+                summary,
+                summary_headline,
+                summary_body,
+                tokenize = 'unicode61'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS fetched_stories_fts_after_insert
+            AFTER INSERT ON fetched_stories
+            BEGIN
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                VALUES (
+                    new.id,
+                    new.source_type,
+                    new.source_name,
+                    new.subject,
+                    new.anchor_text,
+                    new.context,
+                    new.category,
+                    new.summary,
+                    COALESCE((SELECT summary_headline FROM article_snapshots WHERE story_id = new.id), ''),
+                    COALESCE((SELECT summary_body FROM article_snapshots WHERE story_id = new.id), '')
+                );
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS fetched_stories_fts_after_update
+            AFTER UPDATE ON fetched_stories
+            BEGIN
+                DELETE FROM fetched_stories_fts WHERE rowid = new.id;
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                VALUES (
+                    new.id,
+                    new.source_type,
+                    new.source_name,
+                    new.subject,
+                    new.anchor_text,
+                    new.context,
+                    new.category,
+                    new.summary,
+                    COALESCE((SELECT summary_headline FROM article_snapshots WHERE story_id = new.id), ''),
+                    COALESCE((SELECT summary_body FROM article_snapshots WHERE story_id = new.id), '')
+                );
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS fetched_stories_fts_after_delete
+            AFTER DELETE ON fetched_stories
+            BEGIN
+                DELETE FROM fetched_stories_fts WHERE rowid = old.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS article_snapshots_fts_after_insert
+            AFTER INSERT ON article_snapshots
+            BEGIN
+                DELETE FROM fetched_stories_fts WHERE rowid = new.story_id;
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                SELECT
+                    fs.id,
+                    fs.source_type,
+                    fs.source_name,
+                    fs.subject,
+                    fs.anchor_text,
+                    fs.context,
+                    fs.category,
+                    fs.summary,
+                    new.summary_headline,
+                    new.summary_body
+                FROM fetched_stories fs
+                WHERE fs.id = new.story_id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS article_snapshots_fts_after_update
+            AFTER UPDATE ON article_snapshots
+            BEGIN
+                DELETE FROM fetched_stories_fts WHERE rowid = new.story_id;
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                SELECT
+                    fs.id,
+                    fs.source_type,
+                    fs.source_name,
+                    fs.subject,
+                    fs.anchor_text,
+                    fs.context,
+                    fs.category,
+                    fs.summary,
+                    new.summary_headline,
+                    new.summary_body
+                FROM fetched_stories fs
+                WHERE fs.id = new.story_id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS article_snapshots_fts_after_delete
+            AFTER DELETE ON article_snapshots
+            BEGIN
+                DELETE FROM fetched_stories_fts WHERE rowid = old.story_id;
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                SELECT
+                    fs.id,
+                    fs.source_type,
+                    fs.source_name,
+                    fs.subject,
+                    fs.anchor_text,
+                    fs.context,
+                    fs.category,
+                    fs.summary,
+                    '',
+                    ''
+                FROM fetched_stories fs
+                WHERE fs.id = old.story_id;
+            END;
 
             CREATE TABLE IF NOT EXISTS user_source_selections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -899,6 +1071,47 @@ class SQLiteRepository:
                 (source_type, started_at, payload),
             )
             return int(cursor.lastrowid)
+
+    def rebuild_story_search_index(self) -> dict[str, int]:
+        with self.connect() as connection:
+            if not self._table_exists(connection, "fetched_stories_fts"):
+                self._create_schema(connection)
+            connection.execute("DELETE FROM fetched_stories_fts")
+            connection.execute(
+                """
+                INSERT INTO fetched_stories_fts (
+                    rowid,
+                    source_type,
+                    source_name,
+                    subject,
+                    anchor_text,
+                    context,
+                    category,
+                    summary,
+                    summary_headline,
+                    summary_body
+                )
+                SELECT
+                    fs.id,
+                    fs.source_type,
+                    fs.source_name,
+                    fs.subject,
+                    fs.anchor_text,
+                    fs.context,
+                    fs.category,
+                    fs.summary,
+                    COALESCE(snap.summary_headline, ''),
+                    COALESCE(snap.summary_body, '')
+                FROM fetched_stories fs
+                LEFT JOIN article_snapshots snap ON snap.story_id = fs.id
+                """
+            )
+            story_row = connection.execute("SELECT COUNT(*) AS count FROM fetched_stories").fetchone()
+            index_row = connection.execute("SELECT COUNT(*) AS count FROM fetched_stories_fts").fetchone()
+            return {
+                "stories_seen": int(story_row["count"]),
+                "stories_indexed": int(index_row["count"]),
+            }
 
     def complete_ingestion_run(
         self, run_id: int, *, status: str, metadata: dict | None = None
