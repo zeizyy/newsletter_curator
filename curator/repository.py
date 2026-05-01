@@ -263,8 +263,19 @@ class SQLiteRepository:
                 "tracked_link_id",
                 "click_token",
                 "clicked_at",
+                "subscriber_id",
                 "user_agent",
                 "ip_address",
+            },
+            "subscriber_story_preference_memories": {
+                "subscriber_id",
+                "memory_text",
+                "generated_at",
+                "last_click_at",
+                "clicked_story_count",
+                "metadata_json",
+                "created_at",
+                "updated_at",
             },
             "agent_chat_sessions": {
                 "id",
@@ -293,7 +304,18 @@ class SQLiteRepository:
         self._migrate_daily_newsletters_issue_types(connection)
         self._migrate_subscriber_profiles_delivery_format(connection)
         self._migrate_fetched_stories_email_sent_at(connection)
+        self._migrate_newsletter_click_events_subscriber_id(connection)
         self._migrate_agent_chat_sessions_subscriber_id(connection)
+
+    def _migrate_newsletter_click_events_subscriber_id(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "newsletter_click_events")
+        if columns and "subscriber_id" not in columns:
+            connection.execute(
+                """
+                ALTER TABLE newsletter_click_events
+                ADD COLUMN subscriber_id INTEGER REFERENCES subscribers(id) ON DELETE SET NULL
+                """
+            )
 
     def _migrate_agent_chat_sessions_subscriber_id(self, connection: sqlite3.Connection) -> None:
         columns = self._table_columns(connection, "agent_chat_sessions")
@@ -1019,6 +1041,21 @@ class SQLiteRepository:
                 UNIQUE(daily_newsletter_id, target_url)
             );
 
+            CREATE TABLE IF NOT EXISTS subscriber_tracked_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+                tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                click_token TEXT NOT NULL UNIQUE,
+                target_url TEXT NOT NULL,
+                story_title TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(subscriber_id, daily_newsletter_id, target_url)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_subscriber_tracked_links_subscriber_id
+            ON subscriber_tracked_links(subscriber_id);
+
             CREATE TABLE IF NOT EXISTS newsletter_open_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
@@ -1034,8 +1071,23 @@ class SQLiteRepository:
                 tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
                 click_token TEXT NOT NULL,
                 clicked_at TEXT NOT NULL,
+                subscriber_id INTEGER REFERENCES subscribers(id) ON DELETE SET NULL,
                 user_agent TEXT NOT NULL DEFAULT '',
                 ip_address TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_newsletter_click_events_subscriber_id
+            ON newsletter_click_events(subscriber_id);
+
+            CREATE TABLE IF NOT EXISTS subscriber_story_preference_memories (
+                subscriber_id INTEGER PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
+                memory_text TEXT NOT NULL DEFAULT '',
+                generated_at TEXT NOT NULL,
+                last_click_at TEXT NOT NULL DEFAULT '',
+                clicked_story_count INTEGER NOT NULL DEFAULT 0,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS agent_chat_sessions (
@@ -1757,9 +1809,12 @@ class SQLiteRepository:
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
                     p.delivery_format,
-                    p.preferred_sources_json
+                    p.preferred_sources_json,
+                    spm.memory_text AS story_preference_memory,
+                    spm.generated_at AS story_preference_memory_generated_at
                 FROM subscribers s
                 LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
+                LEFT JOIN subscriber_story_preference_memories spm ON spm.subscriber_id = s.id
                 WHERE s.email_address = ?
                 LIMIT 1
                 """,
@@ -1780,9 +1835,12 @@ class SQLiteRepository:
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
                     p.delivery_format,
-                    p.preferred_sources_json
+                    p.preferred_sources_json,
+                    spm.memory_text AS story_preference_memory,
+                    spm.generated_at AS story_preference_memory_generated_at
                 FROM subscribers s
                 LEFT JOIN subscriber_profiles p ON p.subscriber_id = s.id
+                LEFT JOIN subscriber_story_preference_memories spm ON spm.subscriber_id = s.id
                 ORDER BY s.email_address ASC
                 """
             ).fetchall()
@@ -2120,11 +2178,51 @@ class SQLiteRepository:
             "persona_text": str(payload.get("persona_text", "") or ""),
             "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
             "preferred_sources": preferred_sources,
+            "story_preference_memory": str(payload.get("story_preference_memory", "") or ""),
+            "story_preference_memory_generated_at": str(
+                payload.get("story_preference_memory_generated_at", "") or ""
+            ),
             "profile_exists": payload.get("profile_subscriber_id") is not None,
             "created_at": str(payload.get("created_at", "") or ""),
             "updated_at": str(payload.get("updated_at", "") or ""),
             "last_login_at": str(payload.get("last_login_at", "") or ""),
         }
+
+    def _subscriber_story_preference_memory_row_to_dict(self, row: sqlite3.Row | None) -> dict | None:
+        if row is None:
+            return None
+        payload = dict(row)
+        try:
+            metadata = json.loads(str(payload.get("metadata_json", "{}") or "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return {
+            "subscriber_id": int(payload.get("subscriber_id") or 0),
+            "memory_text": str(payload.get("memory_text", "") or ""),
+            "generated_at": str(payload.get("generated_at", "") or ""),
+            "last_click_at": str(payload.get("last_click_at", "") or ""),
+            "clicked_story_count": int(payload.get("clicked_story_count", 0) or 0),
+            "metadata": metadata,
+            "created_at": str(payload.get("created_at", "") or ""),
+            "updated_at": str(payload.get("updated_at", "") or ""),
+        }
+
+    def _find_selected_item_for_url(self, selected_items_json: str, target_url: str) -> dict:
+        try:
+            selected_items = json.loads(str(selected_items_json or "[]"))
+        except json.JSONDecodeError:
+            selected_items = []
+        if not isinstance(selected_items, list):
+            return {}
+        canonical_target = canonicalize_url(target_url)
+        for item in selected_items:
+            if not isinstance(item, dict):
+                continue
+            if canonicalize_url(str(item.get("url", "") or "")) == canonical_target:
+                return item
+        return {}
 
     def ensure_newsletter_open_token(self, daily_newsletter_id: int) -> str:
         open_token = hashlib.sha1(f"open|{daily_newsletter_id}".encode("utf-8")).hexdigest()[:24]
@@ -2144,6 +2242,8 @@ class SQLiteRepository:
         self,
         daily_newsletter_id: int,
         selected_items: list[dict] | None = None,
+        *,
+        subscriber_id: int | None = None,
     ) -> list[dict]:
         selected_items = selected_items or []
         with self.connect() as connection:
@@ -2176,6 +2276,70 @@ class SQLiteRepository:
                         utc_now(),
                     ),
                 )
+                if subscriber_id is not None:
+                    tracked_link_row = connection.execute(
+                        """
+                        SELECT id
+                        FROM tracked_links
+                        WHERE daily_newsletter_id = ? AND target_url = ?
+                        LIMIT 1
+                        """,
+                        (daily_newsletter_id, target_url),
+                    ).fetchone()
+                    if tracked_link_row is not None:
+                        subscriber_click_token = hashlib.sha1(
+                            (
+                                "subscriber-click|"
+                                f"{subscriber_id}|{daily_newsletter_id}|{canonicalize_url(target_url)}"
+                            ).encode("utf-8")
+                        ).hexdigest()[:24]
+                        connection.execute(
+                            """
+                            INSERT INTO subscriber_tracked_links (
+                                subscriber_id,
+                                tracked_link_id,
+                                daily_newsletter_id,
+                                click_token,
+                                target_url,
+                                story_title,
+                                created_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(subscriber_id, daily_newsletter_id, target_url)
+                            DO UPDATE SET
+                                click_token = excluded.click_token,
+                                tracked_link_id = excluded.tracked_link_id,
+                                story_title = excluded.story_title
+                            """,
+                            (
+                                int(subscriber_id),
+                                int(tracked_link_row["id"]),
+                                daily_newsletter_id,
+                                subscriber_click_token,
+                                target_url,
+                                str(item.get("title", "")).strip(),
+                                utc_now(),
+                            ),
+                        )
+            if subscriber_id is not None:
+                rows = connection.execute(
+                    """
+                    SELECT
+                        stl.id,
+                        stl.subscriber_id,
+                        stl.tracked_link_id,
+                        stl.daily_newsletter_id,
+                        stl.click_token,
+                        stl.target_url,
+                        stl.story_title,
+                        stl.created_at
+                    FROM subscriber_tracked_links stl
+                    WHERE stl.daily_newsletter_id = ? AND stl.subscriber_id = ?
+                    ORDER BY stl.id ASC
+                    """,
+                    (daily_newsletter_id, int(subscriber_id)),
+                ).fetchall()
+                return [dict(row) for row in rows]
             rows = connection.execute(
                 """
                 SELECT id, daily_newsletter_id, click_token, target_url, story_title, created_at
@@ -2230,9 +2394,18 @@ class SQLiteRepository:
         ip_address: str = "",
     ) -> dict | None:
         with self.connect() as connection:
-            link_row = connection.execute(
+            subscriber_link_row = connection.execute(
                 """
-                SELECT id, daily_newsletter_id, target_url
+                SELECT tracked_link_id, daily_newsletter_id, target_url, subscriber_id
+                FROM subscriber_tracked_links
+                WHERE click_token = ?
+                LIMIT 1
+                """,
+                (click_token,),
+            ).fetchone()
+            link_row = subscriber_link_row or connection.execute(
+                """
+                SELECT id AS tracked_link_id, daily_newsletter_id, target_url, NULL AS subscriber_id
                 FROM tracked_links
                 WHERE click_token = ?
                 LIMIT 1
@@ -2241,9 +2414,10 @@ class SQLiteRepository:
             ).fetchone()
             if link_row is None:
                 return None
-            tracked_link_id = int(link_row["id"])
+            tracked_link_id = int(link_row["tracked_link_id"])
             daily_newsletter_id = int(link_row["daily_newsletter_id"])
             target_url = str(link_row["target_url"])
+            subscriber_id = link_row["subscriber_id"]
             connection.execute(
                 """
                 INSERT INTO newsletter_click_events (
@@ -2251,16 +2425,18 @@ class SQLiteRepository:
                     tracked_link_id,
                     click_token,
                     clicked_at,
+                    subscriber_id,
                     user_agent,
                     ip_address
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     daily_newsletter_id,
                     tracked_link_id,
                     click_token,
                     utc_now(),
+                    int(subscriber_id) if subscriber_id is not None else None,
                     user_agent,
                     ip_address,
                 ),
@@ -2268,8 +2444,200 @@ class SQLiteRepository:
         return {
             "daily_newsletter_id": daily_newsletter_id,
             "tracked_link_id": tracked_link_id,
+            "subscriber_id": int(subscriber_id) if subscriber_id is not None else None,
             "target_url": target_url,
         }
+
+    def get_subscriber_story_preference_memory(self, subscriber_id: int) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    subscriber_id,
+                    memory_text,
+                    generated_at,
+                    last_click_at,
+                    clicked_story_count,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM subscriber_story_preference_memories
+                WHERE subscriber_id = ?
+                LIMIT 1
+                """,
+                (int(subscriber_id),),
+            ).fetchone()
+        return self._subscriber_story_preference_memory_row_to_dict(row)
+
+    def upsert_subscriber_story_preference_memory(
+        self,
+        subscriber_id: int,
+        *,
+        memory_text: str,
+        last_click_at: str = "",
+        clicked_story_count: int = 0,
+        metadata: dict | None = None,
+    ) -> dict:
+        now = utc_now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO subscriber_story_preference_memories (
+                    subscriber_id,
+                    memory_text,
+                    generated_at,
+                    last_click_at,
+                    clicked_story_count,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(subscriber_id)
+                DO UPDATE SET
+                    memory_text = excluded.memory_text,
+                    generated_at = excluded.generated_at,
+                    last_click_at = excluded.last_click_at,
+                    clicked_story_count = excluded.clicked_story_count,
+                    metadata_json = excluded.metadata_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    int(subscriber_id),
+                    str(memory_text or "").strip(),
+                    now,
+                    str(last_click_at or "").strip(),
+                    int(clicked_story_count or 0),
+                    json.dumps(metadata or {}, sort_keys=True),
+                    now,
+                    now,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT
+                    subscriber_id,
+                    memory_text,
+                    generated_at,
+                    last_click_at,
+                    clicked_story_count,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM subscriber_story_preference_memories
+                WHERE subscriber_id = ?
+                LIMIT 1
+                """,
+                (int(subscriber_id),),
+            ).fetchone()
+        memory = self._subscriber_story_preference_memory_row_to_dict(row)
+        if memory is None:
+            raise RuntimeError("Failed to persist subscriber story preference memory.")
+        return memory
+
+    def list_subscribers_with_new_clicks_for_memory(self, *, limit: int | None = None) -> list[dict]:
+        limit_clause = ""
+        params: list[object] = []
+        if limit is not None:
+            limit_clause = "LIMIT ?"
+            params.append(max(0, int(limit)))
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    s.id AS subscriber_id,
+                    s.email_address,
+                    MAX(nce.clicked_at) AS latest_click_at,
+                    COUNT(nce.id) AS click_count,
+                    spm.generated_at AS memory_generated_at,
+                    spm.last_click_at AS memory_last_click_at
+                FROM newsletter_click_events nce
+                JOIN subscribers s ON s.id = nce.subscriber_id
+                LEFT JOIN subscriber_story_preference_memories spm
+                    ON spm.subscriber_id = s.id
+                WHERE nce.subscriber_id IS NOT NULL
+                GROUP BY s.id
+                HAVING spm.generated_at IS NULL OR MAX(nce.clicked_at) > COALESCE(spm.last_click_at, '')
+                ORDER BY MAX(nce.clicked_at) DESC
+                {limit_clause}
+                """,
+                params,
+            ).fetchall()
+        return [
+            {
+                "subscriber_id": int(row["subscriber_id"]),
+                "email_address": str(row["email_address"] or ""),
+                "latest_click_at": str(row["latest_click_at"] or ""),
+                "click_count": int(row["click_count"] or 0),
+                "memory_generated_at": str(row["memory_generated_at"] or ""),
+                "memory_last_click_at": str(row["memory_last_click_at"] or ""),
+            }
+            for row in rows
+        ]
+
+    def list_clicked_stories_for_subscriber(
+        self,
+        subscriber_id: int,
+        *,
+        since: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        params: list[object] = [int(subscriber_id)]
+        since_clause = ""
+        if str(since or "").strip():
+            since_clause = "AND nce.clicked_at > ?"
+            params.append(str(since).strip())
+        params.append(max(1, int(limit)))
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    nce.id AS click_event_id,
+                    nce.clicked_at,
+                    tl.story_title,
+                    tl.target_url,
+                    dn.subject AS newsletter_subject,
+                    dn.newsletter_date,
+                    dn.issue_type,
+                    dn.content_json,
+                    dn.selected_items_json
+                FROM newsletter_click_events nce
+                JOIN tracked_links tl ON tl.id = nce.tracked_link_id
+                JOIN daily_newsletters dn ON dn.id = nce.daily_newsletter_id
+                WHERE nce.subscriber_id = ?
+                {since_clause}
+                ORDER BY nce.clicked_at DESC, nce.id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        clicked_stories: list[dict] = []
+        for row in rows:
+            selected_item = self._find_selected_item_for_url(
+                str(row["selected_items_json"] or "[]"),
+                str(row["target_url"] or ""),
+            )
+            clicked_stories.append(
+                {
+                    "click_event_id": int(row["click_event_id"]),
+                    "clicked_at": str(row["clicked_at"] or ""),
+                    "title": str(row["story_title"] or selected_item.get("title") or ""),
+                    "url": str(row["target_url"] or ""),
+                    "source_name": str(selected_item.get("source_name", "") or ""),
+                    "source_type": str(selected_item.get("source_type", "") or ""),
+                    "category": str(selected_item.get("category", "") or ""),
+                    "summary": str(
+                        selected_item.get("summary_body")
+                        or selected_item.get("summary")
+                        or selected_item.get("context")
+                        or ""
+                    ),
+                    "newsletter_subject": str(row["newsletter_subject"] or ""),
+                    "newsletter_date": str(row["newsletter_date"] or ""),
+                    "issue_type": str(row["issue_type"] or ""),
+                }
+            )
+        return clicked_stories
 
     def _event_visitor_key_sql(self, alias: str) -> str:
         return (
@@ -3164,8 +3532,10 @@ class SQLiteRepository:
             "preview_generations",
             "newsletter_telemetry",
             "tracked_links",
+            "subscriber_tracked_links",
             "newsletter_open_events",
             "newsletter_click_events",
+            "subscriber_story_preference_memories",
             "fetched_stories",
             "article_snapshots",
             "user_source_selections",

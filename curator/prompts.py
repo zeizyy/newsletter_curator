@@ -13,6 +13,13 @@ def persona_clause(persona_text: str) -> str:
     return f"\nUser persona:\n{cleaned}\n"
 
 
+def preference_memory_clause(memory_text: str) -> str:
+    cleaned = memory_text.strip()
+    if not cleaned:
+        return ""
+    return f"\nLearned story preference memory from prior clicks:\n{cleaned}\n"
+
+
 def preferred_sources_clause(preferred_sources: list[str] | tuple[str, ...] | None) -> str:
     normalized = [str(source).strip() for source in preferred_sources or [] if str(source).strip()]
     if not normalized:
@@ -61,6 +68,7 @@ def build_ranking_prompts(
     items: list[dict],
     top_stories: int,
     persona_text: str = "",
+    story_preference_memory: str = "",
     preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[str, str]:
     system_prompt = (
@@ -74,6 +82,7 @@ def build_ranking_prompts(
         "blogs/papers, and interesting datapoints. Exclude promos, subscriptions, and "
         "non-article links."
         f"{persona_clause(persona_text)}"
+        f"{preference_memory_clause(story_preference_memory)}"
         f"{preferred_sources_clause(preferred_sources)}"
     )
     user_prompt = (
@@ -90,10 +99,55 @@ def build_ranking_prompts(
         "preserve input order; reorder by your ranking.\n"
         "If a persona is provided, interpret relevance through that reader's priorities while "
         "still respecting the global tier ordering.\n"
+        "If a learned preference memory is provided, use it as additional evidence for relevance "
+        "inside the same global tier and persona constraints.\n"
         "If preferred sources are provided, treat them as a hard allowlist and only rank stories "
         "from those sources.\n"
         "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
+    )
+    return system_prompt, user_prompt
+
+
+def format_clicked_stories_for_llm(clicked_stories: list[dict]) -> str:
+    lines = []
+    for idx, story in enumerate(clicked_stories, start=1):
+        lines.append(
+            "\n".join(
+                [
+                    f"[{idx}] {story.get('title', '')}".strip(),
+                    f"Source: {story.get('source_name', '')}".strip(),
+                    f"Category: {story.get('category', '')}".strip(),
+                    f"Clicked at: {story.get('clicked_at', '')}".strip(),
+                    f"Summary: {story.get('summary', '')}".strip(),
+                    f"URL: {story.get('url', '')}".strip(),
+                ]
+            ).strip()
+        )
+    return "\n\n".join(lines)
+
+
+def build_story_preference_memory_prompts(
+    clicked_stories: list[dict],
+    *,
+    existing_memory: str = "",
+    persona_text: str = "",
+) -> tuple[str, str]:
+    system_prompt = (
+        "You maintain a compact read-only preference memory for a personalized newsletter. "
+        "Infer stable story-selection preferences from clicked stories. Focus on durable topic, "
+        "source, depth, business-model, market, technical, and novelty signals. Do not mention "
+        "individual clicks unless they represent a reusable preference. Avoid sensitive personal "
+        "attributes and do not invent facts."
+        f"{persona_clause(persona_text)}"
+    )
+    previous = existing_memory.strip() or "No previous memory."
+    user_prompt = (
+        "Update the user's story preference memory using the clicked stories below.\n"
+        "Return only concise plain text, 3-7 bullets. Each bullet should be actionable for "
+        "future story ranking.\n\n"
+        f"Previous memory:\n{previous}\n\n"
+        f"Clicked stories:\n{format_clicked_stories_for_llm(clicked_stories)}"
     )
     return system_prompt, user_prompt
 

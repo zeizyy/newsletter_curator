@@ -180,6 +180,8 @@ class FakeOpenAI:
             response_text = self._build_ranking_response(user_message)
         elif "Write a concise summary of the article below." in user_message:
             response_text = self._build_summary_response(user_message)
+        elif "Update the user's story preference memory" in user_message:
+            response_text = "- Prefer deep AI infrastructure and market-structure stories.\n- Prioritize concrete business impact over generic product updates."
         else:
             raise AssertionError(f"Unexpected OpenAI prompt: {user_message[:120]}")
 
