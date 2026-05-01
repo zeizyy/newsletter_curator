@@ -1769,6 +1769,8 @@ def subscriber_settings():
         "persona_text": "",
         "delivery_format": "email",
         "preferred_sources": [],
+        "story_preference_memory": "",
+        "story_preference_memory_generated_at": "",
         "created_at": "",
         "updated_at": "",
     }
@@ -1781,6 +1783,14 @@ def subscriber_settings():
                 int(subscriber["id"]),
                 preferred_sources=seeded_defaults,
             )
+    memory = (
+        repository.get_subscriber_story_preference_memory(int(subscriber["id"]))
+        if repository is not None
+        else None
+    )
+    profile["story_preference_memory"] = str((memory or {}).get("memory_text") or "")
+    profile["story_preference_memory_generated_at"] = str((memory or {}).get("generated_at") or "")
+    profile["story_preference_memory_click_count"] = int((memory or {}).get("clicked_story_count", 0) or 0)
     errors: list[str] = []
     message = ""
 

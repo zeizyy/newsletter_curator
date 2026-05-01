@@ -39,6 +39,27 @@
     <section class="surface surface-section">
       <div class="section-head">
         <div>
+          <div class="section-kicker">Learned Memory</div>
+          <h2>What your clicks suggest</h2>
+        </div>
+      </div>
+      <p class="section-copy">This read-only memory is generated from stories you clicked and is used with your persona during personalized ranking.</p>
+      {% if profile.story_preference_memory %}
+        <div class="field">
+          <label class="field-label" for="story_preference_memory">Story preference memory</label>
+          <textarea id="story_preference_memory" readonly>{{ profile.story_preference_memory }}</textarea>
+        </div>
+        <p class="section-copy">Last generated {{ profile.story_preference_memory_generated_at }} from {{ profile.story_preference_memory_click_count }} clicked stories.</p>
+      {% else %}
+        <div class="state-shell is-empty">
+          <p class="state-copy">No learned memory has been generated yet.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
           <div class="section-kicker">Delivery</div>
           <h2>Add a PDF copy</h2>
         </div>

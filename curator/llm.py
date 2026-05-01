@@ -5,6 +5,7 @@ import json
 from openai import OpenAI
 
 from .prompts import (
+    build_story_preference_memory_prompts,
     build_ingest_scoring_prompts,
     build_ranking_prompts,
     build_summary_prompts,
@@ -60,6 +61,7 @@ def select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    story_preference_memory: str = "",
     preferred_sources: list[str] | tuple[str, ...] | None = None,
     client_factory=OpenAI,
 ) -> list[dict]:
@@ -71,6 +73,7 @@ def select_top_stories(
         items,
         top_stories,
         persona_text,
+        story_preference_memory,
         preferred_sources,
     )
     response = client.chat.completions.create(
@@ -110,6 +113,40 @@ def select_top_stories(
         if len(deduped) >= top_stories:
             break
     return deduped
+
+
+def generate_story_preference_memory_with_llm(
+    clicked_stories: list[dict],
+    usage_by_model: dict,
+    model: str,
+    *,
+    existing_memory: str = "",
+    persona_text: str = "",
+    client_factory=OpenAI,
+) -> str:
+    if not clicked_stories:
+        return ""
+
+    client = client_factory()
+    system_prompt, user_prompt = build_story_preference_memory_prompts(
+        clicked_stories,
+        existing_memory=existing_memory,
+        persona_text=persona_text,
+    )
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    usage = response.usage
+    if usage:
+        stats = usage_by_model.setdefault(model, {"input": 0, "output": 0, "total": 0})
+        stats["input"] += usage.prompt_tokens or 0
+        stats["output"] += usage.completion_tokens or 0
+        stats["total"] += usage.total_tokens or 0
+    return response.choices[0].message.content.strip()
 
 
 def summarize_article_with_llm(

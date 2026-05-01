@@ -87,6 +87,7 @@ def select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    story_preference_memory: str = "",
     preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> list[dict]:
     return llm.select_top_stories(
@@ -95,6 +96,7 @@ def select_top_stories(
         top_stories,
         reasoning_model,
         persona_text=persona_text,
+        story_preference_memory=story_preference_memory,
         preferred_sources=preferred_sources,
         client_factory=OpenAI,
     )
@@ -239,23 +241,28 @@ def _run_delivery(
         repository=repository,
         recipient_override=recipient_override,
     )
-    delivery_subscribers = [
-        {
+    delivery_subscribers = []
+    for subscriber in subscribers:
+        subscriber_payload = {
             "email": str(subscriber.get("email", "")).strip().lower(),
             "persona_text": str(subscriber.get("persona_text", "")).strip(),
             "delivery_format": str(subscriber.get("delivery_format", "email")).strip() or "email",
             "preferred_sources": list(subscriber.get("preferred_sources") or []),
             "profile_key": str(subscriber.get("profile_key", "")).strip(),
         }
-        for subscriber in subscribers
-    ]
+        story_preference_memory = str(subscriber.get("story_preference_memory", "")).strip()
+        if story_preference_memory:
+            subscriber_payload["story_preference_memory"] = story_preference_memory
+        delivery_subscribers.append(subscriber_payload)
 
     def run_profile_delivery(
         *,
         persona_text: str,
+        story_preference_memory: str,
         delivery_format: str,
         preferred_sources: list[str],
         recipients: list[str],
+        recipient_subscriber_ids: dict[str, int],
         use_cached_newsletter: bool,
         persist_newsletter: bool,
         audience_key: str,
@@ -267,6 +274,7 @@ def _run_delivery(
                 top_stories,
                 reasoning_model,
                 persona_text=persona_text,
+                story_preference_memory=story_preference_memory,
                 preferred_sources=preferred_sources,
             ))
             if development_cfg.get("fake_inference", False)
@@ -276,6 +284,7 @@ def _run_delivery(
                 top_stories,
                 reasoning_model,
                 persona_text=persona_text,
+                story_preference_memory=story_preference_memory,
                 preferred_sources=preferred_sources,
             ))
         )
@@ -333,11 +342,13 @@ def _run_delivery(
             audience_key=audience_key,
             delivery_format=delivery_format,
             preferred_sources=preferred_sources,
+            recipient_subscriber_ids=recipient_subscriber_ids,
             issue_type_override=issue_type_override,
         )
 
     personalized_delivery = service is not None and any(
         subscriber["persona_text"] != default_persona_text
+        or subscriber.get("story_preference_memory")
         or subscriber["preferred_sources"]
         or subscriber["delivery_format"] != "email"
         for subscriber in subscribers
@@ -345,9 +356,15 @@ def _run_delivery(
     if not personalized_delivery:
         profile_result = run_profile_delivery(
             persona_text=default_persona_text,
+            story_preference_memory="",
             delivery_format="email",
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
+            recipient_subscriber_ids={
+                str(subscriber.get("email", "")).strip().lower(): int(subscriber.get("subscriber_id", 0) or 0)
+                for subscriber in subscribers
+                if int(subscriber.get("subscriber_id", 0) or 0)
+            },
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
             audience_key=DEFAULT_AUDIENCE_KEY,
@@ -365,9 +382,11 @@ def _run_delivery(
     for group in delivery_groups:
         profile_result = run_profile_delivery(
             persona_text=group["persona_text"],
+            story_preference_memory=group["story_preference_memory"],
             delivery_format=group["delivery_format"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
+            recipient_subscriber_ids=group["recipient_subscriber_ids"],
             use_cached_newsletter=use_cached_newsletter,
             persist_newsletter=persist_newsletter,
             audience_key=group["audience_key"],
@@ -381,6 +400,7 @@ def _run_delivery(
                 "profile_key": group["profile_key"],
                 "audience_key": str(profile_result.get("audience_key", "")).strip(),
                 "persona_text": group["persona_text"],
+                "story_preference_memory": group["story_preference_memory"],
                 "delivery_format": group["delivery_format"],
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],

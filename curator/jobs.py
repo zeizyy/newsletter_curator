@@ -333,10 +333,12 @@ def subscriber_profile_key(
     persona_text: str,
     preferred_sources: list[str],
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
+    story_preference_memory: str = "",
 ) -> str:
     payload = json.dumps(
         {
             "persona_text": str(persona_text).strip(),
+            "story_preference_memory": str(story_preference_memory).strip(),
             "preferred_sources": [source.lower() for source in preferred_sources],
             "delivery_format": normalize_subscriber_delivery_format(delivery_format),
         },
@@ -348,10 +350,12 @@ def subscriber_profile_key(
 def subscriber_audience_key(
     persona_text: str,
     preferred_sources: list[str],
+    story_preference_memory: str = "",
 ) -> str:
     payload = json.dumps(
         {
             "persona_text": str(persona_text).strip(),
+            "story_preference_memory": str(story_preference_memory).strip(),
             "preferred_sources": [source.lower() for source in preferred_sources],
         },
         sort_keys=True,
@@ -419,22 +423,27 @@ def resolve_delivery_subscribers(
     for email in recipients:
         db_profile = db_profiles_by_email.get(email)
         persona_text = str((db_profile or {}).get("persona_text") or default_persona_text).strip()
+        story_preference_memory = str((db_profile or {}).get("story_preference_memory") or "").strip()
         delivery_format = normalize_subscriber_delivery_format((db_profile or {}).get("delivery_format"))
         preferred_sources = normalize_preferred_sources((db_profile or {}).get("preferred_sources", []))
         subscribers.append(
             {
+                "subscriber_id": int((db_profile or {}).get("id") or 0),
                 "email": email,
                 "persona_text": persona_text,
+                "story_preference_memory": story_preference_memory,
                 "delivery_format": delivery_format,
                 "preferred_sources": preferred_sources,
                 "audience_key": subscriber_audience_key(
                     persona_text,
                     preferred_sources,
+                    story_preference_memory,
                 ),
                 "profile_key": subscriber_profile_key(
                     persona_text,
                     preferred_sources,
                     delivery_format,
+                    story_preference_memory,
                 ),
             }
         )
@@ -453,14 +462,20 @@ def group_delivery_subscribers(subscribers: list[dict]) -> list[dict]:
                 "profile_key": profile_key,
                 "audience_key": str(subscriber.get("audience_key", "")).strip(),
                 "persona_text": str(subscriber.get("persona_text", "")).strip(),
+                "story_preference_memory": str(subscriber.get("story_preference_memory", "")).strip(),
                 "delivery_format": normalize_subscriber_delivery_format(
                     subscriber.get("delivery_format")
                 ),
                 "preferred_sources": list(subscriber.get("preferred_sources") or []),
                 "recipients": [],
+                "recipient_subscriber_ids": {},
             }
             grouped[profile_key] = group
-        group["recipients"].append(str(subscriber.get("email", "")).strip().lower())
+        email = str(subscriber.get("email", "")).strip().lower()
+        group["recipients"].append(email)
+        subscriber_id = int(subscriber.get("subscriber_id", 0) or 0)
+        if subscriber_id:
+            group["recipient_subscriber_ids"][email] = subscriber_id
     return list(grouped.values())
 
 
@@ -1548,6 +1563,7 @@ def run_delivery_job(
     audience_key: str = DEFAULT_AUDIENCE_KEY,
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
     preferred_sources: list[str] | tuple[str, ...] | None = None,
+    recipient_subscriber_ids: dict[str, int] | None = None,
     issue_type_override: str | None = None,
 ) -> dict:
     repository = repository or get_repository_from_config(config)
@@ -1585,6 +1601,11 @@ def run_delivery_job(
         }
 
     config = delivery_config_for_issue(config, issue_type)
+    recipient_subscriber_ids = {
+        str(email).strip().lower(): int(subscriber_id)
+        for email, subscriber_id in (recipient_subscriber_ids or {}).items()
+        if str(email).strip() and int(subscriber_id or 0)
+    }
     cached_newsletter = (
         repository.get_daily_newsletter(
             newsletter_date,
@@ -1652,6 +1673,7 @@ def run_delivery_job(
         *,
         html_body: str,
         selected_items: list[dict],
+        subscriber_id: int | None = None,
     ) -> tuple[str, int]:
         if not open_tracking_enabled and not click_tracking_enabled:
             return html_body, 0
@@ -1672,7 +1694,11 @@ def run_delivery_job(
             else ""
         )
         tracked_links = (
-            repository.ensure_tracked_links(daily_newsletter_id, selected_items)
+            repository.ensure_tracked_links(
+                daily_newsletter_id,
+                selected_items,
+                subscriber_id=subscriber_id,
+            )
             if click_tracking_enabled
             else []
         )
@@ -1716,14 +1742,7 @@ def run_delivery_job(
     ) -> dict:
         tracked_link_count = 0
         send_body = body
-        send_html = html_body
         attachments: list[dict] | None = None
-        if daily_newsletter_id is not None:
-            send_html, tracked_link_count = build_tracked_send_html(
-                daily_newsletter_id,
-                html_body=html_body,
-                selected_items=selected_items,
-            )
         if delivery_format == "pdf":
             issue_slug = "weekly" if issue_type == "weekly" else "daily"
             attachments = [
@@ -1782,6 +1801,14 @@ def run_delivery_job(
         send_results: list[tuple[str, str, dict]] = []
         if worker_count <= 1:
             for recipient, message_id_header in pending_sends:
+                send_html = html_body
+                if daily_newsletter_id is not None:
+                    send_html, tracked_link_count = build_tracked_send_html(
+                        daily_newsletter_id,
+                        html_body=html_body,
+                        selected_items=selected_items,
+                        subscriber_id=recipient_subscriber_ids.get(recipient),
+                    )
                 send_results.append(
                     (
                         recipient,
@@ -1803,9 +1830,16 @@ def run_delivery_job(
                 )
         else:
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futures = {
-                    executor.submit(
-                        send_email_with_retry_and_dedupe,
+                def send_one_recipient(recipient: str, message_id_header: str) -> dict:
+                    send_html = html_body
+                    if daily_newsletter_id is not None:
+                        send_html, _tracked_link_count = build_tracked_send_html(
+                            daily_newsletter_id,
+                            html_body=html_body,
+                            selected_items=selected_items,
+                            subscriber_id=recipient_subscriber_ids.get(recipient),
+                        )
+                    return send_email_with_retry_and_dedupe(
                         service,
                         send_email_fn,
                         to_address=recipient,
@@ -1817,6 +1851,13 @@ def run_delivery_job(
                         audience_key=audience_key,
                         daily_newsletter_id=daily_newsletter_id,
                         message_id_header=message_id_header,
+                    )
+
+                futures = {
+                    executor.submit(
+                        send_one_recipient,
+                        recipient,
+                        message_id_header,
                     ): (recipient, message_id_header)
                     for recipient, message_id_header in pending_sends
                 }

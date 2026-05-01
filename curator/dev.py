@@ -10,6 +10,7 @@ def fake_select_top_stories(
     reasoning_model: str,
     *,
     persona_text: str = "",
+    story_preference_memory: str = "",
     preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> list[dict]:
     if not items:
@@ -20,7 +21,7 @@ def fake_select_top_stories(
     stats["output"] += min(len(items), top_stories)
     stats["total"] += stats["input"] + stats["output"]
 
-    lowered_persona = persona_text.lower()
+    lowered_persona = f"{persona_text}\n{story_preference_memory}".lower()
     lowered_preferred_sources = {
         str(source).strip().lower()
         for source in preferred_sources or []
