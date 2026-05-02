@@ -147,7 +147,7 @@ def build_search_recent_stories_tool() -> dict:
     return {
         "name": SEARCH_RECENT_STORIES_TOOL,
         "title": "Search Recent Story Snippets",
-        "description": "Searches stored story snippets by topic, entity, company, person, product, or event. Use when the user explicitly asks whether the stored corpus contains a topic or asks for repository-backed stories about it. Not for definitions, background, implications, or general synthesis.",
+        "description": "Searches stored story snippets by topic, entity, company, person, product, or event. Use only when the user explicitly asks whether the stored corpus contains a topic or asks for repository-backed stories about it. Do not use when the user asks for background, definitions, context, implications, why something matters, or general synthesis.",
         "inputSchema": {
             "type": "object",
             "properties": {
