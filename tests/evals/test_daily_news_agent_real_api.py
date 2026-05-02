@@ -59,6 +59,35 @@ def _seed_chip_story(config: dict) -> dict:
     return {"id": story_id, "title": "AI chip capex accelerates", "url": "https://example.com/chips"}
 
 
+def _seed_nvidia_story(config: dict) -> dict:
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    published_at = (datetime.now(UTC) - timedelta(minutes=15)).isoformat()
+    story_id = repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Chip Ledger",
+            "subject": "Nvidia chip demand climbs",
+            "url": "https://example.com/nvidia-chip-demand",
+            "anchor_text": "Nvidia chip demand climbs",
+            "context": "Hyperscalers are increasing Nvidia accelerator orders.",
+            "category": "Tech company news & strategy",
+            "published_at": published_at,
+            "summary": "Nvidia demand is rising as AI clusters expand.",
+        },
+        ingestion_run_id=run_id,
+    )
+    repository.upsert_article_snapshot(
+        story_id,
+        "Nvidia chip demand is rising as hyperscalers expand AI clusters.",
+        summary_headline="Nvidia chip demand climbs",
+        summary_body="Nvidia accelerator demand is climbing.",
+        summarized_at=published_at,
+    )
+    return {"id": story_id, "title": "Nvidia chip demand climbs", "url": "https://example.com/nvidia-chip-demand"}
+
+
 def _agent_events(config: dict, *, history: list[dict], user_message: str) -> list[dict]:
     service = DailyNewsAgentService(
         config,
@@ -170,6 +199,26 @@ def test_daily_news_agent_routes_headline_roundup_to_list_recent_stories(tmp_pat
     assert done_event["metadata"]["used_local_tool"] is True
     assert "list_recent_stories" in _tool_call_names(events)
     assert "ai chip" in answer or "capex" in answer or "chip" in answer
+
+
+def test_daily_news_agent_routes_topic_repository_question_to_search_recent_stories(tmp_path):
+    _require_openai_api_key()
+
+    config = _agent_eval_config(tmp_path)
+    _seed_nvidia_story(config)
+
+    events = _agent_events(
+        config,
+        history=[{"role": "user", "content": "Do we have any stored stories about Nvidia chip demand?"}],
+        user_message="Do we have any stored stories about Nvidia chip demand?",
+    )
+
+    done_event = _done_event(events)
+    answer = done_event["message"].lower()
+    assert done_event["metadata"]["used_local_tool"] is True
+    assert "search_recent_stories" in _tool_call_names(events)
+    assert "nvidia" in answer
+    assert "chip" in answer or "accelerator" in answer
 
 
 def test_daily_news_agent_routes_stored_story_question_to_get_story_details(tmp_path):
