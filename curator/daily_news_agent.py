@@ -46,6 +46,7 @@ Examples:
 - "For background, what does capex mean, and why does it matter for this story?" -> answer directly from general knowledge.
 - "Why does Nvidia chip demand matter?" -> answer directly from general knowledge; do not search.
 - "Do we have any stored stories about Nvidia chip demand?" -> call `search_recent_stories` with query "Nvidia chip demand".
+- "Find stories about Meta, Facebook, or Meta Platforms." -> call `search_recent_stories` with query `Meta OR Facebook OR "Meta Platforms"`.
 - "Find recent repository stories from Stratechery." -> call `search_recent_stories` with query "Stratechery".
 - "What did the stored story say about capex?" -> call `get_story_details` if the story is identifiable.
 - "What happened today?" -> call `list_recent_stories`.
