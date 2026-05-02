@@ -10,10 +10,12 @@ from .repository_tools import (
     DEFAULT_TOOL_RESULT_CHAR_LIMIT,
     MIN_TOOL_RESULT_CHAR_LIMIT,
     build_recent_stories_tool,
+    build_search_recent_stories_tool,
     build_story_details_tool,
     get_story_details,
     list_recent_stories,
     list_recent_story_feed,
+    search_recent_stories,
 )
 
 
@@ -22,6 +24,8 @@ STATUS_BY_EVENT_TYPE = {
     "tools.ready": "Repository tools ready",
     "tool.list_recent_stories.start": "Reading repository headlines",
     "tool.list_recent_stories.done": "Repository context loaded",
+    "tool.search_recent_stories.start": "Searching repository stories",
+    "tool.search_recent_stories.done": "Repository context loaded",
     "tool.get_story_details.start": "Reading repository snippets",
     "tool.get_story_details.done": "Repository context loaded",
 }
@@ -31,13 +35,18 @@ SYSTEM_PROMPT = """You are the Daily News agent inside Newsletter Curator. Answe
 
 Tool routing:
 - Use tools only when the latest user message asks for stored repository facts. Earlier turns may identify a story, but they are not themselves a new tool request.
-- Answer directly for general knowledge, definitions, historical background, implications, synthesis, or "why it matters" follow-ups, even when the user says "this story." Label the answer as general context when that distinction matters.
+- Answer directly for general knowledge, definitions, historical background, implications, synthesis, or "why it matters" follow-ups, even when the user says "this story." If the latest message says "for background", asks what a term means, asks why something matters, or asks for context/explanation, do not call any tool. Label the answer as general context when that distinction matters.
 - `list_recent_stories`: use for repository headline or roundup requests, including recent stories, top news, date ranges, today, or yesterday.
+- `search_recent_stories`: use when the user asks whether the stored corpus has stories about a topic, company, person, product, source, or event, or asks for repository-backed stories matching specific terms. Use the user's substantive topic words as `query`; set `hours` only when the user gives a date/window. Search returns ranked snippets, not full article text.
 - `get_story_details`: use only when a specific repository story is identifiable from the conversation and the latest message asks what the stored story/source/article says, requests citation/source details, or asks you to verify a claim against that stored story.
+- After `list_recent_stories` or `search_recent_stories`, call `get_story_details` only if the user asks for more detail about one specific result or citation/source verification requires the stored summary.
 - If the user intent is unclear, answer directly and offer to check the repository.
 
 Examples:
 - "For background, what does capex mean, and why does it matter for this story?" -> answer directly from general knowledge.
+- "Why does Nvidia chip demand matter?" -> answer directly from general knowledge; do not search.
+- "Do we have any stored stories about Nvidia chip demand?" -> call `search_recent_stories` with query "Nvidia chip demand".
+- "Find recent repository stories from Stratechery." -> call `search_recent_stories` with query "Stratechery".
 - "What did the stored story say about capex?" -> call `get_story_details` if the story is identifiable.
 - "What happened today?" -> call `list_recent_stories`.
 
@@ -180,6 +189,7 @@ def build_agent_tools(*, server_url: str, authorization: str, settings: dict) ->
     del server_url, authorization, settings
     return [
         _build_function_tool(build_recent_stories_tool()),
+        _build_function_tool(build_search_recent_stories_tool()),
         _build_function_tool(build_story_details_tool()),
     ]
 
@@ -387,6 +397,14 @@ class DailyNewsAgentService:
         if tool_name == "list_recent_stories":
             return list_recent_stories(
                 self._config,
+                window_hours=int(arguments.get("hours", self._settings["repository_window_hours"])),
+                source_type=arguments.get("source_type"),
+                limit=int(arguments.get("limit", self._settings["snippet_limit"])),
+            )
+        if tool_name == "search_recent_stories":
+            return search_recent_stories(
+                self._config,
+                query=str(arguments["query"]),
                 window_hours=int(arguments.get("hours", self._settings["repository_window_hours"])),
                 source_type=arguments.get("source_type"),
                 limit=int(arguments.get("limit", self._settings["snippet_limit"])),

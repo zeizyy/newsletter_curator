@@ -122,6 +122,48 @@ class FakeEmptyAfterToolOpenAI:
         )
 
 
+class FakeSearchToolOpenAI:
+    def __init__(self):
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+        self.calls = 0
+        self.request_kwargs: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls += 1
+        self.request_kwargs.append(kwargs)
+        if self.calls == 1:
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="tool_calls",
+                        message=SimpleNamespace(
+                            content="",
+                            tool_calls=[
+                                _tool_call(
+                                    "call-search",
+                                    "search_recent_stories",
+                                    '{"query":"Nvidia chip demand","hours":48,"limit":5}',
+                                )
+                            ],
+                        ),
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=10, completion_tokens=4, total_tokens=14),
+            )
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(
+                        content="The repository has a Nvidia chip-demand story.",
+                        tool_calls=[],
+                    ),
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=14, completion_tokens=6, total_tokens=20),
+        )
+
+
 class FakeLargeToolResultOpenAI:
     def __init__(self, story_id: int):
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
@@ -335,12 +377,105 @@ def test_daily_news_agent_prompt_allows_general_knowledge_context():
     assert "Earlier turns may identify a story" in SYSTEM_PROMPT
     assert "Answer directly for general knowledge" in SYSTEM_PROMPT
     assert 'even when the user says "this story."' in SYSTEM_PROMPT
+    assert 'If the latest message says "for background"' in SYSTEM_PROMPT
+    assert "do not call any tool" in SYSTEM_PROMPT
     assert "Label the answer as general context when that distinction matters" in SYSTEM_PROMPT
     assert "`list_recent_stories`: use for repository headline or roundup requests" in SYSTEM_PROMPT
     assert "`get_story_details`: use only when a specific repository story is identifiable" in SYSTEM_PROMPT
     assert 'what does capex mean' in SYSTEM_PROMPT
     assert "If the user intent is unclear, answer directly and offer to check the repository" in SYSTEM_PROMPT
     assert "Do not show internal story metadata" in SYSTEM_PROMPT
+    assert "`search_recent_stories`: use when the user asks whether the stored corpus has stories" in SYSTEM_PROMPT
+    assert 'query "Nvidia chip demand"' in SYSTEM_PROMPT
+    assert "Why does Nvidia chip demand matter?" in SYSTEM_PROMPT
+    assert "Search returns ranked snippets" in SYSTEM_PROMPT
+    assert "After `list_recent_stories` or `search_recent_stories`" in SYSTEM_PROMPT
+
+
+def test_daily_news_agent_exposes_search_recent_stories_tool(tmp_path):
+    config = {
+        "database": {"path": str(tmp_path / "curator.sqlite3")},
+        "daily_news_agent": {"max_output_tokens": 400},
+        "openai": {"reasoning_model": "gpt-5-mini"},
+    }
+
+    fake_openai = FakeToolRoundLimitOpenAI()
+    service = DailyNewsAgentService(config, server_url="", authorization="", client_factory=lambda: fake_openai)
+    list(
+        service.stream_reply(
+            history=[{"role": "user", "content": "What happened today?"}],
+            user_message="What happened today?",
+        )
+    )
+
+    tool_names = [
+        tool["function"]["name"]
+        for tool in fake_openai.request_kwargs[0]["tools"]
+    ]
+    assert tool_names == ["list_recent_stories", "search_recent_stories", "get_story_details"]
+
+
+def test_daily_news_agent_handles_local_search_recent_stories_tool_call(tmp_path):
+    config = {
+        "database": {"path": str(tmp_path / "curator.sqlite3")},
+        "daily_news_agent": {"max_output_tokens": 400, "snippet_limit": 5},
+        "openai": {"reasoning_model": "gpt-5-mini"},
+    }
+
+    repository = get_repository_from_config(config)
+    repository.initialize()
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    published_at = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    story_id = repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "Chip Ledger",
+            "subject": "Nvidia chip demand climbs",
+            "url": "https://example.com/nvidia-chip-demand",
+            "anchor_text": "Nvidia chip demand climbs",
+            "context": "Hyperscalers are increasing Nvidia accelerator orders.",
+            "category": "Tech company news & strategy",
+            "published_at": published_at,
+            "summary": "Nvidia demand is rising.",
+        },
+        ingestion_run_id=run_id,
+    )
+    repository.upsert_article_snapshot(
+        story_id,
+        "Nvidia chip demand is rising as hyperscalers expand AI clusters.",
+        summary_headline="Nvidia chip demand climbs",
+        summary_body="Nvidia accelerator demand is climbing.",
+        summarized_at=published_at,
+    )
+
+    fake_openai = FakeSearchToolOpenAI()
+    service = DailyNewsAgentService(config, server_url="", authorization="", client_factory=lambda: fake_openai)
+    events = list(
+        service.stream_reply(
+            history=[{"role": "user", "content": "Do we have stored stories about Nvidia chip demand?"}],
+            user_message="Do we have stored stories about Nvidia chip demand?",
+            debug=True,
+        )
+    )
+
+    assert [event["message"] for event in events if event["type"] == "status"] == [
+        "Loading repository tools",
+        "Repository tools ready",
+        "Searching repository stories",
+        "Repository context loaded",
+    ]
+    tool_message = next(
+        message for message in fake_openai.request_kwargs[1]["messages"] if message["role"] == "tool"
+    )
+    payload = json.loads(tool_message["content"])
+    assert payload["query"] == "Nvidia chip demand"
+    assert payload["stories"][0]["id"] == story_id
+    assert payload["stories"][0]["summary_body"] == "Nvidia accelerator demand is climbing."
+
+    done_event = next(event for event in events if event["type"] == "done")
+    assert done_event["metadata"]["used_local_tool"] is True
+    tool_call_event = next(event for event in done_event["metadata"]["debug_trace"] if event["type"] == "tool_call")
+    assert tool_call_event["tool_name"] == "search_recent_stories"
 
 
 def test_daily_news_agent_caps_tool_results_before_next_model_round(tmp_path):
