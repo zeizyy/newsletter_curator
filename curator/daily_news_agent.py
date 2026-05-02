@@ -73,7 +73,7 @@ def build_agent_settings(config: dict) -> dict:
         "model": str(agent_cfg.get("model") or openai_cfg.get("reasoning_model") or "gpt-5-mini").strip(),
         "max_history_messages": _int_setting(agent_cfg, "max_history_messages", 8, 2),
         "max_message_chars": _int_setting(agent_cfg, "max_message_chars", 1600, 400),
-        "max_output_tokens": _int_setting(agent_cfg, "max_output_tokens", 900, 200),
+        "max_output_tokens": _int_setting(agent_cfg, "max_output_tokens", 2000, 200),
         "max_tool_rounds": _int_setting(agent_cfg, "max_tool_rounds", 2, 0),
         "repository_window_hours": _int_setting(agent_cfg, "mcp_window_hours", 48, 1),
         "snippet_limit": _int_setting(agent_cfg, "snippet_limit", 8, 1),
