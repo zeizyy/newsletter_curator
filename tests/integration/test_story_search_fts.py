@@ -100,6 +100,61 @@ def test_search_recent_stories_uses_fts_bm25_ranking(tmp_path):
     assert source_payload["story_count"] == 2
 
 
+def test_search_recent_stories_supports_simple_boolean_queries(tmp_path):
+    config, repository = _config_for(tmp_path)
+    run_id = create_completed_ingestion_run(repository, "additional_source")
+    now = datetime.now(UTC)
+
+    meta_story_id = _seed_story(
+        repository,
+        run_id=run_id,
+        subject="Meta Platforms expands AI assistant distribution",
+        url="https://example.com/meta-platforms-ai",
+        context="Meta is expanding AI assistant distribution across messaging apps.",
+        summary_body="Meta Platforms is bringing its AI assistant to more surfaces.",
+        published_at=(now - timedelta(minutes=10)).isoformat(),
+    )
+    facebook_story_id = _seed_story(
+        repository,
+        run_id=run_id,
+        subject="Facebook engagement rises after ranking changes",
+        url="https://example.com/facebook-ranking",
+        context="Facebook ranking changes lifted engagement.",
+        summary_body="Facebook engagement improved after ranking updates.",
+        published_at=(now - timedelta(minutes=8)).isoformat(),
+    )
+    google_story_id = _seed_story(
+        repository,
+        run_id=run_id,
+        subject="Google search defaults face scrutiny",
+        url="https://example.com/google-search-defaults",
+        context="Google search defaults face regulatory scrutiny.",
+        summary_body="Google search distribution is under pressure.",
+        published_at=(now - timedelta(minutes=5)).isoformat(),
+    )
+
+    or_payload = search_recent_stories(
+        config,
+        query='Meta OR Facebook OR "Meta Platforms"',
+        window_hours=168,
+        source_type=None,
+        limit=12,
+    )
+
+    assert {story["id"] for story in or_payload["stories"]} == {meta_story_id, facebook_story_id}
+
+    not_payload = search_recent_stories(
+        config,
+        query="Meta NOT Facebook",
+        window_hours=168,
+        source_type=None,
+        limit=12,
+    )
+
+    assert {story["id"] for story in not_payload["stories"]} == {meta_story_id}
+    assert google_story_id not in {story["id"] for story in or_payload["stories"]}
+
+
 def test_story_search_index_backfill_is_idempotent(tmp_path, monkeypatch, capsys):
     config_path = write_temp_config(
         tmp_path,

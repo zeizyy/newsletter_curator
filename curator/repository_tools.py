@@ -85,7 +85,7 @@ def build_recent_stories_tool() -> dict:
     return {
         "name": RECENT_STORIES_TOOL,
         "title": "List Recent Story Headlines",
-        "description": "Lists stored story headlines from a recent window. Use for repository headline or roundup requests: recent stories, top news, date ranges, today, or yesterday. Not for definitions, background, implications, or general synthesis.",
+        "description": "Lists stored story headlines from a recent hour-based window, with optional source-type filtering.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -147,7 +147,7 @@ def build_search_recent_stories_tool() -> dict:
     return {
         "name": SEARCH_RECENT_STORIES_TOOL,
         "title": "Search Recent Story Snippets",
-        "description": "Searches stored story snippets by topic, entity, company, person, product, or event. Use only when the user explicitly asks whether the stored corpus contains a topic or asks for repository-backed stories about it. Do not use when the user asks for background, definitions, context, implications, why something matters, or general synthesis.",
+        "description": "Searches stored story snippets by query terms, with optional hour-window and source-type filtering. Supports simple Boolean keywords AND, OR, NOT, plus quoted phrases.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -179,7 +179,7 @@ def build_story_details_tool() -> dict:
     return {
         "name": GET_STORY_DETAILS_TOOL,
         "title": "Get Story Details",
-        "description": "Returns one stored story with its summary and source metadata. Use only when a specific repository story is identified and the user asks what the stored story/source/article says, requests citation/source details, or asks to verify a claim against that story. Not for definitions, background, implications, or general synthesis.",
+        "description": "Returns one stored story summary and source metadata by story ID.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -411,11 +411,55 @@ def _parse_optional_string(value: object, *, field_name: str) -> str | None:
 
 
 def _build_fts_query(query: str) -> str:
-    terms = []
-    for term in re.findall(r"[A-Za-z0-9]+", query.lower()):
-        if term and term not in terms:
-            terms.append(term)
-    return " AND ".join(f'"{term}"' for term in terms)
+    parts: list[str] = []
+    pending_operator: str | None = None
+    seen_operands: set[str] = set()
+    for token in _search_query_tokens(query):
+        if token in {"AND", "OR"}:
+            if parts:
+                pending_operator = token
+            continue
+        if token == "NOT":
+            if parts and pending_operator in (None, "AND"):
+                pending_operator = token
+            continue
+
+        if token in seen_operands:
+            continue
+        if parts:
+            parts.append(pending_operator or "AND")
+        parts.append(token)
+        pending_operator = None
+        seen_operands.add(token)
+    if parts and parts[-1] in {"AND", "OR", "NOT"}:
+        parts.pop()
+    return " ".join(parts)
+
+
+def _search_query_tokens(query: str) -> list[str]:
+    tokens: list[str] = []
+    for quoted, bare in re.findall(r'"([^"]+)"|([A-Za-z0-9]+)', query):
+        if quoted:
+            phrase = _fts_phrase(quoted)
+            if phrase:
+                tokens.append(phrase)
+            continue
+        normalized = bare.strip()
+        if not normalized:
+            continue
+        upper = normalized.upper()
+        if upper in {"AND", "OR", "NOT"}:
+            tokens.append(upper)
+            continue
+        tokens.append(_fts_phrase(normalized))
+    return [token for token in tokens if token]
+
+
+def _fts_phrase(value: str) -> str:
+    terms = re.findall(r"[A-Za-z0-9]+", value.lower())
+    if not terms:
+        return ""
+    return '"' + " ".join(terms) + '"'
 
 
 def _story_title(story: dict) -> str:
