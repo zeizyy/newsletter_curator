@@ -92,6 +92,32 @@ def _tool_call_names(events: list[dict]) -> list[str]:
     return names
 
 
+def test_daily_news_agent_answers_short_definition_without_token_limit_fallback(tmp_path):
+    _require_openai_api_key()
+
+    config = _agent_eval_config(tmp_path)
+
+    events = _agent_events(
+        config,
+        history=[{"role": "user", "content": "what is capex?"}],
+        user_message="what is capex?",
+    )
+
+    done_event = _done_event(events)
+    answer = done_event["message"].lower()
+    assert "capital expenditure" in answer or "capital expenses" in answer
+    assert "hit the answer token limit" not in answer
+    assert done_event["metadata"]["used_local_tool"] is False
+    assert _tool_call_names(events) == []
+
+    first_request = next(
+        event["event"]
+        for event in events
+        if event["type"] == "debug" and event["event"].get("type") == "model_request"
+    )
+    assert first_request["max_completion_tokens"] == 2000
+
+
 def test_daily_news_agent_uses_general_knowledge_for_background_followup(tmp_path):
     _require_openai_api_key()
 
