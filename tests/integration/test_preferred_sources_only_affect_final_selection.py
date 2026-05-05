@@ -34,8 +34,9 @@ class PreferredSourceBoundaryOpenAI:
                 ]
             )
         elif "select the top stories" in lowered:
-            assert "hard filter" in lowered
-            assert "ai wire" in lowered
+            assert "hard filter" not in lowered
+            assert "hard allowlist" not in lowered
+            assert "ai wire" not in lowered
             assert "rates reset changes software valuations" not in lowered
             content = json.dumps(
                 [
@@ -43,7 +44,7 @@ class PreferredSourceBoundaryOpenAI:
                         "index": 1,
                         "category": "AI & ML industry developments",
                         "score": 9.9,
-                        "rationale": "Preferred source passed the hard filter.",
+                        "rationale": "The eligible story is the best reader fit.",
                     }
                 ]
             )
@@ -202,7 +203,9 @@ def test_preferred_sources_only_affect_final_selection(monkeypatch, tmp_path):
     ]
 
     assert ranking_prompts
-    assert all("ai wire" in prompt for prompt in ranking_prompts)
+    assert all("ai wire" not in prompt for prompt in ranking_prompts)
+    assert all("hard filter" not in prompt for prompt in ranking_prompts)
+    assert all("hard allowlist" not in prompt for prompt in ranking_prompts)
     assert all("rates reset changes software valuations" not in prompt for prompt in ranking_prompts)
     assert all("ai wire" not in prompt for prompt in scoring_prompts)
     assert all("ai wire" not in prompt for prompt in summary_prompts)

@@ -20,16 +20,40 @@ def preference_memory_clause(memory_text: str) -> str:
     return f"\nLearned story preference memory from prior clicks:\n{cleaned}\n"
 
 
-def preferred_sources_clause(preferred_sources: list[str] | tuple[str, ...] | None) -> str:
-    normalized = [str(source).strip() for source in preferred_sources or [] if str(source).strip()]
-    if not normalized:
-        return ""
-    listed_sources = ", ".join(normalized)
+def ranking_system_guidance(persona_text: str, story_preference_memory: str) -> str:
+    if persona_text.strip():
+        memory_guidance = (
+            " Use learned preference memory as supporting evidence for that persona."
+            if story_preference_memory.strip()
+            else ""
+        )
+        return (
+            "Rank stories for the provided user persona. Score by fit to that reader lens, "
+            f"timeliness, impact, and depth of insight.{memory_guidance}"
+        )
+    if story_preference_memory.strip():
+        return (
+            "Rank stories for the learned story preference memory. Score by fit to those "
+            "observed preferences, timeliness, impact, and depth of insight."
+        )
     return (
-        "\nOnly consider stories from these selected sources for this personalized edition:\n"
-        f"{listed_sources}\n"
-        "Treat this as a hard filter. Do not select or backfill stories from any other source.\n"
+        "Rank stories by this category priority order: "
+        f"{DEFAULT_PRIORITY_TEXT} "
+        "Score by category priority, timeliness, impact, and depth of insight."
     )
+
+
+def ranking_user_guidance(persona_text: str, story_preference_memory: str) -> str:
+    if persona_text.strip():
+        if story_preference_memory.strip():
+            return (
+                "Interpret relevance through the provided user persona. Use learned preference "
+                "memory as additional evidence only when it fits that persona.\n"
+            )
+        return "Interpret relevance through the provided user persona.\n"
+    if story_preference_memory.strip():
+        return "Interpret relevance through the learned story preference memory.\n"
+    return "Interpret relevance through the baseline category priority order.\n"
 
 
 def format_links_for_llm(items: list[dict]) -> str:
@@ -72,18 +96,13 @@ def build_ranking_prompts(
     preferred_sources: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[str, str]:
     system_prompt = (
-        "You are a newsletter curator. Rank stories strictly by this priority order: "
-        f"{DEFAULT_PRIORITY_TEXT} "
-        "If two stories are from different tiers, always rank the higher-tier story above the "
-        "lower-tier story, regardless of popularity. Within the same tier, score by relevance "
-        "to these interests, timeliness, impact, and depth of insight. Penalize repetition, "
-        "clickbait, or low-signal items. After scoring, enforce category diversity so the top "
-        "selections include coverage across tech companies, AI/ML, macro/markets, deeper "
-        "blogs/papers, and interesting datapoints. Exclude promos, subscriptions, and "
-        "non-article links."
+        "You are a newsletter curator. "
+        f"{ranking_system_guidance(persona_text, story_preference_memory)} "
+        "Penalize repetition, clickbait, or low-signal items. After scoring, enforce category "
+        "diversity where it does not displace clearly better reader-fit stories. Exclude "
+        "promos, subscriptions, and non-article links."
         f"{persona_clause(persona_text)}"
         f"{preference_memory_clause(story_preference_memory)}"
-        f"{preferred_sources_clause(preferred_sources)}"
     )
     user_prompt = (
         "Here are extracted links with context. Select the top stories.\n"
@@ -97,12 +116,7 @@ def build_ranking_prompts(
         "AI & ML industry developments; Tech blogs; Interesting datapoints & anomalies.\n"
         "The \"index\" must refer to the numbered items in the input list below. Do NOT "
         "preserve input order; reorder by your ranking.\n"
-        "If a persona is provided, interpret relevance through that reader's priorities while "
-        "still respecting the global tier ordering.\n"
-        "If a learned preference memory is provided, use it as additional evidence for relevance "
-        "inside the same global tier and persona constraints.\n"
-        "If preferred sources are provided, treat them as a hard allowlist and only rank stories "
-        "from those sources.\n"
+        f"{ranking_user_guidance(persona_text, story_preference_memory)}"
         "No comments, no extra text, no trailing commas.\n\n"
         f"{format_links_for_llm(items)}"
     )
