@@ -47,8 +47,7 @@
       display: grid;
       align-content: start;
       gap: 16px;
-      min-height: clamp(150px, 20vh, 260px);
-      max-height: clamp(260px, 34vh, 380px);
+      height: clamp(260px, 34vh, 380px);
       overflow-y: auto;
       padding: clamp(16px, 2.4vw, 28px);
       border-radius: 20px;
@@ -279,8 +278,7 @@
 
     @media (max-width: 720px) {
       .chat-feed {
-        min-height: clamp(130px, 18vh, 200px);
-        max-height: clamp(220px, 38vh, 320px);
+        height: clamp(220px, 38vh, 320px);
         padding: 14px;
       }
 
