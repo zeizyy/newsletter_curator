@@ -19,23 +19,11 @@ development:
 
 persona:
   text: |
-    Rank highest: stories about AI value capture, Google/big-tech strategy, meaningful AI/ML technical developments, dense engineering blogs, and surprising datapoints.
-
-    I care most about:
-    - AI infra winners, big-tech capex/monetization, tech-relevant macro
-    - Google strategy in Search/Discover/AI Mode/Workspace
-    - OpenAI/Anthropic/Microsoft/Meta/Apple/Amazon when the story reveals real platform direction
-    - architecture, inference, retrieval/ranking, agents, RL/post-training, evals, hardware economics
-    - concrete metrics that reveal adoption, costs, margins, or hidden shifts
-
-    Why it matters to me:
-    Tie each story to strategy, technical mechanism, adoption, economics, AI-stack value capture, or implications for ranking/retrieval/agent systems.
-
-    Prefer:
-    real strategy, concrete numbers, under-the-hood insight, adoption/monetization signal, reusable playbooks, anomalies
-
-    Avoid:
-    PR fluff, hype, generic macro, repetitive benchmark news, shallow summaries
+    My preference in order:
+    - Major AI industry developments & tech company news
+    - Markets/stocks/macro/economy
+    - Tech blogs
+    - Interesting datapoints & anomalies
 
 additional_sources:
   enabled: true

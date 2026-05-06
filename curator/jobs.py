@@ -363,6 +363,16 @@ def subscriber_audience_key(
     return hashlib.sha1(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
+def merged_persona_text(default_persona_text: str, user_persona_text: str) -> str:
+    default_text = str(default_persona_text or "").strip()
+    user_text = str(user_persona_text or "").strip()
+    if default_text and user_text:
+        if user_text == default_text:
+            return default_text
+        return f"{default_text}\n\nAdditional user preference:\n{user_text}"
+    return user_text or default_text
+
+
 def finalize_delivery_newsletter(body: str, html_body: str) -> tuple[str, str]:
     return str(body or "").strip(), str(html_body or "").strip()
 
@@ -422,7 +432,10 @@ def resolve_delivery_subscribers(
     subscribers: list[dict] = []
     for email in recipients:
         db_profile = db_profiles_by_email.get(email)
-        persona_text = str((db_profile or {}).get("persona_text") or default_persona_text).strip()
+        persona_text = merged_persona_text(
+            default_persona_text,
+            str((db_profile or {}).get("persona_text") or "").strip(),
+        )
         story_preference_memory = str((db_profile or {}).get("story_preference_memory") or "").strip()
         delivery_format = normalize_subscriber_delivery_format((db_profile or {}).get("delivery_format"))
         preferred_sources = normalize_preferred_sources((db_profile or {}).get("preferred_sources", []))
