@@ -201,13 +201,16 @@ def test_delivery_prefers_db_backed_profiles_over_legacy_personalization_inputs(
     assert result["personalized_delivery"] is True
     assert result["sent_recipients"] == 3
 
+    db_profile_persona = (
+        "Generalist tech reader.\n\n"
+        "Additional user preference:\n"
+        "AI infrastructure builder focused on model costs and chips."
+    )
     subscribers_by_email = {
         subscriber["email"]: subscriber
         for subscriber in result["delivery_subscribers"]
     }
-    assert subscribers_by_email["db-profile@example.com"]["persona_text"] == (
-        "AI infrastructure builder focused on model costs and chips."
-    )
+    assert subscribers_by_email["db-profile@example.com"]["persona_text"] == db_profile_persona
     assert subscribers_by_email["db-profile@example.com"]["preferred_sources"] == ["Chip Insider"]
     assert subscribers_by_email["db-blank@example.com"]["persona_text"] == (
         "Generalist tech reader."
@@ -287,10 +290,15 @@ def test_dry_run_recipient_override_prefers_db_profile_without_buttondown_person
     assert result["status"] == "completed"
     assert result["recipient_source"] == "dry_run_override"
     assert result["personalized_delivery"] is True
+    dry_run_persona = (
+        "Generalist tech reader.\n\n"
+        "Additional user preference:\n"
+        "AI infrastructure builder focused on model costs and chips."
+    )
     assert result["delivery_subscribers"] == [
         {
             "email": "dry-run@example.com",
-            "persona_text": "AI infrastructure builder focused on model costs and chips.",
+            "persona_text": dry_run_persona,
             "delivery_format": "email",
             "preferred_sources": ["Chip Insider"],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],

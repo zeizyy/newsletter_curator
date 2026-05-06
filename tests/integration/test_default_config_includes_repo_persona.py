@@ -7,7 +7,8 @@ def test_default_config_includes_repo_persona():
     config = load_config("config.yaml")
     persona = str(config.get("persona", {}).get("text", "") or "")
 
-    assert "Rank highest: stories about AI value capture" in persona
-    assert "Google strategy in Search/Discover/AI Mode/Workspace" in persona
-    assert "Tie each story to strategy, technical mechanism, adoption, economics" in persona
-    assert "PR fluff, hype, generic macro, repetitive benchmark news, shallow summaries" in persona
+    assert "My preference in order:" in persona
+    assert "Major AI industry developments & tech company news" in persona
+    assert "Markets/stocks/macro/economy" in persona
+    assert "Tech blogs" in persona
+    assert "Interesting datapoints & anomalies" in persona

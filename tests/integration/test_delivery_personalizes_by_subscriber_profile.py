@@ -226,24 +226,34 @@ def test_delivery_personalizes_by_subscriber_profile(monkeypatch, tmp_path):
     assert result["recipient_source"] == "config"
     assert result["sent_recipients"] == 3
     assert len(result["delivery_groups"]) == 2
+    macro_persona = (
+        "Generalist tech reader.\n\n"
+        "Additional user preference:\n"
+        "Macro investor focused on rates and valuations."
+    )
+    chips_persona = (
+        "Generalist tech reader.\n\n"
+        "Additional user preference:\n"
+        "AI infrastructure builder focused on model costs and chips."
+    )
     assert result["delivery_subscribers"] == [
         {
             "email": "macro-one@example.com",
-            "persona_text": "Macro investor focused on rates and valuations.",
+            "persona_text": macro_persona,
             "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         },
         {
             "email": "macro-two@example.com",
-            "persona_text": "Macro investor focused on rates and valuations.",
+            "persona_text": macro_persona,
             "delivery_format": "email",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][1]["profile_key"],
         },
         {
             "email": "chips@example.com",
-            "persona_text": "AI infrastructure builder focused on model costs and chips.",
+            "persona_text": chips_persona,
             "delivery_format": "email",
             "preferred_sources": ["chip insider"],
             "profile_key": result["delivery_subscribers"][2]["profile_key"],
