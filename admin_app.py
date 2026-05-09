@@ -1826,6 +1826,17 @@ def subscriber_settings():
             newsletter_palette=newsletter_palette,
             preferred_sources=preferred_sources,
         )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {
+                "ok": True,
+                "message": "Subscriber settings saved.",
+                "profile": {
+                    "delivery_format": profile.get("delivery_format", ""),
+                    "newsletter_palette": profile.get("newsletter_palette", ""),
+                    "preferred_sources": profile.get("preferred_sources", []),
+                    "updated_at": profile.get("updated_at", ""),
+                },
+            }
         return redirect(url_for("subscriber_settings", saved="1"))
 
     if request.args.get("saved", "").strip() == "1":

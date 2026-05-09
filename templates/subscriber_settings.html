@@ -220,14 +220,12 @@
 {% block content %}
   {% set selected_sources = available_sources | selectattr("selected") | list %}
   {% set unselected_sources = available_sources | rejectattr("selected") | list %}
-  {% if message %}
-    <section class="banner-ok">{{ message }}</section>
-  {% endif %}
+  <section class="banner-ok" data-settings-status {% if not message %}hidden{% endif %}>{{ message }}</section>
   {% for error in errors %}
     <section class="banner-err">{{ error }}</section>
   {% endfor %}
 
-  <form method="post" class="content-stack">
+  <form method="post" class="content-stack" data-settings-form>
     <section class="surface surface-section">
       <div class="section-head">
         <div>
@@ -327,7 +325,7 @@
             type="checkbox"
             name="pdf_delivery_enabled"
             value="1"
-            onchange="this.form.submit()"
+            data-auto-save
             {% if profile.delivery_format == 'pdf' %}checked{% endif %}
           />
           <span class="pdf-toggle-switch" aria-hidden="true"></span>
@@ -449,6 +447,8 @@
 {% block scripts %}
   <script>
     (() => {
+      const settingsForm = document.querySelector("[data-settings-form]");
+      const statusBanner = document.querySelector("[data-settings-status]");
       const searchInput = document.querySelector("[data-preferred-source-search]");
       const sourceOptions = Array.from(document.querySelectorAll("[data-source-option]"));
       const autocompleteSection = document.querySelector("[data-autocomplete-section]");
@@ -457,6 +457,60 @@
       const showAllToggle = document.querySelector("[data-show-all-sources-toggle]");
       const zeroPrefixLimit = 5;
       let showAllSources = false;
+
+      const setStatus = (message, tone = "ok") => {
+        if (!statusBanner) {
+          return;
+        }
+        statusBanner.textContent = message;
+        statusBanner.hidden = false;
+        statusBanner.classList.toggle("banner-ok", tone === "ok");
+        statusBanner.classList.toggle("banner-err", tone !== "ok");
+      };
+
+      const submitSettings = async (trigger) => {
+        if (!settingsForm) {
+          return;
+        }
+        const formData = new FormData(settingsForm);
+        const submitButtons = Array.from(settingsForm.querySelectorAll('button[type="submit"]'));
+        submitButtons.forEach((button) => { button.disabled = true; });
+        if (trigger && "disabled" in trigger) {
+          trigger.disabled = true;
+        }
+        try {
+          const response = await fetch(settingsForm.action || window.location.href, {
+            method: "POST",
+            body: formData,
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+          });
+          if (!response.ok) {
+            throw new Error(`Save failed with status ${response.status}`);
+          }
+          const payload = await response.json();
+          setStatus(payload.message || "Subscriber settings saved.");
+        } catch (error) {
+          setStatus("Settings could not be saved. Try again.", "error");
+        } finally {
+          submitButtons.forEach((button) => { button.disabled = false; });
+          if (trigger && "disabled" in trigger) {
+            trigger.disabled = false;
+          }
+        }
+      };
+
+      if (settingsForm) {
+        settingsForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          submitSettings(event.submitter);
+        });
+        settingsForm.querySelectorAll("[data-auto-save]").forEach((input) => {
+          input.addEventListener("change", () => {
+            submitSettings(input);
+          });
+        });
+      }
+
       if (!searchInput || !autocompleteSection || !autocompleteHeading || !emptyState) {
         return;
       }

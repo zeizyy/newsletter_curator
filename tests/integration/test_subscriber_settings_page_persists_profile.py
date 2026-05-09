@@ -50,6 +50,8 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Delivery" in page
     assert "Add PDF attachment" in page
     assert "Email delivery stays enabled." in page
+    assert 'data-auto-save' in page
+    assert 'fetch(settingsForm.action || window.location.href' in page
     assert "Color Palette" in page
     assert "Choose the look of your newsletter" in page
     assert "Cobalt brief" in page
@@ -119,6 +121,47 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Your selected sources (3)" in second_page
     assert "Suggested sources" in second_page
     assert "Show all available sources" in second_page
+
+
+def test_subscriber_settings_ajax_post_persists_without_redirect(monkeypatch, tmp_path):
+    admin_app = importlib.import_module("admin_app")
+
+    config_path = write_temp_config(
+        tmp_path,
+        overrides={"database": {"path": str(tmp_path / "curator.sqlite3")}},
+    )
+    monkeypatch.setattr(admin_app, "CONFIG_PATH", str(config_path))
+
+    repository, subscriber, session = _create_logged_in_subscriber(admin_app, "ajax@example.com")
+    repository.upsert_source(source_type="additional_source", source_name="Macro Wire")
+    repository.upsert_source(source_type="additional_source", source_name="AI Wire")
+
+    client = admin_app.app.test_client()
+    client.set_cookie(admin_app.SUBSCRIBER_SESSION_COOKIE, session["token"])
+
+    response = client.post(
+        "/settings",
+        data={
+            "persona_text": "  Save without navigation.  ",
+            "newsletter_palette": "graphite",
+            "pdf_delivery_enabled": "1",
+            "preferred_source": ["Macro Wire"],
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["message"] == "Subscriber settings saved."
+    assert payload["profile"]["delivery_format"] == "pdf"
+    assert payload["profile"]["newsletter_palette"] == "graphite"
+
+    profile = repository.get_subscriber_profile(int(subscriber["id"]))
+    assert profile["persona_text"] == "Save without navigation."
+    assert profile["newsletter_palette"] == "graphite"
+    assert profile["delivery_format"] == "pdf"
+    assert profile["preferred_sources"] == ["Macro Wire"]
 
 
 def test_subscriber_settings_auto_selects_default_catalog_sources(monkeypatch, tmp_path):
