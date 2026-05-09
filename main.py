@@ -247,6 +247,7 @@ def _run_delivery(
             "email": str(subscriber.get("email", "")).strip().lower(),
             "persona_text": str(subscriber.get("persona_text", "")).strip(),
             "delivery_format": str(subscriber.get("delivery_format", "email")).strip() or "email",
+            "newsletter_palette": str(subscriber.get("newsletter_palette", "signal")).strip() or "signal",
             "preferred_sources": list(subscriber.get("preferred_sources") or []),
             "profile_key": str(subscriber.get("profile_key", "")).strip(),
         }
@@ -260,6 +261,7 @@ def _run_delivery(
         persona_text: str,
         story_preference_memory: str,
         delivery_format: str,
+        newsletter_palette: str,
         preferred_sources: list[str],
         recipients: list[str],
         recipient_subscriber_ids: dict[str, int],
@@ -341,6 +343,7 @@ def _run_delivery(
             persist_newsletter=persist_newsletter,
             audience_key=audience_key,
             delivery_format=delivery_format,
+            newsletter_palette=newsletter_palette,
             preferred_sources=preferred_sources,
             recipient_subscriber_ids=recipient_subscriber_ids,
             issue_type_override=issue_type_override,
@@ -351,6 +354,7 @@ def _run_delivery(
         or subscriber.get("story_preference_memory")
         or subscriber["preferred_sources"]
         or subscriber["delivery_format"] != "email"
+        or subscriber.get("newsletter_palette", "signal") != "signal"
         for subscriber in subscribers
     )
     if not personalized_delivery:
@@ -358,6 +362,7 @@ def _run_delivery(
             persona_text=default_persona_text,
             story_preference_memory="",
             delivery_format="email",
+            newsletter_palette="signal",
             preferred_sources=[],
             recipients=[subscriber["email"] for subscriber in subscribers],
             recipient_subscriber_ids={
@@ -384,6 +389,7 @@ def _run_delivery(
             persona_text=group["persona_text"],
             story_preference_memory=group["story_preference_memory"],
             delivery_format=group["delivery_format"],
+            newsletter_palette=group["newsletter_palette"],
             preferred_sources=group["preferred_sources"],
             recipients=group["recipients"],
             recipient_subscriber_ids=group["recipient_subscriber_ids"],
@@ -402,6 +408,7 @@ def _run_delivery(
                 "persona_text": group["persona_text"],
                 "story_preference_memory": group["story_preference_memory"],
                 "delivery_format": group["delivery_format"],
+                "newsletter_palette": group["newsletter_palette"],
                 "preferred_sources": group["preferred_sources"],
                 "recipients": group["recipients"],
                 "sent_recipients": int(profile_result.get("sent_recipients", 0) or 0),

@@ -300,6 +300,7 @@ def test_dry_run_recipient_override_prefers_db_profile_without_buttondown_person
             "email": "dry-run@example.com",
             "persona_text": dry_run_persona,
             "delivery_format": "email",
+            "newsletter_palette": "signal",
             "preferred_sources": ["Chip Insider"],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         }

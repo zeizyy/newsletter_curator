@@ -27,6 +27,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
         int(subscriber["id"]),
         persona_text="Existing persona",
         delivery_format="email",
+        newsletter_palette="cobalt",
         preferred_sources=["Macro Wire", "AI Wire"],
     )
 
@@ -46,8 +47,16 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "Existing persona" in page
-    assert "Add a PDF copy" in page
+    assert "Delivery" in page
     assert "Add PDF attachment" in page
+    assert "Email delivery stays enabled." in page
+    assert "Color Palette" in page
+    assert "Choose the look of your newsletter" in page
+    assert "Cobalt brief" in page
+    assert "Graphite ledger" in page
+    assert "Crimson memo" in page
+    assert 'name="newsletter_palette"' in page
+    assert re.search(r'value="cobalt"[^>]*checked', page)
     assert "Subscriber Rail" not in page
     assert "Macro Wire" in page
     assert "AI Wire" in page
@@ -77,6 +86,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
         data={
             "persona_text": "  Focus on chips and costs.  ",
             "pdf_delivery_enabled": "1",
+            "newsletter_palette": "crimson",
             "preferred_source": ["Macro Wire", "Signal Mail"],
         },
         follow_redirects=True,
@@ -91,6 +101,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     profile = repository.get_subscriber_profile(int(subscriber["id"]))
     assert profile["persona_text"] == "Focus on chips and costs."
     assert profile["delivery_format"] == "pdf"
+    assert profile["newsletter_palette"] == "crimson"
     assert profile["preferred_sources"] == ["Macro Wire", "Signal Mail", "AI Wire"]
 
     second_session = repository.create_subscriber_session(int(subscriber["id"]))
@@ -101,6 +112,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert second_response.status_code == 200
     assert "Focus on chips and costs." in second_page
     assert 'name="pdf_delivery_enabled"' in second_page
+    assert re.search(r'value="crimson"[^>]*checked', second_page)
     assert 'value="1"' in second_page
     assert "Signal Mail" in second_page
     assert "AI Wire" in second_page

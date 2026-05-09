@@ -104,7 +104,9 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
             ]
             if state["source_search"].lower() == "signal":
                 lines[3] = '- heading "Matching sources" [level=3] [ref=e50]'
-            lines.append('- button "Save settings" [ref=e64] [cursor=pointer]')
+            lines.append('- button "Save personalization" [ref=e64] [cursor=pointer]')
+            lines.append('- button "Save palette" [ref=e65] [cursor=pointer]')
+            lines.append('- button "Save sources" [ref=e66] [cursor=pointer]')
             return "\n".join(lines)
         if page == "settings_saved":
             return "\n".join(
@@ -174,7 +176,7 @@ def test_admin_ui_e2e_harness_emits_manifest_and_updates_profile(tmp_path, monke
             elif ref == "e17":
                 state["page"] = "settings"
                 state["source_search"] = ""
-            elif ref == "e64":
+            elif ref in {"e64", "e65", "e66"}:
                 state["page"] = "settings_saved"
                 repository = SQLiteRepository(state["db_path"])
                 repository.initialize()

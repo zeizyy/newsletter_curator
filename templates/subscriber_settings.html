@@ -5,6 +5,212 @@
 {% block page_title %}Your digest settings{% endblock %}
 {% block page_lead %}Save the profile that shapes your personalized AI Signal Daily edition and optional PDF delivery in the database.{% endblock %}
 {% block command_rail %}{% endblock %}
+{% block head_extra %}
+  <style>
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+    }
+
+    .palette-card {
+      display: grid;
+      gap: 12px;
+      min-height: 156px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.62);
+      cursor: pointer;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+
+    .palette-card:has(input:checked) {
+      border-color: var(--signal);
+      box-shadow: 0 12px 28px rgba(24, 37, 58, 0.12);
+    }
+
+    .palette-card input {
+      accent-color: var(--signal);
+    }
+
+    .palette-illustration {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      min-height: 74px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--palette-bg);
+    }
+
+    .palette-hero {
+      background: linear-gradient(135deg, var(--palette-start), var(--palette-mid) 68%, var(--palette-accent));
+    }
+
+    .palette-panel {
+      display: grid;
+      gap: 6px;
+      align-content: center;
+      padding: 10px;
+      background: var(--palette-bg);
+    }
+
+    .palette-line {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--palette-ink);
+      opacity: 0.78;
+    }
+
+    .palette-line.is-short {
+      width: 62%;
+      background: var(--palette-accent);
+      opacity: 1;
+    }
+
+    .palette-swatches {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .palette-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(24, 37, 58, 0.14);
+      background: var(--swatch-color);
+    }
+
+    .palette-copy {
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .palette-copy strong {
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .palette-choice-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .pdf-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.58);
+      cursor: pointer;
+    }
+
+    .pdf-toggle-copy {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .pdf-toggle-copy strong {
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .pdf-toggle-switch {
+      position: relative;
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 48px;
+      height: 28px;
+      border-radius: 999px;
+      background: #d5dde8;
+      border: 1px solid rgba(24, 37, 58, 0.24);
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .pdf-toggle-switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(24, 37, 58, 0.22);
+      transition: transform 120ms ease;
+    }
+
+    .pdf-toggle-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+    }
+
+    .pdf-toggle-input:checked + .pdf-toggle-switch {
+      background: var(--signal);
+      border-color: var(--signal);
+    }
+
+    .pdf-toggle-input:checked + .pdf-toggle-switch::after {
+      transform: translateX(20px);
+    }
+
+    .pdf-toggle-input:focus-visible + .pdf-toggle-switch {
+      outline: 2px solid var(--signal);
+      outline-offset: 3px;
+    }
+
+    .section-save-box {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .palette-card {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .palette-card:has(input:checked) {
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+      }
+
+      .pdf-toggle-row {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .pdf-toggle-switch {
+        background: rgba(175, 188, 206, 0.32);
+        border-color: rgba(175, 188, 206, 0.42);
+      }
+
+      .section-save-box {
+        border-top-color: rgba(255, 255, 255, 0.12);
+      }
+    }
+  </style>
+{% endblock %}
 {% block title_actions %}
   <form method="post" action="{{ url_for('subscriber_logout') }}">
     <button type="submit" class="signout-button">Sign out</button>
@@ -25,7 +231,7 @@
     <section class="surface surface-section">
       <div class="section-head">
         <div>
-          <div class="section-kicker">Persona</div>
+          <div class="section-kicker">Personalization</div>
           <h2>What should the digest optimize for?</h2>
         </div>
       </div>
@@ -34,10 +240,7 @@
         <label class="field-label" for="persona_text">Persona text</label>
         <textarea id="persona_text" name="persona_text">{{ profile.persona_text }}</textarea>
       </div>
-    </section>
-
-    <section class="surface surface-section">
-      <div class="section-head">
+      <div class="section-head" style="margin-top:18px;">
         <div>
           <div class="section-kicker">Learned Memory</div>
           <h2>What your clicks suggest</h2>
@@ -55,33 +258,81 @@
           <p class="state-copy">No learned memory has been generated yet.</p>
         </div>
       {% endif %}
+      <div class="section-save-box">
+        <button type="submit">Save personalization</button>
+      </div>
+    </section>
+
+    <section class="surface surface-section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Color Palette</div>
+          <h2>Choose the look of your newsletter</h2>
+        </div>
+      </div>
+      <p class="section-copy">Pick the palette used by your personalized email edition. The illustration shows the hero gradient, page background, accent, and text tone before you save.</p>
+      <div class="palette-grid">
+        {% for palette in palette_options %}
+          <label
+            class="palette-card"
+            style="--palette-start: {{ palette.swatches[0] }}; --palette-mid: {{ palette.swatches[1] }}; --palette-accent: {{ palette.swatches[2] }}; --palette-bg: {{ palette.swatches[3] }}; --palette-ink: {{ palette.swatches[0] }};"
+          >
+            <div class="palette-illustration" aria-hidden="true">
+              <div class="palette-hero"></div>
+              <div class="palette-panel">
+                <div class="palette-line"></div>
+                <div class="palette-line is-short"></div>
+              </div>
+            </div>
+            <div class="palette-swatches" aria-hidden="true">
+              {% for swatch in palette.swatches %}
+                <span class="palette-swatch" style="--swatch-color: {{ swatch }}"></span>
+              {% endfor %}
+            </div>
+            <div class="palette-choice-row">
+              <span class="palette-copy">
+                <strong>{{ palette.label }}</strong>
+                <span>{{ palette.description }}</span>
+              </span>
+              <input
+                type="radio"
+                name="newsletter_palette"
+                value="{{ palette.id }}"
+                {% if palette.selected %}checked{% endif %}
+                aria-label="{{ palette.label }}"
+              />
+            </div>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="section-save-box">
+        <button type="submit">Save palette</button>
+      </div>
     </section>
 
     <section class="surface surface-section">
       <div class="section-head">
         <div>
           <div class="section-kicker">Delivery</div>
-          <h2>Add a PDF copy</h2>
         </div>
       </div>
-      <p class="section-copy">Email is always enabled. Turn this on to keep the normal digest email and add a Kindle-friendly PDF attachment.</p>
-      <div class="toggle-grid toggle-grid-single">
-        <label class="toggle-card">
-          <div class="stack">
-            <strong>Add PDF attachment</strong>
-            <span class="pill">Kindle-ready</span>
-            <span>Email stays on either way.</span>
-          </div>
-          <div class="checkbox-row">
-            <input
-              type="checkbox"
-              name="pdf_delivery_enabled"
-              value="1"
-              {% if profile.delivery_format == 'pdf' %}checked{% endif %}
-            />
-          </div>
-        </label>
-      </div>
+      <label class="pdf-toggle-row">
+        <span class="pdf-toggle-copy">
+          <strong>Add PDF attachment</strong>
+          <span>Email delivery stays enabled.</span>
+        </span>
+        <span>
+          <input
+            class="pdf-toggle-input"
+            type="checkbox"
+            name="pdf_delivery_enabled"
+            value="1"
+            onchange="this.form.submit()"
+            {% if profile.delivery_format == 'pdf' %}checked{% endif %}
+          />
+          <span class="pdf-toggle-switch" aria-hidden="true"></span>
+        </span>
+      </label>
     </section>
 
     <section class="surface surface-section">
@@ -90,6 +341,9 @@
           <div class="section-kicker">Preferred Sources</div>
           <h2>Choose the sources you care about most</h2>
         </div>
+        {% if available_sources %}
+          <button type="submit">Save sources</button>
+        {% endif %}
       </div>
       <p class="section-copy">Catalog defaults are preselected for you. If you add more sources here, your newsletter uses the defaults plus your additions, and only stories from that combined set will appear. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
       {% if not available_sources %}
@@ -184,13 +438,10 @@
             </section>
           {% endif %}
         </div>
+        <div class="section-save-box">
+          <button type="submit">Save sources</button>
+        </div>
       {% endif %}
-    </section>
-
-    <section class="surface surface-section">
-      <div class="button-row">
-        <button type="submit">Save settings</button>
-      </div>
     </section>
   </form>
 {% endblock %}
