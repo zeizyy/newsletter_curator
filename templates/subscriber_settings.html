@@ -187,6 +187,24 @@
       border-top: 1px solid var(--line);
     }
 
+    .section-status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--success-line);
+      background: var(--success-bg);
+      color: var(--success-text);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .section-status.is-error {
+      border-color: var(--error-line);
+      background: var(--error-bg);
+      color: var(--error-text);
+    }
+
     @media (prefers-color-scheme: dark) {
       .palette-card {
         background: rgba(255, 255, 255, 0.04);
@@ -220,13 +238,12 @@
 {% block content %}
   {% set selected_sources = available_sources | selectattr("selected") | list %}
   {% set unselected_sources = available_sources | rejectattr("selected") | list %}
-  <section class="banner-ok" data-settings-status {% if not message %}hidden{% endif %}>{{ message }}</section>
   {% for error in errors %}
     <section class="banner-err">{{ error }}</section>
   {% endfor %}
 
   <form method="post" class="content-stack" data-settings-form>
-    <section class="surface surface-section">
+    <section class="surface surface-section" data-settings-section="personalization">
       <div class="section-head">
         <div>
           <div class="section-kicker">Personalization</div>
@@ -256,12 +273,17 @@
           <p class="state-copy">No learned memory has been generated yet.</p>
         </div>
       {% endif %}
+      <div
+        class="section-status"
+        data-section-status
+        {% if saved_section != 'personalization' %}hidden{% endif %}
+      >{{ message }}</div>
       <div class="section-save-box">
-        <button type="submit">Save personalization</button>
+        <button type="submit" name="settings_section" value="personalization">Save personalization</button>
       </div>
     </section>
 
-    <section class="surface surface-section">
+    <section class="surface surface-section" data-settings-section="palette">
       <div class="section-head">
         <div>
           <div class="section-kicker">Color Palette</div>
@@ -303,12 +325,17 @@
           </label>
         {% endfor %}
       </div>
+      <div
+        class="section-status"
+        data-section-status
+        {% if saved_section != 'palette' %}hidden{% endif %}
+      >{{ message }}</div>
       <div class="section-save-box">
-        <button type="submit">Save palette</button>
+        <button type="submit" name="settings_section" value="palette">Save palette</button>
       </div>
     </section>
 
-    <section class="surface surface-section">
+    <section class="surface surface-section" data-settings-section="delivery">
       <div class="section-head">
         <div>
           <div class="section-kicker">Delivery</div>
@@ -331,17 +358,19 @@
           <span class="pdf-toggle-switch" aria-hidden="true"></span>
         </span>
       </label>
+      <div
+        class="section-status"
+        data-section-status
+        {% if saved_section != 'delivery' %}hidden{% endif %}
+      >{{ message }}</div>
     </section>
 
-    <section class="surface surface-section">
+    <section class="surface surface-section" data-settings-section="sources">
       <div class="section-head">
         <div>
           <div class="section-kicker">Preferred Sources</div>
           <h2>Choose the sources you care about most</h2>
         </div>
-        {% if available_sources %}
-          <button type="submit">Save sources</button>
-        {% endif %}
       </div>
       <p class="section-copy">Catalog defaults are preselected for you. If you add more sources here, your newsletter uses the defaults plus your additions, and only stories from that combined set will appear. Saved disabled sources remain checked but unavailable, so temporary operator changes do not erase your preferences.</p>
       {% if not available_sources %}
@@ -436,8 +465,13 @@
             </section>
           {% endif %}
         </div>
+        <div
+          class="section-status"
+          data-section-status
+          {% if saved_section != 'sources' %}hidden{% endif %}
+        >{{ message }}</div>
         <div class="section-save-box">
-          <button type="submit">Save sources</button>
+          <button type="submit" name="settings_section" value="sources">Save sources</button>
         </div>
       {% endif %}
     </section>
@@ -448,7 +482,6 @@
   <script>
     (() => {
       const settingsForm = document.querySelector("[data-settings-form]");
-      const statusBanner = document.querySelector("[data-settings-status]");
       const searchInput = document.querySelector("[data-preferred-source-search]");
       const sourceOptions = Array.from(document.querySelectorAll("[data-source-option]"));
       const autocompleteSection = document.querySelector("[data-autocomplete-section]");
@@ -458,21 +491,36 @@
       const zeroPrefixLimit = 5;
       let showAllSources = false;
 
-      const setStatus = (message, tone = "ok") => {
-        if (!statusBanner) {
+      const sectionForTrigger = (trigger) => {
+        if (!trigger || !("closest" in trigger)) {
+          return null;
+        }
+        return trigger.closest("[data-settings-section]");
+      };
+
+      const setSectionStatus = (section, message, tone = "ok") => {
+        if (!section) {
           return;
         }
-        statusBanner.textContent = message;
-        statusBanner.hidden = false;
-        statusBanner.classList.toggle("banner-ok", tone === "ok");
-        statusBanner.classList.toggle("banner-err", tone !== "ok");
+        const status = section.querySelector("[data-section-status]");
+        if (!status) {
+          return;
+        }
+        status.textContent = message;
+        status.hidden = false;
+        status.classList.toggle("is-error", tone !== "ok");
       };
 
       const submitSettings = async (trigger) => {
         if (!settingsForm) {
           return;
         }
+        const section = sectionForTrigger(trigger);
         const formData = new FormData(settingsForm);
+        const sectionName = section ? (section.dataset.settingsSection || "") : "";
+        if (sectionName) {
+          formData.set("settings_section", sectionName);
+        }
         const submitButtons = Array.from(settingsForm.querySelectorAll('button[type="submit"]'));
         submitButtons.forEach((button) => { button.disabled = true; });
         if (trigger && "disabled" in trigger) {
@@ -488,9 +536,9 @@
             throw new Error(`Save failed with status ${response.status}`);
           }
           const payload = await response.json();
-          setStatus(payload.message || "Subscriber settings saved.");
+          setSectionStatus(section, payload.message || "Subscriber settings saved.");
         } catch (error) {
-          setStatus("Settings could not be saved. Try again.", "error");
+          setSectionStatus(section, "Settings could not be saved. Try again.", "error");
         } finally {
           submitButtons.forEach((button) => { button.disabled = false; });
           if (trigger && "disabled" in trigger) {

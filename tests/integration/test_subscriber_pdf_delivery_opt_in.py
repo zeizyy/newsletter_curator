@@ -176,7 +176,7 @@ def test_subscriber_settings_page_can_persist_pdf_delivery_format(monkeypatch, t
 
     response = client.post(
         "/settings",
-        data={"persona_text": "", "pdf_delivery_enabled": "1"},
+        data={"persona_text": "", "pdf_delivery_enabled": "1", "settings_section": "delivery"},
         follow_redirects=True,
     )
 

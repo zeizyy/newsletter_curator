@@ -1371,6 +1371,7 @@ def render_subscriber_settings_page(
     profile: dict,
     available_sources: list[dict],
     message: str = "",
+    saved_section: str = "",
     errors: list[str] | None = None,
     status_code: int = 200,
 ):
@@ -1382,6 +1383,7 @@ def render_subscriber_settings_page(
             available_sources=available_sources,
             palette_options=newsletter_palette_options(profile.get("newsletter_palette")),
             message=message,
+            saved_section=saved_section,
             errors=errors or [],
         ),
         status_code,
@@ -1837,10 +1839,16 @@ def subscriber_settings():
                     "updated_at": profile.get("updated_at", ""),
                 },
             }
-        return redirect(url_for("subscriber_settings", saved="1"))
+        saved_section = str(request.form.get("settings_section", "") or "").strip()
+        return redirect(url_for("subscriber_settings", saved=saved_section or "1"))
 
     if request.args.get("saved", "").strip() == "1":
         message = "Subscriber settings saved."
+    saved_section = str(request.args.get("saved", "") or "").strip()
+    if saved_section in {"personalization", "palette", "delivery", "sources"}:
+        message = "Subscriber settings saved."
+    else:
+        saved_section = ""
 
     available_sources = build_subscriber_settings_sources(
         available_sources,
@@ -1851,6 +1859,7 @@ def subscriber_settings():
         profile=profile,
         available_sources=available_sources,
         message=message,
+        saved_section=saved_section,
         errors=errors,
     )
 

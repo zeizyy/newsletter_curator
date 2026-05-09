@@ -90,6 +90,7 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
             "pdf_delivery_enabled": "1",
             "newsletter_palette": "crimson",
             "preferred_source": ["Macro Wire", "Signal Mail"],
+            "settings_section": "sources",
         },
         follow_redirects=True,
     )
@@ -146,6 +147,7 @@ def test_subscriber_settings_ajax_post_persists_without_redirect(monkeypatch, tm
             "newsletter_palette": "graphite",
             "pdf_delivery_enabled": "1",
             "preferred_source": ["Macro Wire"],
+            "settings_section": "palette",
         },
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
@@ -193,6 +195,7 @@ def test_subscriber_settings_auto_selects_default_catalog_sources(monkeypatch, t
         data={
             "persona_text": "",
             "preferred_source": ["OpenAI News", "Macro Wire"],
+            "settings_section": "sources",
         },
         follow_redirects=True,
     )
