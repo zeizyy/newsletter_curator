@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from .config import is_default_enabled_source_name
+from .rendering import DEFAULT_NEWSLETTER_PALETTE, normalize_newsletter_palette
 
 
 def utc_now() -> str:
@@ -224,6 +225,7 @@ class SQLiteRepository:
                 "subscriber_id",
                 "persona_text",
                 "delivery_format",
+                "newsletter_palette",
                 "preferred_sources_json",
                 "created_at",
                 "updated_at",
@@ -303,6 +305,7 @@ class SQLiteRepository:
         self._migrate_daily_newsletters_audience_keys(connection)
         self._migrate_daily_newsletters_issue_types(connection)
         self._migrate_subscriber_profiles_delivery_format(connection)
+        self._migrate_subscriber_profiles_newsletter_palette(connection)
         self._migrate_fetched_stories_email_sent_at(connection)
         self._migrate_newsletter_click_events_subscriber_id(connection)
         self._migrate_agent_chat_sessions_subscriber_id(connection)
@@ -514,6 +517,25 @@ class SQLiteRepository:
             SET delivery_format = 'email'
             WHERE TRIM(COALESCE(delivery_format, '')) = ''
             """
+        )
+
+    def _migrate_subscriber_profiles_newsletter_palette(self, connection: sqlite3.Connection) -> None:
+        columns = self._table_columns(connection, "subscriber_profiles")
+        if not columns or "newsletter_palette" in columns:
+            return
+        connection.execute(
+            f"""
+            ALTER TABLE subscriber_profiles
+            ADD COLUMN newsletter_palette TEXT NOT NULL DEFAULT '{DEFAULT_NEWSLETTER_PALETTE}'
+            """
+        )
+        connection.execute(
+            """
+            UPDATE subscriber_profiles
+            SET newsletter_palette = ?
+            WHERE TRIM(COALESCE(newsletter_palette, '')) = ''
+            """,
+            (DEFAULT_NEWSLETTER_PALETTE,),
         )
 
     def _migrate_daily_newsletters_issue_types(self, connection: sqlite3.Connection) -> None:
@@ -1010,6 +1032,7 @@ class SQLiteRepository:
                 subscriber_id INTEGER PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
                 persona_text TEXT NOT NULL DEFAULT '',
                 delivery_format TEXT NOT NULL DEFAULT 'email',
+                newsletter_palette TEXT NOT NULL DEFAULT 'signal',
                 preferred_sources_json TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -1809,6 +1832,7 @@ class SQLiteRepository:
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
                     p.delivery_format,
+                    p.newsletter_palette,
                     p.preferred_sources_json,
                     spm.memory_text AS story_preference_memory,
                     spm.generated_at AS story_preference_memory_generated_at
@@ -1835,6 +1859,7 @@ class SQLiteRepository:
                     p.subscriber_id AS profile_subscriber_id,
                     p.persona_text,
                     p.delivery_format,
+                    p.newsletter_palette,
                     p.preferred_sources_json,
                     spm.memory_text AS story_preference_memory,
                     spm.generated_at AS story_preference_memory_generated_at
@@ -2049,6 +2074,7 @@ class SQLiteRepository:
                     subscriber_id,
                     persona_text,
                     delivery_format,
+                    newsletter_palette,
                     preferred_sources_json,
                     created_at,
                     updated_at
@@ -2064,6 +2090,7 @@ class SQLiteRepository:
                 "profile_exists": False,
                 "persona_text": "",
                 "delivery_format": DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
+                "newsletter_palette": DEFAULT_NEWSLETTER_PALETTE,
                 "preferred_sources": [],
                 "created_at": "",
                 "updated_at": "",
@@ -2076,10 +2103,12 @@ class SQLiteRepository:
         *,
         persona_text: str = "",
         delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
+        newsletter_palette: str = DEFAULT_NEWSLETTER_PALETTE,
         preferred_sources: list[str] | tuple[str, ...] | None = None,
     ) -> dict:
         normalized_persona = str(persona_text or "").strip()
         normalized_delivery_format = normalize_subscriber_delivery_format(delivery_format)
+        normalized_palette = normalize_newsletter_palette(newsletter_palette)
         normalized_sources: list[str] = []
         seen: set[str] = set()
         for raw_source in preferred_sources or []:
@@ -2097,15 +2126,17 @@ class SQLiteRepository:
                     subscriber_id,
                     persona_text,
                     delivery_format,
+                    newsletter_palette,
                     preferred_sources_json,
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(subscriber_id)
                 DO UPDATE SET
                     persona_text = excluded.persona_text,
                     delivery_format = excluded.delivery_format,
+                    newsletter_palette = excluded.newsletter_palette,
                     preferred_sources_json = excluded.preferred_sources_json,
                     updated_at = excluded.updated_at
                 """,
@@ -2113,6 +2144,7 @@ class SQLiteRepository:
                     subscriber_id,
                     normalized_persona,
                     normalized_delivery_format,
+                    normalized_palette,
                     json.dumps(normalized_sources),
                     now,
                     now,
@@ -2124,6 +2156,7 @@ class SQLiteRepository:
                     subscriber_id,
                     persona_text,
                     delivery_format,
+                    newsletter_palette,
                     preferred_sources_json,
                     created_at,
                     updated_at
@@ -2162,6 +2195,7 @@ class SQLiteRepository:
             "profile_exists": True,
             "persona_text": str(payload.get("persona_text", "") or ""),
             "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
+            "newsletter_palette": normalize_newsletter_palette(payload.get("newsletter_palette")),
             "preferred_sources": json.loads(str(payload.get("preferred_sources_json", "[]") or "[]")),
             "created_at": str(payload.get("created_at", "") or ""),
             "updated_at": str(payload.get("updated_at", "") or ""),
@@ -2177,6 +2211,7 @@ class SQLiteRepository:
             "email_address": str(payload.get("email_address", "") or ""),
             "persona_text": str(payload.get("persona_text", "") or ""),
             "delivery_format": normalize_subscriber_delivery_format(payload.get("delivery_format")),
+            "newsletter_palette": normalize_newsletter_palette(payload.get("newsletter_palette")),
             "preferred_sources": preferred_sources,
             "story_preference_memory": str(payload.get("story_preference_memory", "") or ""),
             "story_preference_memory_generated_at": str(

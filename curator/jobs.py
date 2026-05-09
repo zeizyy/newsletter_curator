@@ -41,7 +41,9 @@ from .pdf import render_digest_pdf
 from .pipeline import process_story, run_job as run_pipeline_job
 from .pricing import estimate_openai_text_cost_usd
 from .rendering import (
+    DEFAULT_NEWSLETTER_PALETTE,
     group_summaries_by_category,
+    normalize_newsletter_palette,
     render_digest_text,
     render_digest_html,
     render_email_safe_digest_html,
@@ -334,6 +336,7 @@ def subscriber_profile_key(
     preferred_sources: list[str],
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
     story_preference_memory: str = "",
+    newsletter_palette: str = DEFAULT_NEWSLETTER_PALETTE,
 ) -> str:
     payload = json.dumps(
         {
@@ -341,6 +344,7 @@ def subscriber_profile_key(
             "story_preference_memory": str(story_preference_memory).strip(),
             "preferred_sources": [source.lower() for source in preferred_sources],
             "delivery_format": normalize_subscriber_delivery_format(delivery_format),
+            "newsletter_palette": normalize_newsletter_palette(newsletter_palette),
         },
         sort_keys=True,
     )
@@ -438,6 +442,7 @@ def resolve_delivery_subscribers(
         )
         story_preference_memory = str((db_profile or {}).get("story_preference_memory") or "").strip()
         delivery_format = normalize_subscriber_delivery_format((db_profile or {}).get("delivery_format"))
+        newsletter_palette = normalize_newsletter_palette((db_profile or {}).get("newsletter_palette"))
         preferred_sources = normalize_preferred_sources((db_profile or {}).get("preferred_sources", []))
         subscribers.append(
             {
@@ -446,6 +451,7 @@ def resolve_delivery_subscribers(
                 "persona_text": persona_text,
                 "story_preference_memory": story_preference_memory,
                 "delivery_format": delivery_format,
+                "newsletter_palette": newsletter_palette,
                 "preferred_sources": preferred_sources,
                 "audience_key": subscriber_audience_key(
                     persona_text,
@@ -457,6 +463,7 @@ def resolve_delivery_subscribers(
                     preferred_sources,
                     delivery_format,
                     story_preference_memory,
+                    newsletter_palette,
                 ),
             }
         )
@@ -478,6 +485,9 @@ def group_delivery_subscribers(subscribers: list[dict]) -> list[dict]:
                 "story_preference_memory": str(subscriber.get("story_preference_memory", "")).strip(),
                 "delivery_format": normalize_subscriber_delivery_format(
                     subscriber.get("delivery_format")
+                ),
+                "newsletter_palette": normalize_newsletter_palette(
+                    subscriber.get("newsletter_palette")
                 ),
                 "preferred_sources": list(subscriber.get("preferred_sources") or []),
                 "recipients": [],
@@ -1576,6 +1586,7 @@ def run_delivery_job(
     audience_key: str = DEFAULT_AUDIENCE_KEY,
     delivery_format: str = DEFAULT_SUBSCRIBER_DELIVERY_FORMAT,
     preferred_sources: list[str] | tuple[str, ...] | None = None,
+    newsletter_palette: str = DEFAULT_NEWSLETTER_PALETTE,
     recipient_subscriber_ids: dict[str, int] | None = None,
     issue_type_override: str | None = None,
 ) -> dict:
@@ -1592,6 +1603,7 @@ def run_delivery_job(
     else:
         issue_type = scheduled_issue_type
     delivery_format = normalize_subscriber_delivery_format(delivery_format)
+    newsletter_palette = normalize_newsletter_palette(newsletter_palette)
     if issue_type == "skipped":
         runtime = finish_runtime_capture(runtime_capture)
         emit_event(
@@ -2030,6 +2042,7 @@ def run_delivery_job(
             render_groups,
             settings_url=subscriber_settings_url,
             issue_type=issue_type,
+            newsletter_palette=newsletter_palette,
         )
 
     run_id = repository.create_delivery_run(

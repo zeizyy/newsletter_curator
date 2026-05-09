@@ -122,3 +122,10 @@ def test_selected_theme_renders_ai_signal_daily_without_extra_hero_chrome(monkey
     web_html = rendering.render_digest_html(render_groups)
     assert 'class="story-read-time"' in web_html
     assert "1 min read" in web_html
+
+    cobalt_html = rendering.render_email_safe_digest_html(
+        render_groups,
+        newsletter_palette="cobalt",
+    )
+    assert "#1d5f9f" in cobalt_html
+    assert "#0f8661" not in cobalt_html

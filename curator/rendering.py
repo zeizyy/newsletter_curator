@@ -12,6 +12,149 @@ from .telemetry import TRACKED_LINK_MARKER
 
 RenderPayload = list[dict] | dict[str, list[dict]]
 READING_WORDS_PER_MINUTE = 225
+DEFAULT_NEWSLETTER_PALETTE = "signal"
+NEWSLETTER_PALETTES = {
+    "signal": {
+        "label": "Signal green",
+        "description": "The current AI Signal Daily look.",
+        "swatches": ["#0e3f35", "#0f8661", "#18a57b", "#eef4f3"],
+        "replacements": {},
+    },
+    "cobalt": {
+        "label": "Cobalt brief",
+        "description": "Cool blue with a clean newsroom feel.",
+        "swatches": ["#10233f", "#1d5f9f", "#4aa3df", "#eef5fb"],
+        "replacements": {
+            "#eef4f3": "#eef5fb",
+            "#dde9e6": "#dce9f6",
+            "#16222f": "#152238",
+            "#0e3f35": "#10233f",
+            "#0f8661": "#1d5f9f",
+            "#18a57b": "#4aa3df",
+            "#f3fffb": "#f6fbff",
+            "#f8fbff": "#f6f9fd",
+            "#d5dde8": "#d4deeb",
+            "#dfe6ef": "#dce6f2",
+            "#0c7a5b": "#1b679f",
+            "#5b6a78": "#5c6f83",
+            "#223240": "#213248",
+            "#243244": "#24364d",
+            "#2a3547": "#27384d",
+            "#eef8f4": "#edf6fb",
+            "#d7efe6": "#d5e8f5",
+            "#7be0bc": "#7fc6ee",
+            "#67d3ac": "#66b9e8",
+            "rgba(243,255,251,0.72)": "rgba(246,251,255,0.72)",
+            "rgba(243,255,251,0.82)": "rgba(246,251,255,0.84)",
+            "rgba(243,255,251,0.88)": "rgba(246,251,255,0.88)",
+            "rgba(12,122,91,0.08)": "rgba(29,95,159,0.09)",
+            "rgba(12,122,91,0.14)": "rgba(29,95,159,0.16)",
+            "rgba(19,91,72,0.12)": "rgba(29,95,159,0.14)",
+            "rgba(19,91,72,0.18)": "rgba(29,95,159,0.18)",
+            "rgba(103,211,172,0.16)": "rgba(74,163,223,0.16)",
+            "rgba(103,211,172,0.18)": "rgba(74,163,223,0.18)",
+        },
+    },
+    "graphite": {
+        "label": "Graphite ledger",
+        "description": "Neutral charcoal with restrained amber accents.",
+        "swatches": ["#191d24", "#3b4656", "#d28b2f", "#f3f1ea"],
+        "replacements": {
+            "#eef4f3": "#f3f1ea",
+            "#dde9e6": "#e4e0d5",
+            "#16222f": "#1d2430",
+            "#0e3f35": "#191d24",
+            "#0f8661": "#3b4656",
+            "#18a57b": "#d28b2f",
+            "#f3fffb": "#fffaf1",
+            "#f8fbff": "#faf8f2",
+            "#d5dde8": "#d9d3c6",
+            "#dfe6ef": "#ded8cb",
+            "#0c7a5b": "#9b5f18",
+            "#5b6a78": "#6d6b64",
+            "#223240": "#2d3035",
+            "#243244": "#30343b",
+            "#2a3547": "#343840",
+            "#eef8f4": "#fbf2e4",
+            "#d7efe6": "#ead9bd",
+            "#7be0bc": "#e7ad61",
+            "#67d3ac": "#d99b4c",
+            "rgba(243,255,251,0.72)": "rgba(255,250,241,0.72)",
+            "rgba(243,255,251,0.82)": "rgba(255,250,241,0.84)",
+            "rgba(243,255,251,0.88)": "rgba(255,250,241,0.88)",
+            "rgba(12,122,91,0.08)": "rgba(155,95,24,0.09)",
+            "rgba(12,122,91,0.14)": "rgba(155,95,24,0.16)",
+            "rgba(19,91,72,0.12)": "rgba(59,70,86,0.14)",
+            "rgba(19,91,72,0.18)": "rgba(59,70,86,0.18)",
+            "rgba(103,211,172,0.16)": "rgba(210,139,47,0.16)",
+            "rgba(103,211,172,0.18)": "rgba(210,139,47,0.18)",
+        },
+    },
+    "crimson": {
+        "label": "Crimson memo",
+        "description": "Warm red accents for a sharper editorial tone.",
+        "swatches": ["#34151d", "#9d243a", "#e4674f", "#fbf0ed"],
+        "replacements": {
+            "#eef4f3": "#fbf0ed",
+            "#dde9e6": "#f0dcd8",
+            "#16222f": "#2a1d24",
+            "#0e3f35": "#34151d",
+            "#0f8661": "#9d243a",
+            "#18a57b": "#e4674f",
+            "#f3fffb": "#fff7f4",
+            "#f8fbff": "#fff8f6",
+            "#d5dde8": "#ead4cf",
+            "#dfe6ef": "#efd9d4",
+            "#0c7a5b": "#a42a3c",
+            "#5b6a78": "#755f62",
+            "#223240": "#3a2b31",
+            "#243244": "#402e35",
+            "#2a3547": "#45323a",
+            "#eef8f4": "#fff0eb",
+            "#d7efe6": "#f1d3ca",
+            "#7be0bc": "#f59b82",
+            "#67d3ac": "#ec836b",
+            "rgba(243,255,251,0.72)": "rgba(255,247,244,0.72)",
+            "rgba(243,255,251,0.82)": "rgba(255,247,244,0.84)",
+            "rgba(243,255,251,0.88)": "rgba(255,247,244,0.88)",
+            "rgba(12,122,91,0.08)": "rgba(157,36,58,0.09)",
+            "rgba(12,122,91,0.14)": "rgba(157,36,58,0.16)",
+            "rgba(19,91,72,0.12)": "rgba(157,36,58,0.14)",
+            "rgba(19,91,72,0.18)": "rgba(157,36,58,0.18)",
+            "rgba(103,211,172,0.16)": "rgba(228,103,79,0.16)",
+            "rgba(103,211,172,0.18)": "rgba(228,103,79,0.18)",
+        },
+    },
+}
+
+
+def normalize_newsletter_palette(value: str | None) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in NEWSLETTER_PALETTES:
+        return normalized
+    return DEFAULT_NEWSLETTER_PALETTE
+
+
+def newsletter_palette_options(selected_palette: str | None = None) -> list[dict]:
+    selected = normalize_newsletter_palette(selected_palette)
+    return [
+        {
+            "id": palette_id,
+            "label": str(palette["label"]),
+            "description": str(palette["description"]),
+            "swatches": list(palette["swatches"]),
+            "selected": palette_id == selected,
+        }
+        for palette_id, palette in NEWSLETTER_PALETTES.items()
+    ]
+
+
+def apply_digest_palette(rendered_html: str, palette_id: str | None) -> str:
+    palette = NEWSLETTER_PALETTES[normalize_newsletter_palette(palette_id)]
+    updated = str(rendered_html)
+    for original, replacement in palette["replacements"].items():
+        updated = updated.replace(original, str(replacement))
+    return updated
 
 
 def group_summaries_by_category(summaries: list[tuple[int, dict, str]]) -> dict:
@@ -479,7 +622,12 @@ def render_digest_text(render_payload: RenderPayload) -> str:
     return "\n\n".join(block for block in story_blocks if block)
 
 
-def render_digest_html(render_payload: RenderPayload, *, issue_type: str | None = None) -> str:
+def render_digest_html(
+    render_payload: RenderPayload,
+    *,
+    issue_type: str | None = None,
+    newsletter_palette: str | None = None,
+) -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_story_card(entry) for entry in entries)
     total_entries = len(entries)
@@ -492,7 +640,8 @@ def render_digest_html(render_payload: RenderPayload, *, issue_type: str | None 
     rendered = rendered.replace("{{HERO_COUNT}}", str(total_entries))
     rendered = rendered.replace("{{DIGEST_TITLE}}", html.escape(header_copy["title"]))
     rendered = rendered.replace("{{DIGEST_SUBTITLE}}", html.escape(header_copy["full_subtitle"]))
-    return rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))
+    rendered = rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))
+    return apply_digest_palette(rendered, newsletter_palette)
 
 
 def _render_settings_link_html(settings_url: str) -> str:
@@ -514,6 +663,7 @@ def render_email_safe_digest_html(
     *,
     settings_url: str = "",
     issue_type: str | None = None,
+    newsletter_palette: str | None = None,
 ) -> str:
     entries = flatten_render_payload(render_payload)
     story_cards = "".join(_render_email_safe_story_card(entry) for entry in entries)
@@ -528,4 +678,5 @@ def render_email_safe_digest_html(
     rendered = rendered.replace("{{HERO_COUNT}}", str(total_entries))
     rendered = rendered.replace("{{DIGEST_TITLE}}", html.escape(header_copy["title"]))
     rendered = rendered.replace("{{DIGEST_SUBTITLE}}", html.escape(header_copy["subtitle"]))
-    return rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))
+    rendered = rendered.replace("{{DIGEST_DATE}}", html.escape(digest_date))
+    return apply_digest_palette(rendered, newsletter_palette)

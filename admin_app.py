@@ -33,6 +33,11 @@ from curator.mcp_server import (
 )
 from curator.pricing import estimate_openai_text_cost_usd, format_usd_cost
 from curator.repository import SQLiteRepository
+from curator.rendering import (
+    DEFAULT_NEWSLETTER_PALETTE,
+    newsletter_palette_options,
+    normalize_newsletter_palette,
+)
 from curator.telemetry import (
     build_settings_url,
     resolve_public_base_url,
@@ -1366,6 +1371,7 @@ def render_subscriber_settings_page(
     profile: dict,
     available_sources: list[dict],
     message: str = "",
+    saved_section: str = "",
     errors: list[str] | None = None,
     status_code: int = 200,
 ):
@@ -1375,7 +1381,9 @@ def render_subscriber_settings_page(
             subscriber=subscriber,
             profile=profile,
             available_sources=available_sources,
+            palette_options=newsletter_palette_options(profile.get("newsletter_palette")),
             message=message,
+            saved_section=saved_section,
             errors=errors or [],
         ),
         status_code,
@@ -1768,6 +1776,7 @@ def subscriber_settings():
         "profile_exists": False,
         "persona_text": "",
         "delivery_format": "email",
+        "newsletter_palette": DEFAULT_NEWSLETTER_PALETTE,
         "preferred_sources": [],
         "story_preference_memory": "",
         "story_preference_memory_generated_at": "",
@@ -1811,16 +1820,35 @@ def subscriber_settings():
             available_sources=available_sources,
             current_profile=profile,
         )
+        newsletter_palette = normalize_newsletter_palette(request.form.get("newsletter_palette"))
         profile = repository.upsert_subscriber_profile(
             int(subscriber["id"]),
             persona_text=persona_text,
             delivery_format=delivery_format,
+            newsletter_palette=newsletter_palette,
             preferred_sources=preferred_sources,
         )
-        return redirect(url_for("subscriber_settings", saved="1"))
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return {
+                "ok": True,
+                "message": "Subscriber settings saved.",
+                "profile": {
+                    "delivery_format": profile.get("delivery_format", ""),
+                    "newsletter_palette": profile.get("newsletter_palette", ""),
+                    "preferred_sources": profile.get("preferred_sources", []),
+                    "updated_at": profile.get("updated_at", ""),
+                },
+            }
+        saved_section = str(request.form.get("settings_section", "") or "").strip()
+        return redirect(url_for("subscriber_settings", saved=saved_section or "1"))
 
     if request.args.get("saved", "").strip() == "1":
         message = "Subscriber settings saved."
+    saved_section = str(request.args.get("saved", "") or "").strip()
+    if saved_section in {"personalization", "palette", "delivery", "sources"}:
+        message = "Subscriber settings saved."
+    else:
+        saved_section = ""
 
     available_sources = build_subscriber_settings_sources(
         available_sources,
@@ -1831,6 +1859,7 @@ def subscriber_settings():
         profile=profile,
         available_sources=available_sources,
         message=message,
+        saved_section=saved_section,
         errors=errors,
     )
 

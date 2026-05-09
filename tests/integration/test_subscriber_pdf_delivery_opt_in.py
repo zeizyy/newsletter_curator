@@ -147,6 +147,7 @@ def test_legacy_subscriber_profile_migrates_delivery_format_without_schema_reset
 
     assert profile["persona_text"] == "Legacy persona"
     assert profile["delivery_format"] == "email"
+    assert profile["newsletter_palette"] == "signal"
     assert profile["preferred_sources"] == ["Macro Wire"]
 
     with repository.connect() as connection:
@@ -155,6 +156,7 @@ def test_legacy_subscriber_profile_migrates_delivery_format_without_schema_reset
         }
 
     assert "delivery_format" in columns
+    assert "newsletter_palette" in columns
 
 
 def test_subscriber_settings_page_can_persist_pdf_delivery_format(monkeypatch, tmp_path):
@@ -174,13 +176,14 @@ def test_subscriber_settings_page_can_persist_pdf_delivery_format(monkeypatch, t
 
     response = client.post(
         "/settings",
-        data={"persona_text": "", "pdf_delivery_enabled": "1"},
+        data={"persona_text": "", "pdf_delivery_enabled": "1", "settings_section": "delivery"},
         follow_redirects=True,
     )
 
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "Add a PDF copy" in page
+    assert "Delivery" in page
+    assert "Email delivery stays enabled." in page
     assert "Add PDF attachment" in page
     assert 'name="pdf_delivery_enabled"' in page
 
@@ -220,7 +223,11 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     repository = get_repository_from_config(config)
 
     email_subscriber = repository.upsert_subscriber("reader@example.com")
-    repository.upsert_subscriber_profile(int(email_subscriber["id"]), delivery_format="email")
+    repository.upsert_subscriber_profile(
+        int(email_subscriber["id"]),
+        delivery_format="email",
+        newsletter_palette="cobalt",
+    )
     pdf_subscriber = repository.upsert_subscriber("kindle@example.com")
     repository.upsert_subscriber_profile(int(pdf_subscriber["id"]), delivery_format="pdf")
 
@@ -299,6 +306,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
             "email": "reader@example.com",
             "persona_text": "Generalist tech reader.",
             "delivery_format": "email",
+            "newsletter_palette": "cobalt",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][0]["profile_key"],
         },
@@ -306,6 +314,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
             "email": "kindle@example.com",
             "persona_text": "Generalist tech reader.",
             "delivery_format": "pdf",
+            "newsletter_palette": "signal",
             "preferred_sources": [],
             "profile_key": result["delivery_subscribers"][1]["profile_key"],
         },
@@ -321,6 +330,8 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     assert email_message["attachments"] == []
     assert "/track/click/" in email_message["html_body"]
     assert "/track/open/" in email_message["html_body"]
+    assert "#1d5f9f" in email_message["html_body"]
+    assert "#0f8661" not in email_message["html_body"]
 
     assert "Rates reset changes software valuations" in pdf_message["body"]
     assert "Model pricing shifted inference budgets" in pdf_message["body"]
@@ -328,6 +339,7 @@ def test_mixed_email_and_pdf_delivery_routes_correctly(monkeypatch, tmp_path, ca
     assert len(pdf_message["attachments"]) == 1
     assert "/track/click/" in pdf_message["html_body"]
     assert "/track/open/" in pdf_message["html_body"]
+    assert "#0f8661" in pdf_message["html_body"]
     pdf_attachment = pdf_message["attachments"][0]
     assert pdf_attachment["mime_type"] == "application/pdf"
     assert pdf_attachment["filename"].startswith("ai-signal-daily-")

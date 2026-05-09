@@ -583,7 +583,7 @@ def main() -> int:
                 role="checkbox",
                 accessible_name="Signal Mail Available",
             )
-            save_settings_ref = extract_ref(filtered_settings_snapshot, role="button", accessible_name="Save settings")
+            save_settings_ref = extract_ref(filtered_settings_snapshot, role="button", accessible_name="Save sources")
             run_playwright_command(
                 "fill",
                 persona_ref,
