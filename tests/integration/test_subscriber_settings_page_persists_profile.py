@@ -59,7 +59,10 @@ def test_subscriber_settings_page_persists_profile(monkeypatch, tmp_path):
     assert "Crimson memo" in page
     assert 'name="newsletter_palette"' in page
     assert re.search(r'value="cobalt"[^>]*checked', page)
-    assert "Subscriber Rail" not in page
+    assert "Subscriber Rail" in page
+    assert 'href="/onboarding">Tune</a>' in page
+    assert 'href="/daily-news">Daily News</a>' in page
+    assert re.search(r'class="nav-pill is-active" href="/settings">Settings</a>', page)
     assert "Macro Wire" in page
     assert "AI Wire" in page
     assert "Unavailable" in page
