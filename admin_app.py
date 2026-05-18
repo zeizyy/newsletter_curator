@@ -1881,7 +1881,7 @@ def _story_summary(story: dict) -> str:
     )
 
 
-def build_onboarding_story_stack(repository, subscriber_id: int, *, days: int = 5, limit: int = 30) -> list[dict]:
+def build_onboarding_story_stack(repository, subscriber_id: int, *, days: int = 7, limit: int = 30) -> list[dict]:
     cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(days=max(1, int(days)))).isoformat()
     already_rated_urls = repository.list_feedback_target_urls_for_subscriber(int(subscriber_id))
     stories = repository.list_stories(
@@ -1950,11 +1950,15 @@ def subscriber_onboarding():
         return redirect_response
 
     story_stack = build_onboarding_story_stack(repository, int(subscriber["id"]))
+    memory = repository.get_subscriber_story_preference_memory(int(subscriber["id"]))
     return render_admin_template(
         "subscriber_onboarding.html",
         subscriber=subscriber,
         stories=story_stack,
-        lookback_days=5,
+        lookback_days=7,
+        story_preference_memory=str((memory or {}).get("memory_text") or ""),
+        story_preference_memory_generated_at=str((memory or {}).get("generated_at") or ""),
+        story_preference_memory_click_count=int((memory or {}).get("clicked_story_count", 0) or 0),
     )
 
 

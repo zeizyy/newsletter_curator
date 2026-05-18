@@ -3,7 +3,7 @@
 {% block title %}Tune Your Digest | Newsletter Curator{% endblock %}
 {% block eyebrow %}Subscriber Onboarding{% endblock %}
 {% block page_title %}Tune your digest{% endblock %}
-{% block page_lead %}Swipe through recent stories so AI Signal Daily can learn what to show more or less often.{% endblock %}
+{% block page_lead %}Rate last week's stories so AI Signal Daily can learn what to show more or less often.{% endblock %}
 {% block command_rail %}
   <section class="command-rail surface">
     <div class="utility-label">Subscriber Rail</div>
@@ -52,7 +52,9 @@
       display: grid;
       grid-template-rows: auto auto 1fr auto;
       gap: 14px;
+      min-height: 0;
       padding: clamp(20px, 3vw, 32px);
+      overflow: hidden;
       border-radius: 24px;
       border: 1px solid rgba(35, 61, 74, 0.14);
       background: #ffffff;
@@ -63,13 +65,13 @@
       z-index: calc(20 - var(--stack-index, 0));
     }
 
-    .swipe-card.is-exiting-left {
-      transform: translateX(-120%) rotate(-8deg);
+    .swipe-card.is-exiting-less {
+      transform: translateY(18px) scale(0.96);
       opacity: 0;
     }
 
-    .swipe-card.is-exiting-right {
-      transform: translateX(120%) rotate(8deg);
+    .swipe-card.is-exiting-more {
+      transform: translateY(-18px) scale(0.96);
       opacity: 0;
     }
 
@@ -89,13 +91,17 @@
       margin: 0;
       color: #16222f;
       font-family: Georgia, "Times New Roman", Times, serif;
-      font-size: clamp(34px, 5vw, 58px);
-      line-height: 0.96;
+      font-size: clamp(30px, 4.4vw, 52px);
+      line-height: 1;
       letter-spacing: -0.04em;
     }
 
     .swipe-summary {
       max-width: 58ch;
+      min-height: 0;
+      margin: 0;
+      padding-right: 8px;
+      overflow-y: auto;
       color: #243244;
       font-size: 17px;
       line-height: 1.65;
@@ -142,10 +148,23 @@
       color: #f7fffd;
     }
 
-    .keyboard-hint {
+    .memory-card {
+      color: #dcebe7;
+    }
+
+    .memory-copy {
+      margin: 12px 0 0;
+      color: #dcebe7;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .memory-meta {
+      margin: 12px 0 0;
       color: #516368;
-      font-size: 13px;
-      line-height: 1.55;
+      font-size: 12px;
+      line-height: 1.5;
     }
 
     .empty-stack {
@@ -257,7 +276,7 @@
           <div class="empty-stack">
             <div>
               <h2>No recent stories to tune yet</h2>
-              <p class="section-copy">The onboarding stack uses summarized, non-paywalled stories from the last {{ lookback_days }} days. Run the fetch jobs and come back when fresh stories are available.</p>
+              <p class="section-copy">The onboarding stack uses summarized, non-paywalled stories from the last week. Run the fetch jobs and come back when fresh stories are available.</p>
             </div>
           </div>
         {% endif %}
@@ -267,14 +286,18 @@
         <section class="surface surface-section">
           <div class="section-kicker">Session</div>
           <h2>Quick preference pass</h2>
-          <p class="section-copy">Move right for more like this, left for less. These explicit ratings are added to the same learned memory used during personalized ranking.</p>
+          <p class="section-copy">Use the buttons on each story to ask for more or less coverage like it. These explicit ratings are added to the same learned memory used during personalized ranking.</p>
           <div class="progress-number"><span data-rated-count>0</span>/<span data-total-count>{{ stories | length }}</span></div>
-          <p class="keyboard-hint">Keyboard: left arrow for Less, right arrow for More.</p>
         </section>
-        <section class="surface surface-section">
-          <div class="section-kicker">Corpus</div>
-          <h2>Recent news</h2>
-          <p class="section-copy">This stack is populated from summarized stories published in the last {{ lookback_days }} days.</p>
+        <section class="surface surface-section memory-card">
+          <div class="section-kicker">Logged Preference</div>
+          <h2>Your learned signal</h2>
+          {% if story_preference_memory %}
+            <p class="memory-copy">{{ story_preference_memory }}</p>
+            <p class="memory-meta">Generated {{ story_preference_memory_generated_at }} from {{ story_preference_memory_click_count }} story interactions.</p>
+          {% else %}
+            <p class="section-copy">No learned preference has been logged yet. Rate a few stories here, then the next memory update will summarize your signal.</p>
+          {% endif %}
         </section>
       </aside>
     </div>
@@ -320,7 +343,7 @@
         const card = cards[currentIndex];
         if (!card) return;
         busy = true;
-        card.classList.add(sentiment === "up" ? "is-exiting-right" : "is-exiting-left");
+        card.classList.add(sentiment === "up" ? "is-exiting-more" : "is-exiting-less");
         try {
           await fetch(feedbackUrl, {
             method: "POST",
@@ -345,22 +368,6 @@
         if (!button) return;
         submitFeedback(button.dataset.swipeAction);
       });
-
-      window.addEventListener("keydown", (event) => {
-        if (event.key === "ArrowLeft") submitFeedback("down");
-        if (event.key === "ArrowRight") submitFeedback("up");
-      });
-
-      let touchStartX = 0;
-      stage.addEventListener("touchstart", (event) => {
-        touchStartX = event.touches[0]?.clientX || 0;
-      }, {passive: true});
-      stage.addEventListener("touchend", (event) => {
-        const endX = event.changedTouches[0]?.clientX || 0;
-        const delta = endX - touchStartX;
-        if (Math.abs(delta) < 60) return;
-        submitFeedback(delta > 0 ? "up" : "down");
-      }, {passive: true});
 
       updateStack();
     })();

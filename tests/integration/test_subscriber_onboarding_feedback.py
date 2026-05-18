@@ -47,6 +47,28 @@ def test_subscriber_onboarding_rates_recent_stories(monkeypatch, tmp_path):
         summary_model="gpt-5-mini",
         summarized_at=now_utc.isoformat(),
     )
+    week_old_story_id = repository.upsert_story(
+        {
+            "source_type": "additional_source",
+            "source_name": "AI Wire",
+            "subject": "Six day old story",
+            "url": "https://example.com/ai/six-day-story",
+            "anchor_text": "Six day old story",
+            "context": "A story still inside the one-week tuning window.",
+            "category": "AI & ML industry developments",
+            "published_at": (now_utc - timedelta(days=6)).isoformat(),
+            "summary": "Six day summary",
+        },
+        ingestion_run_id=ingestion_run_id,
+    )
+    repository.upsert_article_snapshot(
+        week_old_story_id,
+        "A six day old story should still be available for preference tuning.",
+        summary_headline="Six day old story",
+        summary_body="This story is still inside the last week's news window.",
+        summary_model="gpt-5-mini",
+        summarized_at=now_utc.isoformat(),
+    )
     stale_story_id = repository.upsert_story(
         {
             "source_type": "additional_source",
@@ -70,6 +92,11 @@ def test_subscriber_onboarding_rates_recent_stories(monkeypatch, tmp_path):
         summarized_at=now_utc.isoformat(),
     )
     subscriber = repository.upsert_subscriber("reader@example.com")
+    repository.upsert_subscriber_story_preference_memory(
+        int(subscriber["id"]),
+        memory_text="Prefers practical AI pricing and buyer adoption signals.",
+        clicked_story_count=4,
+    )
     session = repository.create_subscriber_session(int(subscriber["id"]))
 
     client = admin_app.app.test_client()
@@ -80,7 +107,14 @@ def test_subscriber_onboarding_rates_recent_stories(monkeypatch, tmp_path):
     page = response.get_data(as_text=True)
     assert "Tune your digest" in page
     assert "Open model pricing changed" in page
+    assert "Six day old story" in page
     assert "Old story" not in page
+    assert "Recent news" not in page
+    assert "Swipe through" not in page
+    assert "left arrow" not in page
+    assert "right arrow" not in page
+    assert "Your learned signal" in page
+    assert "Prefers practical AI pricing and buyer adoption signals." in page
     assert "Less like this" in page
     assert "More like this" in page
     assert "You're all tuned up" in page
