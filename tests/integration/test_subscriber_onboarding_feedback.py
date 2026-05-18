@@ -113,6 +113,8 @@ def test_subscriber_onboarding_rates_recent_stories(monkeypatch, tmp_path):
     assert "Swipe through" not in page
     assert "left arrow" not in page
     assert "right arrow" not in page
+    assert "Your thumbs" in page
+    assert "No explicit thumbs have been logged yet." in page
     assert "Your learned signal" in page
     assert "Prefers practical AI pricing and buyer adoption signals." in page
     assert "Less like this" in page
@@ -134,4 +136,11 @@ def test_subscriber_onboarding_rates_recent_stories(monkeypatch, tmp_path):
     assert interactions[0]["title"] == "Open model pricing changed"
 
     next_response = client.get("/onboarding")
-    assert "Open model pricing changed" not in next_response.get_data(as_text=True)
+    next_page = next_response.get_data(as_text=True)
+    assert "Open model pricing changed" in next_page
+    assert "data-feedback-empty hidden" in next_page
+    assert "Your thumbs" in next_page
+    assert "Less like this" in next_page
+    assert '<span class="rating-title">Open model pricing changed</span>' in next_page
+    assert "<strong data-less-count>1</strong>" in next_page
+    assert "Six day old story" in next_page
