@@ -152,6 +152,90 @@
       color: #dcebe7;
     }
 
+    .rating-counts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .rating-count {
+      padding: 12px;
+      border: 1px solid rgba(103, 211, 172, 0.18);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .rating-count strong {
+      display: block;
+      color: #f7fffd;
+      font-family: Georgia, "Times New Roman", Times, serif;
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .rating-count span {
+      display: block;
+      margin-top: 4px;
+      color: #8fb6aa;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .rating-log {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .rating-log-item {
+      display: grid;
+      gap: 5px;
+      padding: 12px;
+      border: 1px solid rgba(103, 211, 172, 0.16);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .rating-badge {
+      width: fit-content;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .rating-badge.more {
+      background: rgba(103, 211, 172, 0.14);
+      color: #7be0bc;
+    }
+
+    .rating-badge.less {
+      background: rgba(225, 117, 117, 0.14);
+      color: #f0a0a0;
+    }
+
+    .rating-title {
+      color: #dcebe7;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .rating-meta {
+      color: #6f8580;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
     .memory-copy {
       margin: 12px 0 0;
       color: #dcebe7;
@@ -290,7 +374,34 @@
           <div class="progress-number"><span data-rated-count>0</span>/<span data-total-count>{{ stories | length }}</span></div>
         </section>
         <section class="surface surface-section memory-card">
-          <div class="section-kicker">Logged Preference</div>
+          <div class="section-kicker">Logged Ratings</div>
+          <h2>Your thumbs</h2>
+          <p class="section-copy">These are the explicit More/Less ratings saved from this tuning pass and prior passes.</p>
+          <div class="rating-counts">
+            <div class="rating-count">
+              <strong data-more-count>{{ feedback_log.more_count }}</strong>
+              <span>More</span>
+            </div>
+            <div class="rating-count">
+              <strong data-less-count>{{ feedback_log.less_count }}</strong>
+              <span>Less</span>
+            </div>
+          </div>
+          <ul class="rating-log" data-feedback-log>
+            {% for feedback in feedback_log["items"] %}
+              <li class="rating-log-item">
+                <span class="rating-badge {% if feedback.sentiment == 'up' %}more{% else %}less{% endif %}">{{ feedback.label }}</span>
+                <span class="rating-title">{{ feedback.headline_title }}</span>
+                {% if feedback.source_name or feedback.category %}
+                  <span class="rating-meta">{{ feedback.source_name }}{% if feedback.source_name and feedback.category %} · {% endif %}{{ feedback.category }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="section-copy" data-feedback-empty {% if feedback_log["items"] %}hidden{% endif %}>No explicit thumbs have been logged yet.</p>
+        </section>
+        <section class="surface surface-section memory-card">
+          <div class="section-kicker">Learned Preference</div>
           <h2>Your learned signal</h2>
           {% if story_preference_memory %}
             <p class="memory-copy">{{ story_preference_memory }}</p>
@@ -311,6 +422,10 @@
       if (!stage) return;
       const feedbackUrl = stage.dataset.feedbackUrl;
       const ratedCount = document.querySelector("[data-rated-count]");
+      const feedbackLog = document.querySelector("[data-feedback-log]");
+      const feedbackEmpty = document.querySelector("[data-feedback-empty]");
+      const moreCount = document.querySelector("[data-more-count]");
+      const lessCount = document.querySelector("[data-less-count]");
       const cards = Array.from(stage.querySelectorAll("[data-story-card]"));
       const doneStack = stage.querySelector("[data-done-stack]");
       let currentIndex = 0;
@@ -338,6 +453,39 @@
         if (ratedCount) ratedCount.textContent = String(submitted);
       };
 
+      const incrementCount = (node) => {
+        if (!node) return;
+        const current = Number.parseInt(node.textContent || "0", 10);
+        node.textContent = String(Number.isNaN(current) ? 1 : current + 1);
+      };
+
+      const appendFeedbackLogItem = (card, sentiment) => {
+        if (!feedbackLog) return;
+        const item = document.createElement("li");
+        item.className = "rating-log-item";
+        const badge = document.createElement("span");
+        badge.className = `rating-badge ${sentiment === "up" ? "more" : "less"}`;
+        badge.textContent = sentiment === "up" ? "More like this" : "Less like this";
+        const title = document.createElement("span");
+        title.className = "rating-title";
+        title.textContent = card.querySelector("h2")?.textContent?.trim() || "Untitled";
+        const metaText = Array.from(card.querySelectorAll(".swipe-meta span"))
+          .map((node) => node.textContent.trim())
+          .filter(Boolean)
+          .join(" · ");
+        item.append(badge, title);
+        if (metaText) {
+          const meta = document.createElement("span");
+          meta.className = "rating-meta";
+          meta.textContent = metaText;
+          item.append(meta);
+        }
+        feedbackLog.prepend(item);
+        if (feedbackEmpty) feedbackEmpty.hidden = true;
+        if (sentiment === "up") incrementCount(moreCount);
+        if (sentiment === "down") incrementCount(lessCount);
+      };
+
       const submitFeedback = async (sentiment) => {
         if (busy) return;
         const card = cards[currentIndex];
@@ -353,6 +501,7 @@
               sentiment,
             }),
           });
+          appendFeedbackLogItem(card, sentiment);
         } finally {
           setTimeout(() => {
             currentIndex += 1;

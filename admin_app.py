@@ -1941,6 +1941,41 @@ def build_onboarding_story_stack(repository, subscriber_id: int, *, days: int = 
     return stack
 
 
+def build_subscriber_feedback_log(repository, subscriber_id: int, *, limit: int = 8) -> dict:
+    interactions = repository.list_clicked_stories_for_subscriber(int(subscriber_id), limit=200)
+    feedback_items = [
+        interaction
+        for interaction in interactions
+        if str(interaction.get("signal") or "").strip().lower() == "feedback"
+    ]
+    more_count = sum(
+        1 for item in feedback_items if str(item.get("sentiment") or "").strip().lower() == "up"
+    )
+    less_count = sum(
+        1 for item in feedback_items if str(item.get("sentiment") or "").strip().lower() == "down"
+    )
+    items = []
+    for item in feedback_items[: max(1, int(limit))]:
+        sentiment = str(item.get("sentiment") or "").strip().lower()
+        headline_title = str(item.get("title") or "Untitled").strip()
+        items.append(
+            {
+                "sentiment": sentiment,
+                "label": "More like this" if sentiment == "up" else "Less like this",
+                "headline_title": headline_title,
+                "source_name": str(item.get("source_name") or "").strip(),
+                "category": str(item.get("category") or "").strip(),
+                "interaction_at": str(item.get("interaction_at") or "").strip(),
+            }
+        )
+    return {
+        "items": items,
+        "more_count": more_count,
+        "less_count": less_count,
+        "total_count": len(feedback_items),
+    }
+
+
 @app.route("/onboarding", methods=["GET"])
 def subscriber_onboarding():
     merged = load_merged_config()
@@ -1951,11 +1986,13 @@ def subscriber_onboarding():
 
     story_stack = build_onboarding_story_stack(repository, int(subscriber["id"]))
     memory = repository.get_subscriber_story_preference_memory(int(subscriber["id"]))
+    feedback_log = build_subscriber_feedback_log(repository, int(subscriber["id"]))
     return render_admin_template(
         "subscriber_onboarding.html",
         subscriber=subscriber,
         stories=story_stack,
         lookback_days=7,
+        feedback_log=feedback_log,
         story_preference_memory=str((memory or {}).get("memory_text") or ""),
         story_preference_memory_generated_at=str((memory or {}).get("generated_at") or ""),
         story_preference_memory_click_count=int((memory or {}).get("clicked_story_count", 0) or 0),
