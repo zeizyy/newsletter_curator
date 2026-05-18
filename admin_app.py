@@ -1864,6 +1864,133 @@ def subscriber_settings():
     )
 
 
+def _story_title(story: dict) -> str:
+    return (
+        str(story.get("summary_headline") or "").strip()
+        or str(story.get("anchor_text") or "").strip()
+        or str(story.get("subject") or "").strip()
+        or "Untitled"
+    )
+
+
+def _story_summary(story: dict) -> str:
+    return (
+        str(story.get("summary_body") or "").strip()
+        or str(story.get("summary") or "").strip()
+        or str(story.get("context") or "").strip()
+    )
+
+
+def build_onboarding_story_stack(repository, subscriber_id: int, *, days: int = 5, limit: int = 30) -> list[dict]:
+    cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(days=max(1, int(days)))).isoformat()
+    already_rated_urls = repository.list_feedback_target_urls_for_subscriber(int(subscriber_id))
+    stories = repository.list_stories(
+        published_after=cutoff,
+        include_paywalled=False,
+        require_summary=True,
+    )
+    items: list[dict] = []
+    for story in stories:
+        url = str(story.get("url") or "").strip()
+        if not url or url in already_rated_urls:
+            continue
+        items.append(
+            {
+                "title": _story_title(story),
+                "url": url,
+                "source_name": str(story.get("source_name") or "").strip(),
+                "source_type": str(story.get("source_type") or "").strip(),
+                "category": str(story.get("category") or "").strip() or "Uncategorized",
+                "published_at": str(story.get("published_at") or story.get("email_sent_at") or "").strip(),
+                "summary_body": _story_summary(story),
+            }
+        )
+        if len(items) >= max(1, int(limit)):
+            break
+    if not items:
+        return []
+
+    newsletter_id = repository.upsert_daily_newsletter(
+        newsletter_date=current_newsletter_date(),
+        audience_key=f"subscriber-{int(subscriber_id)}-onboarding",
+        issue_type="onboarding",
+        subject="Preference onboarding",
+        body="",
+        html_body="",
+        content={"source": "preference_onboarding", "days": days},
+        selected_items=items,
+        metadata={"source": "preference_onboarding", "days": days},
+    )
+    tracked_links = repository.ensure_tracked_links(
+        int(newsletter_id),
+        items,
+        subscriber_id=int(subscriber_id),
+    )
+    links_by_url = {str(row.get("target_url") or ""): row for row in tracked_links}
+    stack = []
+    for item in items:
+        link = links_by_url.get(str(item["url"]))
+        if not link:
+            continue
+        stack.append(
+            {
+                **item,
+                "click_token": str(link.get("click_token") or ""),
+            }
+        )
+    return stack
+
+
+@app.route("/onboarding", methods=["GET"])
+def subscriber_onboarding():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
+
+    story_stack = build_onboarding_story_stack(repository, int(subscriber["id"]))
+    return render_admin_template(
+        "subscriber_onboarding.html",
+        subscriber=subscriber,
+        stories=story_stack,
+        lookback_days=5,
+    )
+
+
+@app.route("/onboarding/feedback", methods=["POST"])
+def subscriber_onboarding_feedback():
+    merged = load_merged_config()
+    repository = load_repository(merged)
+    subscriber, redirect_response = require_subscriber_session(repository)
+    if redirect_response is not None:
+        return redirect_response
+
+    payload = request.get_json(silent=True) or request.form
+    click_token = str(payload.get("click_token", "") or "").strip()
+    sentiment = str(payload.get("sentiment", "") or "").strip().lower()
+    feedback = repository.record_newsletter_feedback(
+        click_token,
+        sentiment=sentiment,
+        user_agent=request.headers.get("User-Agent", ""),
+        ip_address=_request_ip(),
+    )
+    if feedback is None or feedback.get("subscriber_id") != int(subscriber["id"]):
+        abort(404)
+
+    response = make_response(
+        json.dumps(
+            {
+                "status": "recorded",
+                "sentiment": feedback["sentiment"],
+            }
+        )
+    )
+    response.headers["Content-Type"] = "application/json"
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
 @app.route("/logout", methods=["GET", "POST"])
 def subscriber_logout():
     merged = load_merged_config()

@@ -535,7 +535,6 @@ def _render_email_safe_story_card(entry: dict) -> str:
         if url
         else ""
     )
-
     metadata_parts = []
     if timestamp:
         metadata_parts.append(html.escape(timestamp))

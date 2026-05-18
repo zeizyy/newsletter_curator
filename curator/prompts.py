@@ -126,13 +126,19 @@ def build_ranking_prompts(
 def format_clicked_stories_for_llm(clicked_stories: list[dict]) -> str:
     lines = []
     for idx, story in enumerate(clicked_stories, start=1):
+        signal = str(story.get("signal", "click") or "click")
+        sentiment = str(story.get("sentiment", "up") or "up")
+        interaction = "Explicit click"
+        if signal == "feedback":
+            interaction = "Thumbs up" if sentiment == "up" else "Thumbs down"
         lines.append(
             "\n".join(
                 [
                     f"[{idx}] {story.get('title', '')}".strip(),
                     f"Source: {story.get('source_name', '')}".strip(),
                     f"Category: {story.get('category', '')}".strip(),
-                    f"Clicked at: {story.get('clicked_at', '')}".strip(),
+                    f"Signal: {interaction}".strip(),
+                    f"Interacted at: {story.get('interaction_at') or story.get('clicked_at', '')}".strip(),
                     f"Summary: {story.get('summary', '')}".strip(),
                     f"URL: {story.get('url', '')}".strip(),
                 ]
@@ -149,19 +155,22 @@ def build_story_preference_memory_prompts(
 ) -> tuple[str, str]:
     system_prompt = (
         "You maintain a compact read-only preference memory for a personalized newsletter. "
-        "Infer stable story-selection preferences from clicked stories. Focus on durable topic, "
-        "source, depth, business-model, market, technical, and novelty signals. Do not mention "
-        "individual clicks unless they represent a reusable preference. Avoid sensitive personal "
+        "Infer stable story-selection preferences from explicit article clicks and thumbs feedback. "
+        "Treat article clicks and thumbs-up feedback as positive interest, and thumbs-down feedback "
+        "as negative evidence about what to show less often. Focus on durable topic, source, depth, "
+        "business-model, market, technical, and novelty signals. Do not mention individual "
+        "interactions unless they represent a reusable preference. Avoid sensitive personal "
         "attributes and do not invent facts."
         f"{persona_clause(persona_text)}"
     )
     previous = existing_memory.strip() or "No previous memory."
     user_prompt = (
-        "Update the user's story preference memory using the clicked stories below.\n"
+        "Update the user's story preference memory using the story interactions below.\n"
         "Return only concise plain text, 3-7 bullets. Each bullet should be actionable for "
-        "future story ranking.\n\n"
+        "future story ranking, including what to favor and what to avoid when negative feedback "
+        "is present.\n\n"
         f"Previous memory:\n{previous}\n\n"
-        f"Clicked stories:\n{format_clicked_stories_for_llm(clicked_stories)}"
+        f"Story interactions:\n{format_clicked_stories_for_llm(clicked_stories)}"
     )
     return system_prompt, user_prompt
 

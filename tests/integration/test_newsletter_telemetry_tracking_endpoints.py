@@ -115,6 +115,8 @@ def test_newsletter_telemetry_tracking_endpoints(monkeypatch, tmp_path):
     assert open_match is not None
     assert urlparse(click_match.group(1)).netloc == "curator.test"
     assert urlparse(open_match.group(1)).netloc == "curator.test"
+    assert "/track/feedback/" not in html_body
+    assert "Tune digest:" not in html_body
 
     counts = repository.get_table_counts()
     assert counts["newsletter_telemetry"] == 1

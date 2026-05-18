@@ -269,6 +269,17 @@ class SQLiteRepository:
                 "user_agent",
                 "ip_address",
             },
+            "newsletter_feedback_events": {
+                "id",
+                "daily_newsletter_id",
+                "tracked_link_id",
+                "click_token",
+                "sentiment",
+                "feedback_at",
+                "subscriber_id",
+                "user_agent",
+                "ip_address",
+            },
             "subscriber_story_preference_memories": {
                 "subscriber_id",
                 "memory_text",
@@ -696,8 +707,10 @@ class SQLiteRepository:
             "subscriber_profiles",
             "daily_news_agent_usage",
             "subscribers",
+            "newsletter_feedback_events",
             "newsletter_click_events",
             "newsletter_open_events",
+            "subscriber_tracked_links",
             "tracked_links",
             "newsletter_telemetry",
             "agent_chat_messages",
@@ -1101,6 +1114,21 @@ class SQLiteRepository:
 
             CREATE INDEX IF NOT EXISTS idx_newsletter_click_events_subscriber_id
             ON newsletter_click_events(subscriber_id);
+
+            CREATE TABLE IF NOT EXISTS newsletter_feedback_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                daily_newsletter_id INTEGER NOT NULL REFERENCES daily_newsletters(id) ON DELETE CASCADE,
+                tracked_link_id INTEGER NOT NULL REFERENCES tracked_links(id) ON DELETE CASCADE,
+                click_token TEXT NOT NULL,
+                sentiment TEXT NOT NULL CHECK(sentiment IN ('up', 'down')),
+                feedback_at TEXT NOT NULL,
+                subscriber_id INTEGER REFERENCES subscribers(id) ON DELETE SET NULL,
+                user_agent TEXT NOT NULL DEFAULT '',
+                ip_address TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_newsletter_feedback_events_subscriber_id
+            ON newsletter_feedback_events(subscriber_id);
 
             CREATE TABLE IF NOT EXISTS subscriber_story_preference_memories (
                 subscriber_id INTEGER PRIMARY KEY REFERENCES subscribers(id) ON DELETE CASCADE,
@@ -1756,6 +1784,18 @@ class SQLiteRepository:
             ).fetchone()
             click_events_deleted = int(click_events_row["count"])
 
+            feedback_events_row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM newsletter_feedback_events
+                WHERE daily_newsletter_id IN (
+                    SELECT id FROM daily_newsletters WHERE newsletter_date < ?
+                )
+                """,
+                (cutoff_newsletter_date,),
+            ).fetchone()
+            feedback_events_deleted = int(feedback_events_row["count"])
+
             connection.execute(
                 "DELETE FROM preview_generations WHERE newsletter_date < ?",
                 (cutoff_newsletter_date,),
@@ -1772,6 +1812,7 @@ class SQLiteRepository:
             "tracked_links_deleted": tracked_links_deleted,
             "open_events_deleted": open_events_deleted,
             "click_events_deleted": click_events_deleted,
+            "feedback_events_deleted": feedback_events_deleted,
         }
 
     def upsert_subscriber(self, email_address: str) -> dict:
@@ -2421,6 +2462,30 @@ class SQLiteRepository:
             )
         return {"daily_newsletter_id": daily_newsletter_id}
 
+    def _resolve_tracked_link_for_token(
+        self,
+        connection: sqlite3.Connection,
+        click_token: str,
+    ) -> sqlite3.Row | None:
+        subscriber_link_row = connection.execute(
+            """
+            SELECT tracked_link_id, daily_newsletter_id, target_url, subscriber_id
+            FROM subscriber_tracked_links
+            WHERE click_token = ?
+            LIMIT 1
+            """,
+            (click_token,),
+        ).fetchone()
+        return subscriber_link_row or connection.execute(
+            """
+            SELECT id AS tracked_link_id, daily_newsletter_id, target_url, NULL AS subscriber_id
+            FROM tracked_links
+            WHERE click_token = ?
+            LIMIT 1
+            """,
+            (click_token,),
+        ).fetchone()
+
     def record_newsletter_click(
         self,
         click_token: str,
@@ -2429,24 +2494,7 @@ class SQLiteRepository:
         ip_address: str = "",
     ) -> dict | None:
         with self.connect() as connection:
-            subscriber_link_row = connection.execute(
-                """
-                SELECT tracked_link_id, daily_newsletter_id, target_url, subscriber_id
-                FROM subscriber_tracked_links
-                WHERE click_token = ?
-                LIMIT 1
-                """,
-                (click_token,),
-            ).fetchone()
-            link_row = subscriber_link_row or connection.execute(
-                """
-                SELECT id AS tracked_link_id, daily_newsletter_id, target_url, NULL AS subscriber_id
-                FROM tracked_links
-                WHERE click_token = ?
-                LIMIT 1
-                """,
-                (click_token,),
-            ).fetchone()
+            link_row = self._resolve_tracked_link_for_token(connection, click_token)
             if link_row is None:
                 return None
             tracked_link_id = int(link_row["tracked_link_id"])
@@ -2481,6 +2529,58 @@ class SQLiteRepository:
             "tracked_link_id": tracked_link_id,
             "subscriber_id": int(subscriber_id) if subscriber_id is not None else None,
             "target_url": target_url,
+        }
+
+    def record_newsletter_feedback(
+        self,
+        click_token: str,
+        *,
+        sentiment: str,
+        user_agent: str = "",
+        ip_address: str = "",
+    ) -> dict | None:
+        normalized_sentiment = str(sentiment or "").strip().lower()
+        if normalized_sentiment not in {"up", "down"}:
+            return None
+        with self.connect() as connection:
+            link_row = self._resolve_tracked_link_for_token(connection, click_token)
+            if link_row is None:
+                return None
+            tracked_link_id = int(link_row["tracked_link_id"])
+            daily_newsletter_id = int(link_row["daily_newsletter_id"])
+            target_url = str(link_row["target_url"])
+            subscriber_id = link_row["subscriber_id"]
+            connection.execute(
+                """
+                INSERT INTO newsletter_feedback_events (
+                    daily_newsletter_id,
+                    tracked_link_id,
+                    click_token,
+                    sentiment,
+                    feedback_at,
+                    subscriber_id,
+                    user_agent,
+                    ip_address
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    daily_newsletter_id,
+                    tracked_link_id,
+                    click_token,
+                    normalized_sentiment,
+                    utc_now(),
+                    int(subscriber_id) if subscriber_id is not None else None,
+                    user_agent,
+                    ip_address,
+                ),
+            )
+        return {
+            "daily_newsletter_id": daily_newsletter_id,
+            "tracked_link_id": tracked_link_id,
+            "subscriber_id": int(subscriber_id) if subscriber_id is not None else None,
+            "target_url": target_url,
+            "sentiment": normalized_sentiment,
         }
 
     def get_subscriber_story_preference_memory(self, subscriber_id: int) -> dict | None:
@@ -2579,21 +2679,29 @@ class SQLiteRepository:
         with self.connect() as connection:
             rows = connection.execute(
                 f"""
+                WITH story_interactions AS (
+                    SELECT subscriber_id, clicked_at AS event_at
+                    FROM newsletter_click_events
+                    WHERE subscriber_id IS NOT NULL
+                    UNION ALL
+                    SELECT subscriber_id, feedback_at AS event_at
+                    FROM newsletter_feedback_events
+                    WHERE subscriber_id IS NOT NULL
+                )
                 SELECT
                     s.id AS subscriber_id,
                     s.email_address,
-                    MAX(nce.clicked_at) AS latest_click_at,
-                    COUNT(nce.id) AS click_count,
+                    MAX(si.event_at) AS latest_click_at,
+                    COUNT(*) AS click_count,
                     spm.generated_at AS memory_generated_at,
                     spm.last_click_at AS memory_last_click_at
-                FROM newsletter_click_events nce
-                JOIN subscribers s ON s.id = nce.subscriber_id
+                FROM story_interactions si
+                JOIN subscribers s ON s.id = si.subscriber_id
                 LEFT JOIN subscriber_story_preference_memories spm
                     ON spm.subscriber_id = s.id
-                WHERE nce.subscriber_id IS NOT NULL
                 GROUP BY s.id
-                HAVING spm.generated_at IS NULL OR MAX(nce.clicked_at) > COALESCE(spm.last_click_at, '')
-                ORDER BY MAX(nce.clicked_at) DESC
+                HAVING spm.generated_at IS NULL OR MAX(si.event_at) > COALESCE(spm.last_click_at, '')
+                ORDER BY MAX(si.event_at) DESC
                 {limit_clause}
                 """,
                 params,
@@ -2620,15 +2728,38 @@ class SQLiteRepository:
         params: list[object] = [int(subscriber_id)]
         since_clause = ""
         if str(since or "").strip():
-            since_clause = "AND nce.clicked_at > ?"
+            since_clause = "AND story_events.event_at > ?"
             params.append(str(since).strip())
         params.append(max(1, int(limit)))
         with self.connect() as connection:
             rows = connection.execute(
                 f"""
+                WITH story_events AS (
+                    SELECT
+                        id AS event_id,
+                        'click' AS signal,
+                        'up' AS sentiment,
+                        clicked_at AS event_at,
+                        tracked_link_id,
+                        daily_newsletter_id,
+                        subscriber_id
+                    FROM newsletter_click_events
+                    UNION ALL
+                    SELECT
+                        id AS event_id,
+                        'feedback' AS signal,
+                        sentiment,
+                        feedback_at AS event_at,
+                        tracked_link_id,
+                        daily_newsletter_id,
+                        subscriber_id
+                    FROM newsletter_feedback_events
+                )
                 SELECT
-                    nce.id AS click_event_id,
-                    nce.clicked_at,
+                    story_events.event_id AS click_event_id,
+                    story_events.signal,
+                    story_events.sentiment,
+                    story_events.event_at AS clicked_at,
                     tl.story_title,
                     tl.target_url,
                     dn.subject AS newsletter_subject,
@@ -2636,12 +2767,12 @@ class SQLiteRepository:
                     dn.issue_type,
                     dn.content_json,
                     dn.selected_items_json
-                FROM newsletter_click_events nce
-                JOIN tracked_links tl ON tl.id = nce.tracked_link_id
-                JOIN daily_newsletters dn ON dn.id = nce.daily_newsletter_id
-                WHERE nce.subscriber_id = ?
+                FROM story_events
+                JOIN tracked_links tl ON tl.id = story_events.tracked_link_id
+                JOIN daily_newsletters dn ON dn.id = story_events.daily_newsletter_id
+                WHERE story_events.subscriber_id = ?
                 {since_clause}
-                ORDER BY nce.clicked_at DESC, nce.id DESC
+                ORDER BY story_events.event_at DESC, story_events.event_id DESC
                 LIMIT ?
                 """,
                 params,
@@ -2656,6 +2787,9 @@ class SQLiteRepository:
                 {
                     "click_event_id": int(row["click_event_id"]),
                     "clicked_at": str(row["clicked_at"] or ""),
+                    "interaction_at": str(row["clicked_at"] or ""),
+                    "signal": str(row["signal"] or "click"),
+                    "sentiment": str(row["sentiment"] or "up"),
                     "title": str(row["story_title"] or selected_item.get("title") or ""),
                     "url": str(row["target_url"] or ""),
                     "source_name": str(selected_item.get("source_name", "") or ""),
@@ -2673,6 +2807,19 @@ class SQLiteRepository:
                 }
             )
         return clicked_stories
+
+    def list_feedback_target_urls_for_subscriber(self, subscriber_id: int) -> set[str]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT tl.target_url
+                FROM newsletter_feedback_events nfe
+                JOIN tracked_links tl ON tl.id = nfe.tracked_link_id
+                WHERE nfe.subscriber_id = ?
+                """,
+                (int(subscriber_id),),
+            ).fetchall()
+        return {str(row["target_url"] or "") for row in rows if str(row["target_url"] or "").strip()}
 
     def _event_visitor_key_sql(self, alias: str) -> str:
         return (
@@ -3570,6 +3717,7 @@ class SQLiteRepository:
             "subscriber_tracked_links",
             "newsletter_open_events",
             "newsletter_click_events",
+            "newsletter_feedback_events",
             "subscriber_story_preference_memories",
             "fetched_stories",
             "article_snapshots",

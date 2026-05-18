@@ -262,6 +262,9 @@
         </div>
       </div>
       <p class="section-copy">This read-only memory is generated from stories you clicked and is used with your persona during personalized ranking.</p>
+      <div class="button-row">
+        <a class="button-link ghost" href="{{ url_for('subscriber_onboarding') }}">Tune with recent stories</a>
+      </div>
       {% if profile.story_preference_memory %}
         <div class="field">
           <label class="field-label" for="story_preference_memory">Story preference memory</label>
