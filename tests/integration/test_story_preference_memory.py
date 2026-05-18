@@ -81,3 +81,25 @@ def test_story_preference_memory_generates_only_after_new_clicks(tmp_path):
 
     assert second_result["target_count"] == 0
     assert len(fake_openai.calls) == 1
+
+    feedback = repository.record_newsletter_feedback(
+        str(tracked_links[0]["click_token"]),
+        sentiment="down",
+    )
+    assert feedback is not None
+    assert feedback["subscriber_id"] == int(subscriber["id"])
+    interactions = repository.list_clicked_stories_for_subscriber(int(subscriber["id"]))
+    assert [interaction["signal"] for interaction in interactions] == ["feedback", "click"]
+    assert interactions[0]["sentiment"] == "down"
+
+    feedback_result = generate_story_preference_memories(
+        repository,
+        model="gpt-5-mini",
+        client_factory=lambda: fake_openai,
+    )
+
+    assert feedback_result["generated_count"] == 1
+    updated_memory = repository.get_subscriber_story_preference_memory(int(subscriber["id"]))
+    assert updated_memory is not None
+    assert updated_memory["clicked_story_count"] == 2
+    assert len(fake_openai.calls) == 2
